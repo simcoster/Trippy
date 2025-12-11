@@ -1,14 +1,18 @@
 import warnings
 import logging
-import json
+import os
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
+from dotenv import load_dotenv  # noqa: E402
 from fastapi import FastAPI, Request  # noqa: E402
 import httpx  # noqa: E402
 from langchain_core.messages import HumanMessage, AIMessage  # noqa: E402
 from graph import graph, ChatState  # noqa: E402
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set up logging for debugging
 logging.basicConfig(
@@ -17,9 +21,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 👉 Put your bot token here (later you can move it to an env var)
-TELEGRAM_TOKEN = "8530375162:AAE_IszbzBPDn9c4cHAZ5lVghcHBqLGAHVg"
-NGROK_URL = "https://cushionless-brattily-marla.ngrok-free.dev"
+# Load secrets from environment variables
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+NGROK_URL = os.getenv("NGROK_URL", "")
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN environment variable is not set. Please check your .env file.")
 TELEGRAM_API_BASE = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 app = FastAPI()
