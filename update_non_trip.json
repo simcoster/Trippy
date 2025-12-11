@@ -1,0 +1,27 @@
+{
+  "update_id": 885197268,
+  "message": {
+    "message_id": 36,
+    "from": {
+      "id": 1261489933,
+      "is_bot": false,
+      "first_name": "Freakazoid",
+      "username": "Freakazoid12",
+      "language_code": "en"
+    },
+    "chat": {
+      "id": -5094039598,
+      "title": "מנסה את טריפי",
+      "type": "group",
+      "all_members_are_administrators": true,
+      "accepted_gift_types": {
+        "unlimited_gifts": false,
+        "limited_gifts": false,
+        "unique_gifts": false,
+        "premium_subscription": false
+      }
+    },
+    "date": 1765372286,
+    "text": "תחת?"
+  }
+}

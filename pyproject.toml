@@ -1,0 +1,21 @@
+[project]
+name = "trippy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.124.0",
+    "httpx>=0.28.1",
+    "ngrok>=1.6.0",
+    "uvicorn>=0.38.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langgraph>=0.2.0",
+    "typing-extensions>=4.8.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "langgraph_service",
+]
