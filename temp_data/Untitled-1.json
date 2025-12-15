@@ -1,0 +1,375 @@
+{
+    "location_name": "חורשת טל",
+    "source": "Tripadvisor",
+    "claims": [
+        {
+            "review_date": "2025-08",
+            "claim_he": "השירותים והמקלחות מנוקים כמה פעמים ביום על ידי צוות, וזה משפר מאוד את השימוש בהם.",
+            "claim_en": "Showers and toilets are cleaned multiple times a day by staff, which significantly improves their usability.",
+            "evidence_span": "אחראית לניקיון המקלחות והשירותים, דאגה כמה פעמים ביום פשוט לצחצח את המתחם",
+            "polarity": "pos",
+            "severity": 2,
+            "confidence": 0.75
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "המקום היה שקט ונקי (לפי החוויה של המבקרים בביקורת).",
+            "claim_en": "The site was quiet and clean (per this review).",
+            "evidence_span": "היה שקט ונקי",
+            "polarity": "pos",
+            "severity": 2,
+            "confidence": 0.6
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "לא כל הבריכות פעלו בתקופת הביקור.",
+            "claim_en": "Not all pools were operating during the visit period.",
+            "evidence_span": "לא כל הבריכות עבדו",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.7
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "נמסרה הודעה מראש (באותו שבוע) על כך שלא כל הבריכות יפעלו.",
+            "claim_en": "Visitors were notified in advance (that same week) that not all pools would operate.",
+            "evidence_span": "ידעו אותנו מראש בהודעה באותו השבוע שזה יקרה",
+            "polarity": "mixed",
+            "severity": 1,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "יש לא מעט אטרקציות בסביבה.",
+            "claim_en": "There are several attractions in the surrounding area.",
+            "evidence_span": "יש גם לא מעט אטרקציות בסביבה",
+            "polarity": "pos",
+            "severity": 1,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "המקום לא מטופח (לפי המבקר).",
+            "claim_en": "The place is not well maintained (per this reviewer).",
+            "evidence_span": "המקום לא מטופח",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.7
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "כמעט ואין מים (לפי המבקר).",
+            "claim_en": "There is very little water (per this reviewer).",
+            "evidence_span": "אין בו מים כמעט",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.6
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "יש הרבה אזורים בלי דשא ורק אדמה.",
+            "claim_en": "Many areas have no grass and are mostly dirt.",
+            "evidence_span": "הרבה מקומות בלי דשא רק אדמה",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "המחיר לא שווה/צריך להיות בחינם כי אין מה לעשות (לטענת המבקר).",
+            "claim_en": "The reviewer believes the entry fee isn’t worth it / should be free given the experience.",
+            "evidence_span": "לוקחים כסף על כלום זה צריך להיות בחינם",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "יש מרחק גדול ללכת בתוך הפארק.",
+            "claim_en": "There is a long walking distance inside the park.",
+            "evidence_span": "יש מרחק גדול ללכת בפארק",
+            "polarity": "neg",
+            "severity": 2,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2025-08",
+            "claim_he": "המבקר ציפה לשאטל/סיוע בהובלת ציוד בגלל המרחק.",
+            "claim_en": "The reviewer expected a shuttle/help carrying equipment due to the distance.",
+            "evidence_span": "היו עוזרים לאנשים לסחוב את הציוד עם שאטל",
+            "polarity": "neg",
+            "severity": 2,
+            "confidence": 0.45
+        },
+        {
+            "review_date": "2023-09",
+            "claim_he": "המקום מתאים בעיקר לילדים עד גיל 6–7 ולא מתאים למבוגרים (לפי המבקר).",
+            "claim_en": "The place is suitable mainly for children up to about ages 6–7 and not suitable for adults (per this reviewer).",
+            "evidence_span": "מתאים רק לילדים עד גיל 6-7 לא מתאים למבוגרים",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.6
+        },
+        {
+            "review_date": "2023-09",
+            "claim_he": "הבריכה קטנה מאוד (לפי המבקר).",
+            "claim_en": "The pool is very small (per this reviewer).",
+            "evidence_span": "בריכה קטנה מאוד",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2023-08",
+            "claim_he": "בחניון הלילה המקום נקי מאוד גם כשעמוס (לפי המבקר).",
+            "claim_en": "In the overnight camping area, the place is very clean even when crowded (per this reviewer).",
+            "evidence_span": "ביקרנו בחניון הלילה... המקום נקי ברמה אחרת",
+            "polarity": "pos",
+            "severity": 2,
+            "confidence": 0.7
+        },
+        {
+            "review_date": "2023-08",
+            "claim_he": "מפנים פחים בכל שעות היממה.",
+            "claim_en": "Trash bins are emptied at all hours.",
+            "evidence_span": "פינוי פחים בכל שעות היממה",
+            "polarity": "pos",
+            "severity": 2,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2023-08",
+            "claim_he": "מנקים מקלחות ושירותים כל הזמן.",
+            "claim_en": "Showers and toilets are cleaned continuously.",
+            "evidence_span": "ניקוי מקלחות ושרותים כל הזמן",
+            "polarity": "pos",
+            "severity": 2,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2023-08",
+            "claim_he": "המקום מתוחזק ברמה גבוהה.",
+            "claim_en": "The site is maintained to a high standard.",
+            "evidence_span": "המקום מתוחזק ברמה גבוהה",
+            "polarity": "pos",
+            "severity": 2,
+            "confidence": 0.6
+        },
+        {
+            "review_date": "2023-07",
+            "claim_he": "אין פיקוח מספיק על התנהלות המבקרים (לפי המבקר).",
+            "claim_en": "There is inadequate supervision/enforcement of visitor behavior (per this reviewer).",
+            "evidence_span": "אין פיקוח על התנהלות המבקרים",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.6
+        },
+        {
+            "review_date": "2023-07",
+            "claim_he": "ילדים זורקים אבנים (לפי המבקר).",
+            "claim_en": "Children throw stones (per this reviewer).",
+            "evidence_span": "ילדים זורקים אבנים",
+            "polarity": "neg",
+            "severity": 5,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2023-07",
+            "claim_he": "מבקרים מכניסים שולחנות אוכל למים וזה חוסם מעבר במים.",
+            "claim_en": "Visitors put dining tables into the water, obstructing the ability to walk in the water.",
+            "evidence_span": "מכניסים את שולחנות האוכל למים ואז אין אפשרים ללכת במים",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2022-08",
+            "claim_he": "מבקרי יום נשלחו לחניון יום בקצה ולא לאזור המרכזי (לפי המבקרת).",
+            "claim_en": "Day visitors were directed to a remote day area rather than the main grove area (per this reviewer).",
+            "evidence_span": "נשלחנו לחניון יום אי שם בקצה",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2022-08",
+            "claim_he": "צוות המקום סירב להכניס מבקרי יום לחורשה המרכזית/חניון הלילה; הכניסה רק ללנים.",
+            "claim_en": "Staff refused to allow day visitors into the main grove/overnight area; it is for overnight guests only.",
+            "evidence_span": "זה חניון לילה וזה אך ורק ללנים",
+            "polarity": "neg",
+            "severity": 5,
+            "confidence": 0.7
+        },
+        {
+            "review_date": "2022-08",
+            "claim_he": "המבקרת קיבלה החזר כספי לאחר שביקשה.",
+            "claim_en": "The reviewer received a refund after requesting it.",
+            "evidence_span": "ביקשתי החזר כספי, קיבלתי",
+            "polarity": "mixed",
+            "severity": 1,
+            "confidence": 0.6
+        },
+        {
+            "review_date": "2022-08",
+            "claim_he": "הבריכות הגדולות היו סגורות בזמן הביקור (ולפחות על זה ידעו להגיד).",
+            "claim_en": "Large pools were closed at the time of the visit (and this was communicated).",
+            "evidence_span": "הברכות הגדולות סגורות( את זה דווקא ידעו להגיד )",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2021-06",
+            "claim_he": "הבונגלוס מלוכלך, כולל מתחת למיטות (לפי המבקרת).",
+            "claim_en": "The bungalows are dirty, including under the beds (per this reviewer).",
+            "evidence_span": "בונגלוס מלוכלך, לא נראה שניקו אי פעם מתחת למיטות",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.7
+        },
+        {
+            "review_date": "2021-06",
+            "claim_he": "יש עשביה גבוהה ולא מנוקשת בין הבונגלוסים (לפי המבקרת).",
+            "claim_en": "Weeds/overgrown grass between bungalows are not maintained (per this reviewer).",
+            "evidence_span": "עשביה גבוהה ולא מנוקשת בין הבונגלוסים",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2021-06",
+            "claim_he": "הכניסה למתחם היא רק בשעה 15:00 (לפי המבקרת).",
+            "claim_en": "Entry to the accommodation area is only at 15:00 (per this reviewer).",
+            "evidence_span": "כניסה למתחם רק בשעה שלוש",
+            "polarity": "neg",
+            "severity": 2,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2021-06",
+            "claim_he": "האגם נסגר כחצי שעה אחרי הכניסה ולכן כמעט אי אפשר היה להיכנס אליו (לפי המבקרת).",
+            "claim_en": "The lake closed about 30 minutes after check-in, limiting access (per this reviewer).",
+            "evidence_span": "נסגר כחצי שעה לאחר הכניסה",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2021-06",
+            "claim_he": "היציאה היא בשעה 12:00 (לפי המבקרת).",
+            "claim_en": "Check-out is at 12:00 (per this reviewer).",
+            "evidence_span": "היציאה כבר ב12",
+            "polarity": "neutral",
+            "severity": 1,
+            "confidence": 0.5
+        },
+        {
+            "review_date": "2021-06",
+            "claim_he": "נדרש תשלום נוסף כדי להישאר במקום/באגם אחרי היציאה (לפי המבקרת).",
+            "claim_en": "An extra fee is required to stay on site/at the lake after check-out (per this reviewer).",
+            "evidence_span": "יש להוסיף תוספת מחיר עבור שהיה במקום / באגם",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2021-06",
+            "claim_he": "האגם עצמו נחמד מאוד (לפי המבקרת).",
+            "claim_en": "The lake itself is very nice (per this reviewer).",
+            "evidence_span": "האגם עצמו - נחמד מאד",
+            "polarity": "pos",
+            "severity": 1,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2021-05",
+            "claim_he": "זה אתר מעולה לבילוי חד-יומי וגם לקמפינג (לפי המבקר).",
+            "claim_en": "The park is great for both day visits and camping (per this reviewer).",
+            "evidence_span": "אתר מעולה לבילוי חד יומי וקמפינג",
+            "polarity": "pos",
+            "severity": 1,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2021-05",
+            "claim_he": "המים/הנחלים קפואים (לפי המבקר).",
+            "claim_en": "The water/streams are very cold (per this reviewer).",
+            "evidence_span": "הנחלים הקפואים של מי החרמון",
+            "polarity": "neutral",
+            "severity": 1,
+            "confidence": 0.45
+        },
+        {
+            "review_date": "2021-05",
+            "claim_he": "הבריכה כל כך קרה שמבוגרים לא יכולים להישאר בה יותר מדקה, ורק ילדים מצליחים (לפי המבקר).",
+            "claim_en": "The pool is so cold adults can’t stay more than about a minute; mainly children can handle it (per this reviewer).",
+            "evidence_span": "לא ניתן להישאר בתוכה יותר מדקה אלא רק הילדים",
+            "polarity": "mixed",
+            "severity": 2,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2020-07",
+            "claim_he": "גם עם מנוי מטמון ביקשו תוספת של כ-50% בכניסה (לפי המבקר).",
+            "claim_en": "Even with a Matmon subscription, the reviewer was asked to pay ~50% extra for entry.",
+            "evidence_span": "למרות שברשותי מנוי מטמון, התבקשתי להוסיף עוד 50%",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2020-07",
+            "claim_he": "האתר הוא בעצם בריכה גדולה הניזונה מזרמי נחלים שעוברים דרכה.",
+            "claim_en": "The site is essentially a large pool fed by flowing streams.",
+            "evidence_span": "בריכה גדולה הניזונה מזרמי הנחלים העוברים דרכה",
+            "polarity": "neutral",
+            "severity": 1,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2020-07",
+            "claim_he": "יש שולחנות קק\"ל בתוך המים ונחמד לשבת בהם.",
+            "claim_en": "There are picnic tables placed in the water and it’s nice to sit there.",
+            "evidence_span": "יש שולחנות קק\"ל במים ונחמד לשבת שם",
+            "polarity": "pos",
+            "severity": 1,
+            "confidence": 0.6
+        },
+        {
+            "review_date": "2020-07",
+            "claim_he": "יש משטחי דשא גדולים לפיקניק.",
+            "claim_en": "There are large grassy areas suitable for picnics.",
+            "evidence_span": "משטחי דשא גדולים לפיקניק",
+            "polarity": "pos",
+            "severity": 1,
+            "confidence": 0.55
+        },
+        {
+            "review_date": "2020-07",
+            "claim_he": "היה לכלוך בכל מקום, כולל לכלוך שנשאר מימים קודמים (לפי המבקר).",
+            "claim_en": "There was litter/dirty conditions throughout the site, including leftover dirt from previous days (per this reviewer).",
+            "evidence_span": "לכלוך בכל מקום... הלכלוך מימים קודמים",
+            "polarity": "neg",
+            "severity": 4,
+            "confidence": 0.7
+        },
+        {
+            "review_date": "2020-06",
+            "claim_he": "עומס מבקרים מקשה למצוא מקום חניה קרוב לשטחי המדשאות.",
+            "claim_en": "High visitor volume makes it hard to find nearby parking close to the grassy areas.",
+            "evidence_span": "מספר המבקרים הגדול... מקשה למצוא מקום חניה קרוב לשטח המדשאות",
+            "polarity": "neg",
+            "severity": 3,
+            "confidence": 0.65
+        },
+        {
+            "review_date": "2020-06",
+            "claim_he": "למרות העומס, השטח רחב ואפשר ליהנות ממקומות פיקניק ומהנחלים/בריכות עם מים קרירים.",
+            "claim_en": "Despite crowds, the area is large and you can still enjoy picnic spots and flowing streams/pools with cool water.",
+            "evidence_span": "בעל שטח רחב במיוחד... ליהנות ממקומות הפיקניק... וגם מהנחלים והבריכות... מים קרירים",
+            "polarity": "pos",
+            "severity": 2,
+            "confidence": 0.6
+        }
+    ]
+}

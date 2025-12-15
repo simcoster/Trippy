@@ -11,7 +11,7 @@ class FakeRequest:
 
 async def main():
     # Load a recorded Telegram update (ndjson line or a JSON file)
-    with open("update_yes_trip.json", "r", encoding="utf-8") as f:
+    with open("test_cases/update_yes_trip.json", "r", encoding="utf-8") as f:
         payload = json.load(f)  # first logged update
 
     req = FakeRequest(payload)

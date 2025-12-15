@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: trippy-postgres
+    environment:
+      POSTGRES_USER: trippy
+      POSTGRES_PASSWORD: trippy
+      POSTGRES_DB: trippy
+    ports:
+      - "5432:5432"
+    volumes:
+      - trippy_pgdata:/var/lib/postgresql/data
+
+volumes:
+  trippy_pgdata:

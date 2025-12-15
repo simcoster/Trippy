@@ -1,7 +1,7 @@
 {
-  "update_id": 885197268,
+  "update_id": 885197269,
   "message": {
-    "message_id": 36,
+    "message_id": 37,
     "from": {
       "id": 1261489933,
       "is_bot": false,
@@ -21,7 +21,9 @@
         "premium_subscription": false
       }
     },
-    "date": 1765372286,
-    "text": "תחת?"
+    "date": 1765372390,
+    "text": "איפה יש חניוני לילה במדבר?"
   }
 }
+
+
