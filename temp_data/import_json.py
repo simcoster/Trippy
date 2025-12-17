@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from openai.resources.embeddings import create as _emb_create
 
 import psycopg
 from pgvector.psycopg import register_vector
@@ -49,7 +50,7 @@ def iter_claim_rows(data: Any) -> Iterable[Dict[str, Any]]:
             for c in claims:
                 row = dict(c)
                 # inherit review-level metadata if present
-                for k in ["campsite_id", "source", "review_author", "review_date"]:
+                for k in ["location_name", "source", "review_author", "review_date"]:
                     if k not in row and k in review:
                         row[k] = review[k]
                 yield row
@@ -58,26 +59,44 @@ def iter_claim_rows(data: Any) -> Iterable[Dict[str, Any]]:
     raise ValueError("Unsupported JSON structure. Expected list at top level.")
 
 
-def pick_text_for_embedding(row: Dict[str, Any]) -> Tuple[str, str]:
+EMBEDDING_STRINGS_TO_REMOVE = [
+    "(per this review)",
+    "(per this reviewer)",  
+    "(לפי המבקר)",      
+    "(לפי המבקרת)",      
+    "(לפי החוויה של המבקרים בביקורת)"
+]
+
+def clean_for_embedding(text: str) -> str:
+    cleaned = text.strip()
+    for s in EMBEDDING_STRINGS_TO_REMOVE:
+        cleaned = cleaned.replace(s, "")
+    return cleaned
+
+def pick_text_for_embedding(row: Dict[str, Any]) -> str:
     """
     Returns (text, lang).
     Prefer original Hebrew claim if present; fallback to English; fallback to generic 'claim'.
     """
+    claim =""
     if row.get("claim_he"):
-        return str(row["claim_he"]).strip(), "he"
+        claim = row["claim_he"]
+        lang = "he"
     if row.get("claim_en"):
-        return str(row["claim_en"]).strip(), "en"
-    if row.get("claim"):
-        # if your JSON uses a single field
-        return str(row["claim"]).strip(), row.get("lang") or "unknown"
-    return "", row.get("lang") or "unknown"
+        claim =  row["claim_en"]
+        lang = "en"
+    return clean_for_embedding(claim), lang 
 
 
 def embed_texts(texts: List[str], batch_size: int = 128) -> List[List[float]]:
     embeddings: List[List[float]] = []
     for i in range(0, len(texts), batch_size):
         chunk = texts[i : i + batch_size]
-        resp = client.embeddings.create(
+        # Work around a bug in the installed OpenAI SDK where the Embeddings
+        # resource instance is missing a bound .create() method by directly
+        # calling the generated create(...) function and passing the resource.
+        resp = _emb_create(
+            client.embeddings,
             model=MODEL,
             input=chunk,
             encoding_format="float",
@@ -89,7 +108,7 @@ def embed_texts(texts: List[str], batch_size: int = 128) -> List[List[float]]:
 
 def upsert_claims(conn: psycopg.Connection, rows: List[Dict[str, Any]], vectors: List[List[float]]) -> None:
     sql = """
-    INSERT INTO claim (
+    INSERT INTO claims (
       campsite_id, source, review_author, review_date, lang,
       claim_he, claim_en, evidence_span, polarity, severity, confidence,
       claim_uid, embedding
@@ -119,16 +138,16 @@ def upsert_claims(conn: psycopg.Connection, rows: List[Dict[str, Any]], vectors:
     for row, vec in zip(rows, vectors):
         text, lang = pick_text_for_embedding(row)
 
-        campsite_id = str(row.get("campsite_id") or "unknown")
+        location_name = str(row.get("location_name") or "unknown")
         source = str(row.get("source") or "unknown")
         author = (row.get("review_author") or row.get("author") or None)
         rdate = (row.get("review_date") or row.get("date") or None)
 
         # stable uid: campsite + source + author + embedded text
-        uid = stable_uid(campsite_id, source, str(author or ""), text)
+        uid = stable_uid(location_name, source, str(author or ""), text)
 
         payloads.append({
-            "campsite_id": campsite_id,
+            "campsite_id": location_name,
             "source": source,
             "review_author": author,
             "review_date": rdate,
@@ -159,7 +178,14 @@ def main() -> None:
             claims_json = row.get("claims")
             if claims_json:
                 try:
-                    fixed = re.sub(r' +', r' ', claims_json)
+                    # Excel/Sheets export sometimes inserts non‑breaking spaces (U+00A0)
+                    # and other weird whitespace that the JSON parser does NOT treat
+                    # as valid whitespace, which leads to:
+                    # json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes
+                    #
+                    # Normalize the string before json.loads:
+                    fixed = claims_json.replace("\xa0", " ")
+                    fixed = re.sub(r"\s+", " ", fixed).strip()
                     claims = json.loads(fixed)
                     if isinstance(claims, list):
                         claims_data.extend(claims)
