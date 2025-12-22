@@ -144,13 +144,12 @@ async def test_embedding_search_fit_for_kids():
         with conn.cursor() as cur:
             # Find the closest embedding (cosine distance or L2, assuming pgvector <-> operator)
             cur.execute(
-                """
-                SELECT campsite_id, claim_en, embedding <#> %s::vector AS distance
+                f"""
+                SELECT campsite_id, claim_en, embedding <#> {vec_literal}::vector AS distance
                 FROM claims
-                ORDER BY embedding <#> %s::vector
+                ORDER BY embedding <#> {vec_literal}::vector
                 LIMIT 1
-                """,
-                (vec_literal, vec_literal)
+                """
             )
             row = cur.fetchone()
             assert row is not None, "No row found"
