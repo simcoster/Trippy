@@ -145,7 +145,7 @@ async def test_embedding_search_fit_for_kids():
             # Find the closest embedding (cosine distance or L2, assuming pgvector <-> operator)
             cur.execute(
                 """
-                SELECT id, claim_en, embedding <#> %s::vector AS distance
+                SELECT campsite_id, claim_en, embedding <#> %s::vector AS distance
                 FROM claims
                 ORDER BY embedding <#> %s::vector
                 LIMIT 1
