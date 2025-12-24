@@ -9,7 +9,7 @@ from typing_extensions import TypedDict, Annotated  # noqa: E402
 from langgraph.graph import StateGraph, START, END  # noqa: E402
 from langgraph.graph.message import add_messages  # noqa: E402
 from langchain_openai import ChatOpenAI  # noqa: E402
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage  # noqa: E402
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, SystemMessage  # noqa: E402
 from langchain_core.tools import StructuredTool  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 import psycopg  # noqa: E402
@@ -30,6 +30,67 @@ class ChatState(TypedDict):
 # ---- 2. RAG Tool for Claims Search ----
 
 MODEL = "text-embedding-3-small"  # 1536 dims by default
+
+def search_campsites(numeric_constraints):
+    """
+    Search for campsites in the 'campsites' table using a list of numeric constraints.
+    Each constraint in numeric_constraints should have: field, operator, value.
+    """
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return "Error: DATABASE_URL not configured"
+    # Allowed fields and mapping
+    field_map = {
+        "price": "price",
+        "price_per_night": "price",
+        "ride_time_from_tlv": "ride_time_from_tlv",
+        "ride_time": "ride_time_from_tlv",
+        "region": "region",
+        "campsite_id": "campsite_id"
+    }
+    allowed_ops = {"<", "<=", ">", ">=", "=", "==", "!="}
+    where_clauses = []
+    values = []
+    for constraint in numeric_constraints:
+        field = constraint.get("field")
+        operator = constraint.get("operator")
+        value = constraint.get("value")
+        # Defensive: only allow mapped fields and safe operators
+        db_field = field_map.get(field)
+        # Support synonyms, skip any unknown fields
+        if not db_field or not operator or db_field not in ["price", "ride_time_from_tlv"]:
+            continue
+        op = operator if operator in allowed_ops else "="
+        where_clauses.append(f"{db_field} {op} %s")
+        values.append(value)
+    if not where_clauses:
+        return "No valid numeric constraints provided"
+    sql = f"""
+        SELECT campsite_id, region, price, ride_time_from_tlv
+        FROM campsites
+        WHERE {' AND '.join(where_clauses)}
+        ORDER BY price ASC
+        LIMIT 10
+    """
+    try:
+        with psycopg.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, values)
+                rows = cur.fetchall()
+                if not rows:
+                    return "No campsites found matching numeric constraints"
+                result = []
+                for row in rows:
+                    result.append({
+                        "campsite_id": row[0],
+                        "region": row[1],
+                        "price": row[2],
+                        "ride_time_from_tlv": row[3]
+                    })
+                return result
+    except Exception as e:
+        return f"Error during search_campsites: {e}"
+
 
 def search_claims(query: str, limit: int = 5) -> str:
     """
@@ -234,11 +295,11 @@ def check_after_cleaning(state: ChatState) -> str:
     Check if there's still content after cleaning that needs heavy model.
     """
     last_message = state["messages"][-1]
-    
+
     # If the last message is an AI response (from light model), we're done
     if isinstance(last_message, AIMessage):
         return "end"
-    
+
     # If there's a cleaned human message, route to heavy model
     if isinstance(last_message, HumanMessage) and last_message.content.strip():
         return "heavy"
@@ -246,36 +307,117 @@ def check_after_cleaning(state: ChatState) -> str:
         return "end"
 
 
-def heavy_node(state: ChatState) -> ChatState:
-    """Use the heavy model to answer trip-planning questions with tool support."""
+def planner_node(state: ChatState) -> ChatState:
+    """Extract constraints from user query and run RAG searches. Returns constraints + tool results."""
+    import json
+    from langchain_core.messages import ToolMessage
+
+    system_msg = SystemMessage(
+        content=(
+            """
+            You are a structured query extractor for a campsite recommendation system called Trippy.
+            Your task is to analyze a user query and extract all relevant constraints in a precise JSON format.
+
+            Rules:
+            1. Output ONLY JSON. No text, commentary, or explanations.
+            2. Separate constraints into:
+                a) semantic_constraints: qualitative queries about campsite attributes
+                    (e.g., "quiet", "good for kids", "has hot water").
+                    Each item must have a "query" field containing the user-expressed concept.
+                b) numeric_constraints: quantitative filters (e.g., price, distance, rating).
+                    Each item must have "field", "operator", "value", and optionally "unit".
+            3. Include every constraint explicitly mentioned or clearly implied by the user.
+            4. Preserve negation (e.g., "not suitable for kids" → query: "not suitable for kids").
+            5. Avoid interpretation beyond what is stated; do not assume preferences or motivations.
+            6. Keep queries concise; use the same wording as the user where possible.
+            7. Return JSON in a single object with exactly two keys:
+                "semantic_constraints" and "numeric_constraints".
+                If no constraints exist in a category, use an empty array for that key.
+            8. All constraints must be in English
+
+            Example output:
+
+            Input:
+            "Looking for a quiet campsite, clean, suitable for kids, and costs less than 500 NIS per night."
+
+            Output:
+            {
+                "semantic_constraints": [
+                    {"query": "quiet"},
+                    {"query": "clean"},
+                    {"query": "suitable for kids"},
+                ],
+                    "numeric_constraints": [
+                        {"field": "price_per_night", "operator": "<=", "value": 500},
+                ]
+            }
+            """.strip().replace(
+                "            ", ""
+            )
+        )
+    )
+
+    response = heavy_model.invoke([system_msg] + state["messages"])
+
+    # Parse JSON from response content
+    try:
+        constraints_json = json.loads(response.content)
+    except json.JSONDecodeError:
+        # Fallback: try to extract JSON from text
+        import re
+
+        json_match = re.search(r"\{.*\}", response.content, re.DOTALL)
+        if json_match:
+            constraints_json = json.loads(json_match.group())
+        else:
+            # No valid JSON, return empty constraints
+            constraints_json = {"semantic_constraints": [], "numeric_constraints": []}
+
+    # Run RAG searches based on constraints
+    tool_messages = []
+    for semantic in constraints_json.get("semantic_constraints", []):
+        query = semantic.get("query")
+        if query:
+            result = search_claims(query, limit=5)
+            tool_messages.append(ToolMessage(content=result, name=query, tool_call_id="1"))
+
+    if constraints_json.get("numeric_constraints"):
+        campsites_result = search_campsites(constraints_json["numeric_constraints"])
+        tool_messages.append(
+            ToolMessage(content=str(campsites_result), name="numeric_constraints", tool_call_id="2")
+        )
+
+    # Store constraints as a message for the recommender node
+    constraints_msg = AIMessage(content=json.dumps(constraints_json))
+
+    # Return constraints extraction + tool results (but NOT final recommendation)
+    return {"messages": [constraints_msg] + tool_messages}
+
+
+def recommender_node(state: ChatState) -> ChatState:
+    """Generate final recommendation based on constraints and tool responses."""
     from langchain_core.messages import ToolMessage
     
-    response = heavy_model.invoke(state["messages"])
+    system_msg = SystemMessage(
+        content=(
+            "You are a helpful trip-planning assistant for Trippy. "
+            "Based on the user's constraints and the search results provided, "
+            "recommend specific campsites that match their preferences. "
+            "Only use information from the search results - do not hallucinate or invent details. "
+            "If no campsites match, explain why and suggest alternatives. "
+            "Respond in the same language as the user's query."
+        )
+    )
     
-    # Check if the model wants to use tools
-    if hasattr(response, "tool_calls") and response.tool_calls:
-        # Execute tool calls and add results to the conversation
-        tool_messages = []
-        for tool_call in response.tool_calls:
-            tool_name = tool_call.get("name")
-            tool_args = tool_call.get("args", {})
-            tool_call_id = tool_call.get("id")
-            
-            if tool_name == "search_claims":
-                result = search_claims(**tool_args)
-                tool_messages.append(
-                    ToolMessage(
-                        content=result,
-                        tool_call_id=tool_call_id,
-                        name=tool_name
-                    )
-                )
-        
-        # Invoke model again with tool results to get final answer
-        final_response = heavy_model.invoke(state["messages"] + [response] + tool_messages)
-        return {"messages": [response] + tool_messages + [final_response]}
+    # Get the original user messages and tool results from state
+    # The state contains: user messages + constraint extraction message + tool messages
+    user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
+    tool_messages = [msg for msg in state["messages"] if isinstance(msg, ToolMessage)]
     
-    return {"messages": [response]}
+    # Generate recommendation using original user query + tool results
+    recommendation = heavy_model.invoke([system_msg] + user_messages + tool_messages)
+    
+    return {"messages": [recommendation]}
 
 
 # ---- 5. Build the graph ----
@@ -283,7 +425,8 @@ def heavy_node(state: ChatState) -> ChatState:
 builder = StateGraph(ChatState)
 
 builder.add_node("light", light_node)
-builder.add_node("heavy", heavy_node)
+builder.add_node("planner", planner_node)
+builder.add_node("recommender", recommender_node)
 
 # Router: from START decide if trivial or non-trivial
 builder.add_conditional_edges(
@@ -300,12 +443,15 @@ builder.add_conditional_edges(
     "light",
     check_after_cleaning,
     {
-        "heavy": "heavy",
+        "heavy": "planner",
         "end": END,
     },
 )
 
-# After heavy model, go to END
-builder.add_edge("heavy", END)
+# After planner node, go to recommender
+builder.add_edge("planner", "recommender")
+
+# After recommender, go to END
+builder.add_edge("recommender", END)
 
 graph = builder.compile()

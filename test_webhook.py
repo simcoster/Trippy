@@ -76,6 +76,34 @@ async def test_webhook_with_trivial_message(fake_request_factory):
 
     assert result == {"ok": True}
 
+@pytest.mark.asyncio
+async def test_webhook_with_planning_message(fake_request_factory):
+    """Test webhook with a trivial message like 'thanks'."""
+    # Create a simple trivial message payload
+    payload = {
+        "update_id": 123456789,
+        "message": {
+            "message_id": 1,
+            "from": {
+                "id": 123456789,
+                "is_bot": False,
+                "first_name": "Test",
+                "username": "testuser",
+            },
+            "chat": {
+                "id": 123456789,
+                "type": "private",
+            },
+            "date": 1234567890,
+            "text": "בואו נלך לאתר קמפינג שקט בדרום אבל עד 150 שקל",
+        },
+    }
+
+    req = fake_request_factory(payload)
+    result = await telegram_webhook(req)
+
+    assert result == {"ok": True}
+
 
 @pytest.mark.asyncio
 async def test_webhook_with_no_message(fake_request_factory):

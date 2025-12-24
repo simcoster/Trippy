@@ -2,7 +2,7 @@ import json
 import os
 import hashlib
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List
 
 from dotenv import load_dotenv
 from openai import OpenAI
