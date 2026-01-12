@@ -9,13 +9,12 @@ from typing_extensions import TypedDict, Annotated  # noqa: E402
 from langgraph.graph import StateGraph, START, END  # noqa: E402
 from langgraph.graph.message import add_messages  # noqa: E402
 from langchain_openai import ChatOpenAI  # noqa: E402
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, SystemMessage  # noqa: E402
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, SystemMessage, ChatMessage  # noqa: E402
 from langchain_core.tools import StructuredTool  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 import psycopg  # noqa: E402
 from pgvector.psycopg import register_vector  # noqa: E402
 from openai import OpenAI  # noqa: E402
-from openai.resources.embeddings import create as _emb_create  # noqa: E402
 
 # Load environment variables
 load_dotenv()
@@ -114,8 +113,7 @@ def search_claims(query: str, limit: int = 5) -> str:
     try:
         # Get embedding from OpenAI
         client = OpenAI(api_key=openai_api_key)
-        resp = _emb_create(
-            client.embeddings,
+        resp = client.embeddings.create(
             model=MODEL,
             input=query,
             encoding_format="float",
@@ -351,9 +349,7 @@ def planner_node(state: ChatState) -> ChatState:
                         {"field": "price_per_night", "operator": "<=", "value": 500},
                 ]
             }
-            """.strip().replace(
-                "            ", ""
-            )
+            """.strip().replace("            ", "")
         )
     )
 
@@ -379,12 +375,12 @@ def planner_node(state: ChatState) -> ChatState:
         query = semantic.get("query")
         if query:
             result = search_claims(query, limit=5)
-            tool_messages.append(ToolMessage(content=result, name=query, tool_call_id="1"))
+            tool_messages.append(ChatMessage(content=result, role="assistant"))
 
     if constraints_json.get("numeric_constraints"):
         campsites_result = search_campsites(constraints_json["numeric_constraints"])
         tool_messages.append(
-            ToolMessage(content=str(campsites_result), name="numeric_constraints", tool_call_id="2")
+            ChatMessage(content=str(campsites_result), role="assistant")
         )
 
     # Store constraints as a message for the recommender node
@@ -396,7 +392,6 @@ def planner_node(state: ChatState) -> ChatState:
 
 def recommender_node(state: ChatState) -> ChatState:
     """Generate final recommendation based on constraints and tool responses."""
-    from langchain_core.messages import ToolMessage
     
     system_msg = SystemMessage(
         content=(
@@ -412,7 +407,7 @@ def recommender_node(state: ChatState) -> ChatState:
     # Get the original user messages and tool results from state
     # The state contains: user messages + constraint extraction message + tool messages
     user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
-    tool_messages = [msg for msg in state["messages"] if isinstance(msg, ToolMessage)]
+    tool_messages = [msg for msg in state["messages"] if isinstance(msg, ChatMessage)]
     
     # Generate recommendation using original user query + tool results
     recommendation = heavy_model.invoke([system_msg] + user_messages + tool_messages)

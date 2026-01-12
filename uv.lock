@@ -2,12 +2,6 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
-[manifest]
-members = [
-    "langgraph-service",
-    "trippy",
-]
-
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -327,27 +321,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b9/c4/b37b892a408f0b4753b8ad49529c7b5994abab47005940300ab1af9d8a5c/langgraph_sdk-0.2.14.tar.gz", hash = "sha256:fab3dd713a9c7a9cc46dc4b2eb5e555bd0c07b185cfaf813d61b5356ee40886e", size = 130335, upload-time = "2025-12-06T00:23:31.527Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/ff/c4d91a2d28a141a58dc8fea408041aff299f59563d43d0e0f458469e10cb/langgraph_sdk-0.2.14-py3-none-any.whl", hash = "sha256:e01ab9867d3b22d3b4ddd46fc0bab67b7684b25ab784a276684f331ca07efabf", size = 66464, upload-time = "2025-12-06T00:23:30.638Z" },
-]
-
-[[package]]
-name = "langgraph-service"
-version = "0.1.0"
-source = { virtual = "langgraph_service" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "langchain-openai" },
-    { name = "langgraph" },
-    { name = "pydantic" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.124.0" },
-    { name = "langchain-openai", specifier = ">=1.1.0" },
-    { name = "langgraph", specifier = ">=1.0.4" },
-    { name = "pydantic", specifier = ">=2.12.5" },
-    { name = "uvicorn", specifier = ">=0.38.0" },
 ]
 
 [[package]]

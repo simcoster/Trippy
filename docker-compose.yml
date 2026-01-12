@@ -11,6 +11,49 @@ services:
     volumes:
       - trippy_pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trippy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trippy-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://trippy:trippy@db:5432/trippy
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NGROK_URL=${NGROK_URL:-}
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - trippy_venv:/app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+      ngrok:
+        condition: service_started
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: trippy-ngrok
+    command:
+      - "http"
+      - "api:8000"
+      - "--log=stdout"
+    ports:
+      - "4040:4040"  # ngrok web interface
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    restart: unless-stopped
 
 volumes:
   trippy_pgdata:
+  trippy_venv:
