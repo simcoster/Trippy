@@ -5,10 +5,34 @@ Extracts campsite elements and their href/title information.
 Uses `httpx` for HTTP requests and BeautifulSoup for parsing.
 """
 
+import ssl
+import sys
+from typing import List, Dict
+from urllib.parse import urljoin
+import json
+
 import httpx
 from bs4 import BeautifulSoup
-from typing import List, Dict
-import json
+
+# Windows consoles often default to cp1252 and choke on Hebrew titles.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """
+    TLS context that verifies via the OS trust store (Windows certs), not
+    certifi alone — MITM appliances (Norton, Zscaler, etc.) inject a local
+    root that browsers trust but Mozilla's bundle does not.
+
+    Also clears Python 3.13+'s VERIFY_X509_STRICT flag; those extra RFC
+    checks often fail on MITM-rewritten chains that browsers still accept.
+    """
+    # No cafile=certifi — load_default_certs() pulls from the Windows store.
+    ctx = ssl.create_default_context()
+    if hasattr(ssl, "VERIFY_X509_STRICT"):
+        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return ctx
 
 
 def crawl_campsites(url: str) -> List[Dict[str, str]]:
@@ -26,12 +50,14 @@ def crawl_campsites(url: str) -> List[Dict[str, str]]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     }
     
-    campsite_elements = []
-    
     try:
         # Fetch the page
-        with httpx.Client(timeout=30.0) as client:
-            response = client.get(url, headers=headers, follow_redirects=True)
+        with httpx.Client(
+            timeout=30.0,
+            verify=_ssl_context(),
+            follow_redirects=True,
+        ) as client:
+            response = client.get(url, headers=headers)
             response.raise_for_status()
             
         # Parse HTML
@@ -42,17 +68,14 @@ def crawl_campsites(url: str) -> List[Dict[str, str]]:
         
         print(f"Found {len(campsite_elements)} campsite elements")
         
-        campsites= []
+        campsites = []
         # Extract href and title from each campsite
         for campsite in campsite_elements:
-            # Look for anchor tag with class "title" within the campsite
-            
             href = campsite.select_one("a")["href"]
             title = campsite.select_one("h2").get_text(strip=True)
-                
-                # If href is relative, make it absolute
+
+            # If href is relative, make it absolute
             if href and not href.startswith('http'):
-                from urllib.parse import urljoin
                 href = urljoin(url, href)
             
             if href and title:
