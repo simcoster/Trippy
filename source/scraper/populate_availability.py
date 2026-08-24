@@ -1,8 +1,8 @@
 """
 Fetch vacancies/prices from the INPA booking engine for campsites in Postgres.
 
-For now: load the first campsite with a booking_hotel_id, query one night
-(defaults: 2026-08-25 → 2026-08-26, 2 adults), print room type + price.
+Iterates the next N nights (default 14, one night each) and upserts into
+`availability`, creating `accommodation_types` rows when a new room type appears.
 """
 
 from __future__ import annotations
@@ -12,7 +12,8 @@ import os
 import re
 import ssl
 import sys
-from datetime import date
+import time
+from datetime import date, timedelta
 from html import unescape
 from pathlib import Path
 from urllib.parse import urlencode
@@ -30,6 +31,39 @@ load_dotenv()
 SCRAPER_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRAPER_DIR / "config.json"
 RESULTS_PATH = "https://secure-hotels.net/INPA/BE_Results.aspx"
+
+GET_OR_CREATE_ACCOMMODATION_SQL = """
+INSERT INTO accommodation_types (name)
+VALUES (%(name)s)
+ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+RETURNING id, name;
+"""
+
+UPSERT_AVAILABILITY_SQL = """
+INSERT INTO availability (
+    site_id, start_date, end_date, accommodation_type_id,
+    price, adults_no, room_count
+) VALUES (
+    %(site_id)s, %(start_date)s, %(end_date)s,
+    %(accommodation_type_id)s, %(price)s, %(adults_no)s, %(room_count)s
+)
+ON CONFLICT ON CONSTRAINT availability_unique_slot DO UPDATE
+SET price = EXCLUDED.price,
+    room_count = EXCLUDED.room_count,
+    scraped_at = now()
+RETURNING id;
+"""
+
+DELETE_AVAILABILITY_FOR_NIGHT_SQL = """
+DELETE FROM availability
+WHERE site_id = %(site_id)s
+  AND start_date = %(start_date)s
+  AND end_date = %(end_date)s
+  AND adults_no = %(adults_no)s
+"""
+
+# Strip unit suffixes like "מספר 1" / "מספר 42" from room names.
+ROOM_NUMBER_SUFFIX_RE = re.compile(r"\s*מספר\s+\d+\s*$")
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
@@ -53,7 +87,7 @@ def database_url(config: dict) -> str:
 
 def fetch_campsites(config: dict) -> list[dict]:
     """Load campsites that have a booking engine hotel id."""
-    limit = int(config.get("availability", {}).get("limit_campsites", 1))
+    limit = int(config.get("availability", {}).get("limit_campsites", 2))
     sql = """
         SELECT id, name, booking_hotel_id
         FROM campsites
@@ -173,53 +207,201 @@ def fetch_availability(url: str) -> list[dict]:
         return parse_rooms(response.text)
 
 
+def normalize_accommodation_name(name: str) -> str:
+    """Drop 'מספר N' suffixes so numbered units share one accommodation type."""
+    return ROOM_NUMBER_SUFFIX_RE.sub("", (name or "").strip()).strip()
+
+
+def aggregate_offerings(offerings: list[dict]) -> list[dict]:
+    """
+    Group offerings by normalized room type.
+
+    Example: 'בונגלו עם מזגן מספר 1' + '… מספר 3' → one row, room_count=2.
+    Price is the minimum among instances of that type.
+    """
+    grouped: dict[str, dict] = {}
+    for offer in offerings:
+        raw_name = (offer.get("room_type") or "").strip()
+        if not raw_name:
+            continue
+        price = offer.get("price")
+        if price is None:
+            continue
+        name = normalize_accommodation_name(raw_name)
+        if not name:
+            continue
+        price_f = float(price)
+        if name not in grouped:
+            grouped[name] = {
+                "room_type": name,
+                "price": price_f,
+                "currency": offer.get("currency", "₪"),
+                "room_count": 1,
+            }
+        else:
+            grouped[name]["room_count"] += 1
+            grouped[name]["price"] = min(grouped[name]["price"], price_f)
+    return list(grouped.values())
+
+
+def get_or_create_accommodation_type(cur, name: str) -> int:
+    cur.execute(GET_OR_CREATE_ACCOMMODATION_SQL, {"name": name})
+    row = cur.fetchone()
+    return int(row[0])
+
+
+def clear_availability_for_night(
+    conn,
+    *,
+    site_id: int,
+    start: date,
+    end: date,
+    adults_no: int,
+) -> int:
+    """Remove existing rows for this site/night/party size before re-scraping."""
+    with conn.cursor() as cur:
+        cur.execute(
+            DELETE_AVAILABILITY_FOR_NIGHT_SQL,
+            {
+                "site_id": site_id,
+                "start_date": start,
+                "end_date": end,
+                "adults_no": adults_no,
+            },
+        )
+        return cur.rowcount
+
+
+def upsert_availability_rows(
+    conn,
+    *,
+    site_id: int,
+    start: date,
+    end: date,
+    adults_no: int,
+    offerings: list[dict],
+) -> int:
+    # Always replace this night's snapshot so removed room types don't linger.
+    deleted = clear_availability_for_night(
+        conn,
+        site_id=site_id,
+        start=start,
+        end=end,
+        adults_no=adults_no,
+    )
+    aggregated = aggregate_offerings(offerings)
+    saved = 0
+    with conn.cursor() as cur:
+        for offer in aggregated:
+            accom_id = get_or_create_accommodation_type(cur, offer["room_type"])
+            cur.execute(
+                UPSERT_AVAILABILITY_SQL,
+                {
+                    "site_id": site_id,
+                    "start_date": start,
+                    "end_date": end,
+                    "accommodation_type_id": accom_id,
+                    "price": float(offer["price"]),
+                    "adults_no": adults_no,
+                    "room_count": int(offer["room_count"]),
+                },
+            )
+            saved += 1
+    if deleted:
+        print(f"    cleared {deleted} existing row(s)")
+    return saved
+
+
+def night_windows(nights: int, start_from: date | None = None) -> list[tuple[date, date]]:
+    """Return (check_in, check_out) pairs for `nights` consecutive one-night stays."""
+    start = start_from or date.today()
+    return [
+        (start + timedelta(days=i), start + timedelta(days=i + 1))
+        for i in range(nights)
+    ]
+
+
 def main() -> None:
     config = load_config()
     avail = config.get("availability", {})
 
-    check_in = date.fromisoformat(avail.get("check_in", "2026-08-25"))
-    check_out = date.fromisoformat(avail.get("check_out", "2026-08-26"))
+    nights = int(avail.get("nights", 14))
     adults = int(avail.get("adults", 2))
     children = int(avail.get("children", 0))
     infants = int(avail.get("infants", 0))
     rooms_count = int(avail.get("rooms", 1))
     lang = avail.get("lang", "heb")
+    pause_s = float(avail.get("request_pause_seconds", 0.5))
 
     campsites = fetch_campsites(config)
     if not campsites:
         print("No campsites with booking_hotel_id found")
         return
 
-    for site in campsites:
-        url = search_url(
-            site["booking_hotel_id"],
-            check_in,
-            check_out,
-            rooms=rooms_count,
-            adults=adults,
-            children=children,
-            infants=infants,
-            lang=lang,
-        )
-        print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
-        print(f"   {check_in} → {check_out}, {adults} adults")
-        print(f"   {url}")
-        print("-" * 60)
+    windows = night_windows(nights)
+    print(f"Scanning {len(windows)} nights starting {windows[0][0]} for {adults} adults")
+    print(f"Campsites: {len(campsites)}")
 
-        try:
-            offerings = fetch_availability(url)
-        except httpx.HTTPError as e:
-            print(f"   HTTP error: {e}")
-            continue
+    total_saved = 0
+    with psycopg.connect(database_url(config)) as conn:
+        for site in campsites:
+            print("=" * 60)
+            print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
 
-        if not offerings:
-            print("   No room types returned")
-            continue
+            for check_in, check_out in windows:
+                url = search_url(
+                    site["booking_hotel_id"],
+                    check_in,
+                    check_out,
+                    rooms=rooms_count,
+                    adults=adults,
+                    children=children,
+                    infants=infants,
+                    lang=lang,
+                )
+                print(f"  {check_in} → {check_out}")
+                try:
+                    offerings = fetch_availability(url)
+                except httpx.HTTPError as e:
+                    print(f"    HTTP error: {e}")
+                    continue
 
-        for offer in offerings:
-            price = offer["price"]
-            currency = offer["currency"]
-            print(f"   {offer['room_type']}  —  {currency}{price}")
+                if not offerings:
+                    print("    No room types returned")
+                    deleted = clear_availability_for_night(
+                        conn,
+                        site_id=site["id"],
+                        start=check_in,
+                        end=check_out,
+                        adults_no=adults,
+                    )
+                    conn.commit()
+                    if deleted:
+                        print(f"    cleared {deleted} existing row(s)")
+                else:
+                    aggregated = aggregate_offerings(offerings)
+                    for offer in aggregated:
+                        print(
+                            f"    {offer['room_type']}  ×{offer['room_count']}  —  "
+                            f"{offer.get('currency', '₪')}{offer['price']}"
+                        )
+                    saved = upsert_availability_rows(
+                        conn,
+                        site_id=site["id"],
+                        start=check_in,
+                        end=check_out,
+                        adults_no=adults,
+                        offerings=offerings,
+                    )
+                    conn.commit()
+                    total_saved += saved
+                    print(f"    upserted {saved} row(s)")
+
+                if pause_s > 0:
+                    time.sleep(pause_s)
+
+    print("-" * 60)
+    print(f"Done. Upserted {total_saved} availability row(s).")
 
 
 if __name__ == "__main__":

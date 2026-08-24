@@ -1,13 +1,12 @@
 {
   "database_url": "postgresql://trippy:trippy@localhost:5432/trippy",
   "availability": {
-    "check_in": "2026-08-25",
-    "check_out": "2026-08-26",
+    "nights": 14,
     "adults": 2,
     "children": 0,
     "infants": 0,
     "rooms": 1,
     "lang": "heb",
-    "limit_campsites": 1
+    "limit_campsites": 2
   }
 }
