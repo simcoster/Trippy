@@ -4,13 +4,84 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ---
 
+## Progress log
+
+### Done (as of 2026-08-24)
+
+**Discovery / master data**
+- Campsite listing crawler (`source/scraper/discover_sites.py`) → `campsites` (`id`, `name`, `url`)
+- Booking-engine hotel ID discovery (`populate_availability_id.py`) → `campsites.booking_hotel_id` (e.g. `9_1`)
+- Name matching between parks.org.il titles and secure-hotels.net names
+
+**Availability scraper (INPA / secure-hotels.net)**
+- `populate_availability.py` queries `BE_Results.aspx` HTML (no public API; prices live in embedded `roomData` JSON)
+- Rolls next **14 nights**, one night at a time, for configured adults (default 2)
+- Parses room offerings; strips `מספר N` suffixes and aggregates → `room_count`
+- Upserts into:
+  - `accommodation_types` (`id`, `name`) — created on first sight
+  - `availability` (`site_id`, `start_date`, `end_date`, `accommodation_type_id`, `price`, `adults_no`, `room_count`, `scraped_at`)
+- Re-scrape for a site/night **deletes existing rows first**, then inserts (avoids stale room types)
+- Config: `source/scraper/config.json` (`nights`, `adults`, `limit_campsites`, …)
+- SSL: OS trust store + relax `VERIFY_X509_STRICT` (corporate MITM)
+
+**DB / migrations**
+- Alembic + SQLAlchemy models (`db/models.py`, `alembic/versions/001_initial.py`)
+- Nuke-and-pave local workflow documented in `db/README.md`
+- Docker init only installs extensions; schema via Alembic
+
+**Also in place (earlier)**
+- LangGraph agent + claims RAG skeleton, FastAPI, Docker Compose Postgres/pgvector
+
+### Tomorrow — amenities
+
+**Storage: PostgreSQL `jsonb` + GIN**
+- Add amenities on **both** levels:
+  - `campsites.amenities` `jsonb` — site-wide (showers, parking, shop, …)
+  - `accommodation_types.amenities` `jsonb` — room/unit-level (in-room shower, AC, …)
+- GIN indexes on both columns for containment / key lookups
+
+**Bed counts (room-level only; tents usually N/A / null)**
+- `single_bed_count`, `double_bed_count`, `sofa_bed_count` on `accommodation_types` (or on availability if inventory-specific — prefer type unless units differ)
+
+**Agent correctness (must test)**
+- Query like “room with a shower” must use **accommodation** amenities, **not** site amenities
+- Fixture cases: site has shower block, room does not → agent must not claim the room has a shower
+- Inverse: room has ensuite shower, site listing doesn’t mention it → still OK to recommend the room
+
+**Semantic amenity matching (likely embeddings)**
+- Example: user asks *“trailer spot with running water”*; site says *“sink with faucet”*
+- Need synonym / embedding layer over amenity labels (and/or normalized amenity ontology)
+- Agent must **explain the concrete match** (“running water ≈ sink with faucet”), not invent amenities
+
+### Later — second booking source + standardization
+
+**Source:** [SimpleBooking glamping portal](https://www.simplebooking.it/portal/145/hotel/10516?lang=HE&cur=ILS&tid=99&guests=A%2CA&in=2026-08-24&out=2026-08-25)
+
+**Problem:** INPA HTML `roomData` vs SimpleBooking (different URLs, payloads, naming) — need one internal model.
+
+**Standardization sketch**
+| Canonical field | Meaning |
+|-----------------|--------|
+| `source` | `inpa` / `simplebooking` / … |
+| `external_hotel_id` | Per-source site id |
+| `external_unit_id` | Per-source room/pitch id |
+| `accommodation_type.name` | Normalized Hebrew/English label |
+| `stay_kind` | `tent` / `trailer_pitch` / `glamping` / `room` / … |
+| `amenities` | Shared jsonb schema (same keys across sources) |
+| `availability` | Same table; source tagged or via site FK only |
+
+Approach: adapter per source → normalize → upsert into the same `campsites` / `accommodation_types` / `availability` tables. Canonical amenity keys + optional embedding of raw labels for fuzzy match.
+
+---
+
 ## Current baseline
 
 Already in repo:
 
 - LangGraph agent (`graph.py`) with claims RAG + numeric campsite filters
-- Postgres + pgvector schema: `claims`, `campsites`
-- FastAPI entry (`main.py`), Docker, crawler stub for parks.org.il listing
+- Postgres + pgvector + Alembic (`campsites`, `claims`, `accommodation_types`, `availability`)
+- FastAPI entry (`main.py`), Docker
+- Scrapers under `source/scraper/`: site discovery, booking IDs, availability/prices
 
 This plan extends that into a full ingestion → retrieval → agent → eval → production stack.
 
