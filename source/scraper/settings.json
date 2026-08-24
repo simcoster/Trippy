@@ -1,0 +1,526 @@
+{
+  "Regions": [
+    {
+      "Resorts": [
+        {
+          "ResortName": "חניון לילה גן לאומי חורשת טל",
+          "ResortID": "2",
+          "OptimaResortID": "9",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי מעיין חרוד ",
+          "ResortID": "8",
+          "OptimaResortID": "15",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה שמורת טבע יהודיה",
+          "ResortID": "18",
+          "OptimaResortID": "18",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי כוכב הירדן",
+          "ResortID": "19",
+          "OptimaResortID": "19",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה חוות משמר הכרמל",
+          "ResortID": "24",
+          "OptimaResortID": "24",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי אכזיב ",
+          "ResortID": "25",
+          "OptimaResortID": "23",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי גן השלושה (סחנה)",
+          "ResortID": "30",
+          "OptimaResortID": "25",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי מבצר יחיעם",
+          "ResortID": "31",
+          "OptimaResortID": "26",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        },
+        {
+          "ResortName": "חניון לילה שמורת טבע נחל עמוד",
+          "ResortID": "32",
+          "OptimaResortID": "27",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "37"
+        }
+      ],
+      "RegionName": "צפון",
+      "RegionID": "37"
+    },
+    {
+      "Resorts": [
+        {
+          "ResortName": "חניון לילה גן לאומי תל אשקלון ",
+          "ResortID": "7",
+          "OptimaResortID": "17",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "779"
+        },
+        {
+          "ResortName": "חניון לילה אתר הקסטל ",
+          "ResortID": "20",
+          "OptimaResortID": "20",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "779"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי מקורות הירקון ",
+          "ResortID": "22",
+          "OptimaResortID": "22",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "779"
+        }
+      ],
+      "RegionName": "מרכז",
+      "RegionID": "779"
+    },
+    {
+      "Resorts": [],
+      "RegionName": "ירושלים והסביבה",
+      "RegionID": "780"
+    },
+    {
+      "Resorts": [
+        {
+          "ResortName": "חניון לילה גן לאומי מצדה מערב",
+          "ResortID": "1",
+          "OptimaResortID": "8",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "36"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי הבשור (אשכול)",
+          "ResortID": "3",
+          "OptimaResortID": "10",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "36"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+          "ResortID": "4",
+          "OptimaResortID": "11",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "36"
+        },
+        {
+          "ResortName": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+          "ResortID": "5",
+          "OptimaResortID": "12",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "36"
+        },
+        {
+          "ResortName": "חניון לילה חאן בארות – מכתש רמון",
+          "ResortID": "6",
+          "OptimaResortID": "13",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "36"
+        },
+        {
+          "ResortName": "חניון לילה חי בר יטבתה ",
+          "ResortID": "21",
+          "OptimaResortID": "21",
+          "DSN": "",
+          "Wing": "1",
+          "RegionID": "36"
+        }
+      ],
+      "RegionName": "דרום",
+      "RegionID": "36"
+    },
+    {
+      "Resorts": [],
+      "RegionName": "רשות הטבע",
+      "RegionID": "781"
+    }
+  ],
+  "Lang": "heb",
+  "LangID": 1,
+  "Direction": "RTL",
+  "SingleResort": null,
+  "AllResorts": [
+    {
+      "ResortName": "חניון לילה גן לאומי חורשת טל",
+      "ResortID": "2",
+      "OptimaResortID": "9",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי מעיין חרוד ",
+      "ResortID": "8",
+      "OptimaResortID": "15",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה שמורת טבע יהודיה",
+      "ResortID": "18",
+      "OptimaResortID": "18",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי כוכב הירדן",
+      "ResortID": "19",
+      "OptimaResortID": "19",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה חוות משמר הכרמל",
+      "ResortID": "24",
+      "OptimaResortID": "24",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי אכזיב ",
+      "ResortID": "25",
+      "OptimaResortID": "23",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי גן השלושה (סחנה)",
+      "ResortID": "30",
+      "OptimaResortID": "25",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי מבצר יחיעם",
+      "ResortID": "31",
+      "OptimaResortID": "26",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה שמורת טבע נחל עמוד",
+      "ResortID": "32",
+      "OptimaResortID": "27",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "37"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי תל אשקלון ",
+      "ResortID": "7",
+      "OptimaResortID": "17",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "779"
+    },
+    {
+      "ResortName": "חניון לילה אתר הקסטל ",
+      "ResortID": "20",
+      "OptimaResortID": "20",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "779"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי מקורות הירקון ",
+      "ResortID": "22",
+      "OptimaResortID": "22",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "779"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי מצדה מערב",
+      "ResortID": "1",
+      "OptimaResortID": "8",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "36"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי הבשור (אשכול)",
+      "ResortID": "3",
+      "OptimaResortID": "10",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "36"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+      "ResortID": "4",
+      "OptimaResortID": "11",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "36"
+    },
+    {
+      "ResortName": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+      "ResortID": "5",
+      "OptimaResortID": "12",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "36"
+    },
+    {
+      "ResortName": "חניון לילה חאן בארות – מכתש רמון",
+      "ResortID": "6",
+      "OptimaResortID": "13",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "36"
+    },
+    {
+      "ResortName": "חניון לילה חי בר יטבתה ",
+      "ResortID": "21",
+      "OptimaResortID": "21",
+      "DSN": "",
+      "Wing": "1",
+      "RegionID": "36"
+    }
+  ],
+  "ResortPaxs": [
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי חורשת טל",
+        "ResortID": "2",
+        "OptimaResortID": "9",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי מעיין חרוד ",
+        "ResortID": "8",
+        "OptimaResortID": "15",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה שמורת טבע יהודיה",
+        "ResortID": "18",
+        "OptimaResortID": "18",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי כוכב הירדן",
+        "ResortID": "19",
+        "OptimaResortID": "19",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה חוות משמר הכרמל",
+        "ResortID": "24",
+        "OptimaResortID": "24",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי אכזיב ",
+        "ResortID": "25",
+        "OptimaResortID": "23",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי גן השלושה (סחנה)",
+        "ResortID": "30",
+        "OptimaResortID": "25",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי מבצר יחיעם",
+        "ResortID": "31",
+        "OptimaResortID": "26",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה שמורת טבע נחל עמוד",
+        "ResortID": "32",
+        "OptimaResortID": "27",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "37"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי תל אשקלון ",
+        "ResortID": "7",
+        "OptimaResortID": "17",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "779"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה אתר הקסטל ",
+        "ResortID": "20",
+        "OptimaResortID": "20",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "779"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי מקורות הירקון ",
+        "ResortID": "22",
+        "OptimaResortID": "22",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "779"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי מצדה מערב",
+        "ResortID": "1",
+        "OptimaResortID": "8",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "36"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי הבשור (אשכול)",
+        "ResortID": "3",
+        "OptimaResortID": "10",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "36"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+        "ResortID": "4",
+        "OptimaResortID": "11",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "36"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+        "ResortID": "5",
+        "OptimaResortID": "12",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "36"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה חאן בארות – מכתש רמון",
+        "ResortID": "6",
+        "OptimaResortID": "13",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "36"
+      },
+      "Paxes": []
+    },
+    {
+      "Resort": {
+        "ResortName": "חניון לילה חי בר יטבתה ",
+        "ResortID": "21",
+        "OptimaResortID": "21",
+        "DSN": "",
+        "Wing": "1",
+        "RegionID": "36"
+      },
+      "Paxes": []
+    }
+  ]
+}

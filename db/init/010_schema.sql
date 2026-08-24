@@ -12,15 +12,14 @@ CREATE TABLE IF NOT EXISTS claims (
   severity INT NULL,
   confidence REAL NULL,
   claim_uid TEXT UNIQUE NOT NULL,     -- stable id for upsert
-  embedding vector(1536)              -- text-embedding-3-small default dim :contentReference[oaicite:2]{index=2}
+  embedding vector(1536)              -- text-embedding-3-small default dim
 );
 
 CREATE TABLE IF NOT EXISTS campsites (
   id BIGSERIAL PRIMARY KEY,
-  campsite_id TEXT NOT NULL,
-  region TEXT NOT NULL,
-  price REAL NOT NULL,
-  ride_time_from_tlv REAL NOT NULL
+  name TEXT NOT NULL,
+  url TEXT NOT NULL UNIQUE,
+  booking_hotel_id TEXT UNIQUE
 );
 
 CREATE INDEX IF NOT EXISTS claim_campsite_idx ON claims(campsite_id);
