@@ -32,61 +32,32 @@ MODEL = "text-embedding-3-small"  # 1536 dims by default
 
 def search_campsites(numeric_constraints):
     """
-    Search for campsites in the 'campsites' table using a list of numeric constraints.
-    Each constraint in numeric_constraints should have: field, operator, value.
+    List campsites from the 'campsites' table (id, name, url).
+    Numeric filters (price / ride time) are not on this table yet;
+    they will come from availability data later. `numeric_constraints`
+    is accepted for API compatibility with the planner node.
     """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         return "Error: DATABASE_URL not configured"
-    # Allowed fields and mapping
-    field_map = {
-        "price": "price",
-        "price_per_night": "price",
-        "ride_time_from_tlv": "ride_time_from_tlv",
-        "ride_time": "ride_time_from_tlv",
-        "region": "region",
-        "campsite_id": "campsite_id"
-    }
-    allowed_ops = {"<", "<=", ">", ">=", "=", "==", "!="}
-    where_clauses = []
-    values = []
-    for constraint in numeric_constraints:
-        field = constraint.get("field")
-        operator = constraint.get("operator")
-        value = constraint.get("value")
-        # Defensive: only allow mapped fields and safe operators
-        db_field = field_map.get(field)
-        # Support synonyms, skip any unknown fields
-        if not db_field or not operator or db_field not in ["price", "ride_time_from_tlv"]:
-            continue
-        op = operator if operator in allowed_ops else "="
-        where_clauses.append(f"{db_field} {op} %s")
-        values.append(value)
-    if not where_clauses:
-        return "No valid numeric constraints provided"
-    sql = f"""
-        SELECT campsite_id, region, price, ride_time_from_tlv
+    _ = numeric_constraints  # reserved for future availability filters
+    sql = """
+        SELECT id, name, url
         FROM campsites
-        WHERE {' AND '.join(where_clauses)}
-        ORDER BY price ASC
-        LIMIT 10
+        ORDER BY id
+        LIMIT 50
     """
     try:
         with psycopg.connect(db_url) as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, values)
+                cur.execute(sql)
                 rows = cur.fetchall()
                 if not rows:
-                    return "No campsites found matching numeric constraints"
-                result = []
-                for row in rows:
-                    result.append({
-                        "campsite_id": row[0],
-                        "region": row[1],
-                        "price": row[2],
-                        "ride_time_from_tlv": row[3]
-                    })
-                return result
+                    return "No campsites found"
+                return [
+                    {"id": row[0], "name": row[1], "url": row[2]}
+                    for row in rows
+                ]
     except Exception as e:
         return f"Error during search_campsites: {e}"
 
