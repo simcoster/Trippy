@@ -33,9 +33,9 @@ CONFIG_PATH = SCRAPER_DIR / "config.json"
 RESULTS_PATH = "https://secure-hotels.net/INPA/BE_Results.aspx"
 
 GET_OR_CREATE_ACCOMMODATION_SQL = """
-INSERT INTO accommodation_types (name)
-VALUES (%(name)s)
-ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+INSERT INTO accommodation_types (hotel_id, name)
+VALUES (%(hotel_id)s, %(name)s)
+ON CONFLICT (hotel_id, name) DO UPDATE SET name = EXCLUDED.name
 RETURNING id, name;
 """
 
@@ -244,8 +244,11 @@ def aggregate_offerings(offerings: list[dict]) -> list[dict]:
     return list(grouped.values())
 
 
-def get_or_create_accommodation_type(cur, name: str) -> int:
-    cur.execute(GET_OR_CREATE_ACCOMMODATION_SQL, {"name": name})
+def get_or_create_accommodation_type(cur, *, hotel_id: int, name: str) -> int:
+    cur.execute(
+        GET_OR_CREATE_ACCOMMODATION_SQL,
+        {"hotel_id": hotel_id, "name": name},
+    )
     row = cur.fetchone()
     return int(row[0])
 
@@ -293,7 +296,9 @@ def upsert_availability_rows(
     saved = 0
     with conn.cursor() as cur:
         for offer in aggregated:
-            accom_id = get_or_create_accommodation_type(cur, offer["room_type"])
+            accom_id = get_or_create_accommodation_type(
+                cur, hotel_id=site_id, name=offer["room_type"]
+            )
             cur.execute(
                 UPSERT_AVAILABILITY_SQL,
                 {

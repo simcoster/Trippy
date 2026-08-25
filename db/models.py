@@ -17,6 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -33,6 +34,9 @@ class Campsite(Base):
     booking_hotel_id: Mapped[str | None] = mapped_column(Text, unique=True)
 
     availability: Mapped[list[Availability]] = relationship(back_populates="campsite")
+    accommodation_types: Mapped[list[AccommodationType]] = relationship(
+        back_populates="campsite"
+    )
 
 
 class Claim(Base):
@@ -56,12 +60,38 @@ class Claim(Base):
     embedding = mapped_column(Vector(1536), nullable=True)
 
 
-class AccommodationType(Base):
-    __tablename__ = "accommodation_types"
+class Amenity(Base):
+    __tablename__ = "amenities"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # HNSW index is created in the Alembic migration (pgvector).
+    embedding = mapped_column(Vector(1536), nullable=True)
 
+
+class AccommodationType(Base):
+    __tablename__ = "accommodation_types"
+    __table_args__ = (
+        UniqueConstraint(
+            "hotel_id",
+            "name",
+            name="accommodation_types_hotel_id_name_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    hotel_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    # JSONB array of amenities.id values, e.g. [1, 5, 12]
+    amenities = mapped_column(JSONB)
+    max_occupancy: Mapped[int | None] = mapped_column(Integer)
+    total_beds: Mapped[int | None] = mapped_column(Integer)
+    # e.g. {"double_beds": 1, "single_beds": 2}
+    bed_configuration = mapped_column(JSONB)
+
+    campsite: Mapped[Campsite] = relationship(back_populates="accommodation_types")
     availability: Mapped[list[Availability]] = relationship(
         back_populates="accommodation_type"
     )
