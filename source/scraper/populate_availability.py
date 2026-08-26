@@ -23,6 +23,13 @@ import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from amenity_enrichment import (
+    enrich_accommodation_types,
+    load_types_with_amenities,
+    nebius_client,
+    parse_room_tooltips,
+)
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -189,7 +196,7 @@ def parse_rooms(html: str) -> list[dict]:
     return rooms
 
 
-def fetch_availability(url: str) -> list[dict]:
+def fetch_results_html(url: str) -> str:
     with httpx.Client(
         timeout=45.0,
         verify=_ssl_context(),
@@ -204,7 +211,11 @@ def fetch_availability(url: str) -> list[dict]:
     ) as client:
         response = client.get(url)
         response.raise_for_status()
-        return parse_rooms(response.text)
+        return response.text
+
+
+def fetch_availability(url: str) -> list[dict]:
+    return parse_rooms(fetch_results_html(url))
 
 
 def normalize_accommodation_name(name: str) -> str:
@@ -347,11 +358,20 @@ def main() -> None:
     print(f"Scanning {len(windows)} nights starting {windows[0][0]} for {adults} adults")
     print(f"Campsites: {len(campsites)}")
 
+    llm_client = nebius_client()
+
     total_saved = 0
     with psycopg.connect(database_url(config)) as conn:
         for site in campsites:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
+
+            types_with_amenities = load_types_with_amenities(conn, site["id"])
+            print(
+                f"  accommodation types with amenities: "
+                f"{len(types_with_amenities)} "
+                f"({', '.join(sorted(types_with_amenities)) or 'none'})"
+            )
 
             for check_in, check_out in windows:
                 url = search_url(
@@ -366,10 +386,13 @@ def main() -> None:
                 )
                 print(f"  {check_in} → {check_out}")
                 try:
-                    offerings = fetch_availability(url)
+                    html = fetch_results_html(url)
                 except httpx.HTTPError as e:
                     print(f"    HTTP error: {e}")
                     continue
+
+                offerings = parse_rooms(html)
+                tooltips = parse_room_tooltips(html, normalize_accommodation_name)
 
                 if not offerings:
                     print("    No room types returned")
@@ -390,6 +413,28 @@ def main() -> None:
                             f"    {offer['room_type']}  ×{offer['room_count']}  —  "
                             f"{offer.get('currency', '₪')}{offer['price']}"
                         )
+
+                    missing_amenity_types = [
+                        offer["room_type"]
+                        for offer in aggregated
+                        if offer["room_type"] not in types_with_amenities
+                    ]
+                    if missing_amenity_types:
+                        print(
+                            f"    enriching amenities for "
+                            f"{len(missing_amenity_types)} type(s)"
+                        )
+                        newly = enrich_accommodation_types(
+                            conn,
+                            llm_client,
+                            hotel_id=site["id"],
+                            type_names=missing_amenity_types,
+                            tooltips=tooltips,
+                            get_or_create_type=get_or_create_accommodation_type,
+                        )
+                        types_with_amenities.update(newly)
+                        conn.commit()
+
                     saved = upsert_availability_rows(
                         conn,
                         site_id=site["id"],

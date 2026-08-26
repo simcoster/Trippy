@@ -65,7 +65,7 @@ class Amenity(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    # HNSW index is created in the Alembic migration (pgvector).
+    # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
     embedding = mapped_column(Vector(1536), nullable=True)
 
 
@@ -84,8 +84,12 @@ class AccommodationType(Base):
         BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    # Raw Hebrew tooltip text sent to the extraction LLM.
+    description: Mapped[str | None] = mapped_column(Text)
     # JSONB array of amenities.id values, e.g. [1, 5, 12]
     amenities = mapped_column(JSONB)
+    # JSONB array of amenities.id values that are explicitly not included
+    not_included = mapped_column(JSONB)
     max_occupancy: Mapped[int | None] = mapped_column(Integer)
     total_beds: Mapped[int | None] = mapped_column(Integer)
     # e.g. {"double_beds": 1, "single_beds": 2}
