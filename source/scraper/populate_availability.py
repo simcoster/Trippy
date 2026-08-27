@@ -20,6 +20,14 @@ from urllib.parse import urlencode
 
 import httpx
 import psycopg
+from amenity_enrichment import (
+    amenity_llm_clients,
+    enrich_accommodation_types,
+    fill_missing_image_urls,
+    load_types_with_amenities,
+    LlmUsage,
+    parse_room_categories,
+)
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -33,9 +41,9 @@ CONFIG_PATH = SCRAPER_DIR / "config.json"
 RESULTS_PATH = "https://secure-hotels.net/INPA/BE_Results.aspx"
 
 GET_OR_CREATE_ACCOMMODATION_SQL = """
-INSERT INTO accommodation_types (name)
-VALUES (%(name)s)
-ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+INSERT INTO accommodation_types (hotel_id, name)
+VALUES (%(hotel_id)s, %(name)s)
+ON CONFLICT (hotel_id, name) DO UPDATE SET name = EXCLUDED.name
 RETURNING id, name;
 """
 
@@ -189,7 +197,7 @@ def parse_rooms(html: str) -> list[dict]:
     return rooms
 
 
-def fetch_availability(url: str) -> list[dict]:
+def fetch_results_html(url: str) -> str:
     with httpx.Client(
         timeout=45.0,
         verify=_ssl_context(),
@@ -204,7 +212,11 @@ def fetch_availability(url: str) -> list[dict]:
     ) as client:
         response = client.get(url)
         response.raise_for_status()
-        return parse_rooms(response.text)
+        return response.text
+
+
+def fetch_availability(url: str) -> list[dict]:
+    return parse_rooms(fetch_results_html(url))
 
 
 def normalize_accommodation_name(name: str) -> str:
@@ -244,8 +256,11 @@ def aggregate_offerings(offerings: list[dict]) -> list[dict]:
     return list(grouped.values())
 
 
-def get_or_create_accommodation_type(cur, name: str) -> int:
-    cur.execute(GET_OR_CREATE_ACCOMMODATION_SQL, {"name": name})
+def get_or_create_accommodation_type(cur, *, hotel_id: int, name: str) -> int:
+    cur.execute(
+        GET_OR_CREATE_ACCOMMODATION_SQL,
+        {"hotel_id": hotel_id, "name": name},
+    )
     row = cur.fetchone()
     return int(row[0])
 
@@ -293,7 +308,9 @@ def upsert_availability_rows(
     saved = 0
     with conn.cursor() as cur:
         for offer in aggregated:
-            accom_id = get_or_create_accommodation_type(cur, offer["room_type"])
+            accom_id = get_or_create_accommodation_type(
+                cur, hotel_id=site_id, name=offer["room_type"]
+            )
             cur.execute(
                 UPSERT_AVAILABILITY_SQL,
                 {
@@ -342,11 +359,21 @@ def main() -> None:
     print(f"Scanning {len(windows)} nights starting {windows[0][0]} for {adults} adults")
     print(f"Campsites: {len(campsites)}")
 
+    extractor, embedder = amenity_llm_clients()
+    amenity_llm_usage = LlmUsage()
+
     total_saved = 0
     with psycopg.connect(database_url(config)) as conn:
         for site in campsites:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
+
+            types_with_amenities = load_types_with_amenities(conn, site["id"])
+            print(
+                f"  accommodation types with amenities: "
+                f"{len(types_with_amenities)} "
+                f"({', '.join(sorted(types_with_amenities)) or 'none'})"
+            )
 
             for check_in, check_out in windows:
                 url = search_url(
@@ -361,10 +388,15 @@ def main() -> None:
                 )
                 print(f"  {check_in} → {check_out}")
                 try:
-                    offerings = fetch_availability(url)
+                    html = fetch_results_html(url)
                 except httpx.HTTPError as e:
                     print(f"    HTTP error: {e}")
                     continue
+
+                offerings = parse_rooms(html)
+                room_media = parse_room_categories(
+                    html, normalize_accommodation_name
+                )
 
                 if not offerings:
                     print("    No room types returned")
@@ -385,6 +417,39 @@ def main() -> None:
                             f"    {offer['room_type']}  ×{offer['room_count']}  —  "
                             f"{offer.get('currency', '₪')}{offer['price']}"
                         )
+
+                    missing_amenity_types = [
+                        offer["room_type"]
+                        for offer in aggregated
+                        if offer["room_type"] not in types_with_amenities
+                    ]
+                    if missing_amenity_types:
+                        print(
+                            f"    enriching amenities for "
+                            f"{len(missing_amenity_types)} type(s)"
+                        )
+                        newly = enrich_accommodation_types(
+                            conn,
+                            extractor,
+                            embedder,
+                            hotel_id=site["id"],
+                            type_names=missing_amenity_types,
+                            room_media=room_media,
+                            get_or_create_type=get_or_create_accommodation_type,
+                            usage=amenity_llm_usage,
+                        )
+                        types_with_amenities.update(newly)
+                        conn.commit()
+
+                    filled = fill_missing_image_urls(
+                        conn,
+                        hotel_id=site["id"],
+                        room_media=room_media,
+                    )
+                    if filled:
+                        conn.commit()
+                        print(f"    filled image_urls on {filled} type(s)")
+
                     saved = upsert_availability_rows(
                         conn,
                         site_id=site["id"],
@@ -402,6 +467,8 @@ def main() -> None:
 
     print("-" * 60)
     print(f"Done. Upserted {total_saved} availability row(s).")
+    if amenity_llm_usage.chat_calls or amenity_llm_usage.embed_calls:
+        print(amenity_llm_usage.summary(prefix="Amenity enrich total: "))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+---
+description: Put agent-only scratch/probe files under temp/, not in production paths
+alwaysApply: true
+---
+
+# Agent temporary files
+
+When creating files for the agent's own use (probes, dumps, scratch scripts, HTML captures, exploratory notes, one-off debug helpers) that should not ship as production code:
+
+- Place them under `temp/` at the project root (create the folder if needed).
+- Do **not** write them next to production modules (e.g. `source/scraper/`, app packages, or repo root).
+- Prefer names that make the purpose obvious (e.g. `temp/fetch_noresults.py`, `temp/NoResults.html`).
+
+Production scripts, configs, tests the team owns, and intentional project artifacts still go in their normal locations.

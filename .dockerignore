@@ -18,7 +18,7 @@ env
 *.md
 test_*.py
 test_cases
-temp_data
+temp
 *.txt
 terminals
 

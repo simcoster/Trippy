@@ -1,15 +1,16 @@
-import warnings
 import logging
 import os
+import warnings
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
-from dotenv import load_dotenv  # noqa: E402
-from fastapi import FastAPI, Request  # noqa: E402
-import httpx  # noqa: E402
-from langchain_core.messages import HumanMessage, AIMessage  # noqa: E402
-from graph import graph, ChatState  # noqa: E402
+import httpx
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from langchain_core.messages import AIMessage, HumanMessage
+
+from source.agent.graph import ChatState, graph
 
 # Load environment variables from .env file
 load_dotenv()
