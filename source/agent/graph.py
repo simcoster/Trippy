@@ -1,20 +1,25 @@
-import warnings
 import os
+import warnings
+from typing import Annotated, TypedDict
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
-from typing_extensions import TypedDict, Annotated  # noqa: E402
-
-from langgraph.graph import StateGraph, START, END  # noqa: E402
-from langgraph.graph.message import add_messages  # noqa: E402
-from langchain_openai import ChatOpenAI  # noqa: E402
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, SystemMessage, ChatMessage  # noqa: E402
-from langchain_core.tools import StructuredTool  # noqa: E402
-from dotenv import load_dotenv  # noqa: E402
-import psycopg  # noqa: E402
-from pgvector.psycopg import register_vector  # noqa: E402
-from openai import OpenAI  # noqa: E402
+import psycopg
+from dotenv import load_dotenv
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    ChatMessage,
+    HumanMessage,
+    SystemMessage,
+)
+from langchain_core.tools import StructuredTool
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from openai import OpenAI
+from pgvector.psycopg import register_vector
 
 # Load environment variables
 load_dotenv()
@@ -279,7 +284,6 @@ def check_after_cleaning(state: ChatState) -> str:
 def planner_node(state: ChatState) -> ChatState:
     """Extract constraints from user query and run RAG searches. Returns constraints + tool results."""
     import json
-    from langchain_core.messages import ToolMessage
 
     system_msg = SystemMessage(
         content=(

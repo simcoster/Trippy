@@ -46,6 +46,26 @@
             "cwd": "${workspaceFolder}"
         },
         {
+            "name": "Python: Streamlit agent (local)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "streamlit",
+            "args": [
+                "run",
+                "${workspaceFolder}/scripts/streamlit_chat.py",
+                "--server.port",
+                "8501"
+            ],
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
             "name": "Python: pytest (all)",
             "type": "debugpy",
             "request": "launch",
