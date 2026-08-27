@@ -6,6 +6,16 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-08-27)
+
+Spent the day mostly on amenities + getting a real local loop on the agent.
+
+Morning on `pull-amenities`: taught accommodation types to carry richer listing detail (description, what’s not included), cleaned up the repo layout so agent / scraper / tests / docs aren’t dumped at the root, then pulled image URLs off the INPA HTML so each type can keep up to three photos.
+
+That amenity work landed on `main` in the afternoon as a proper package — Nebius Qwen extracts structured details from tooltips, we embed amenity names, track LLM usage, and store policies / check-in·out / room_count. Availability scrape wires into that enrichment path now.
+
+Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph without Telegram: threw up a Streamlit chat that hits the same graph, with a sidebar that dumps node/LLM/tool traces. Pointed agent chat at Nebius Qwen instruct (same model as amenity extract) and moved claims search embeddings onto the same Qwen embedder as amenities — no OpenAI for those anymore. Cleared the old claims rows so we don’t mix embedding spaces. Also chased a nasty empty-reply bug (Qwen was returning blank content when tools were bound; keep/drop was too strict on the Hebrew trip ask). Left a failing test for next time: “אני רוצה משהו לשישי הבא עם מים זורמים” should come back as `{date: [next Friday], amenities: [running water]}` instead of the old semantic_constraints blob.
+
 ### Done (as of 2026-08-24)
 
 **Discovery / master data**
@@ -32,26 +42,21 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 **Also in place (earlier)**
 - LangGraph agent + claims RAG skeleton, FastAPI, Docker Compose Postgres/pgvector
 
-### Tomorrow — amenities
+### Next — planner constraints + amenity RAG wiring
 
-**Storage: PostgreSQL `jsonb` + GIN**
-- Add amenities on **both** levels:
-  - `campsites.amenities` `jsonb` — site-wide (showers, parking, shop, …)
-  - `accommodation_types.amenities` `jsonb` — room/unit-level (in-room shower, AC, …)
-- GIN indexes on both columns for containment / key lookups
+**Planner output schema (failing test drives this)**
+- Replace / extend `semantic_constraints` + `numeric_constraints` with structured prefs, e.g.:
+  ```json
+  {"date": ["2026-08-28"], "amenities": ["running water"]}
+  ```
+- Resolve “שישי הבא” to a concrete ISO date (timezone IL)
+- Map amenity phrases to canonical keys / embeddings (`running water` → `water_hookup` / claim RAG)
 
-**Bed counts (room-level only; tents usually N/A / null)**
-- `single_bed_count`, `double_bed_count`, `sofa_bed_count` on `accommodation_types` (or on availability if inventory-specific — prefer type unless units differ)
-
-**Agent correctness (must test)**
-- Query like “room with a shower” must use **accommodation** amenities, **not** site amenities
-- Fixture cases: site has shower block, room does not → agent must not claim the room has a shower
-- Inverse: room has ensuite shower, site listing doesn’t mention it → still OK to recommend the room
-
-**Semantic amenity matching (likely embeddings)**
-- Example: user asks *“trailer spot with running water”*; site says *“sink with faucet”*
-- Need synonym / embedding layer over amenity labels (and/or normalized amenity ontology)
-- Agent must **explain the concrete match** (“running water ≈ sink with faucet”), not invent amenities
+**Still open from amenities track**
+- Site-level `campsites.amenities` jsonb + GIN (unit-level mostly done via enrichment)
+- Agent must search **accommodation** amenities for “room with shower”, not only site amenities
+- Semantic amenity match explanations (“running water ≈ sink with faucet”)
+- Re-embed `claims` with Qwen after clearing OpenAI vectors (table was truncated 2026-08-27)
 
 ### Later — second booking source + standardization
 
@@ -78,10 +83,11 @@ Approach: adapter per source → normalize → upsert into the same `campsites` 
 
 Already in repo:
 
-- LangGraph agent (`graph.py`) with claims RAG + numeric campsite filters
-- Postgres + pgvector + Alembic (`campsites`, `claims`, `accommodation_types`, `availability`)
-- FastAPI entry (`main.py`), Docker
-- Scrapers under `source/scraper/`: site discovery, booking IDs, availability/prices
+- LangGraph agent (`source/agent/graph.py`) with claims RAG + campsite list tool; production channel = Telegram (`main.py`)
+- Local Streamlit harness (`scripts/streamlit_chat.py`) with node/LLM/tool traces
+- Nebius Qwen instruct for agent chat; Nebius Qwen embeddings for amenities + claims queries
+- Postgres + pgvector + Alembic (`campsites`, `claims`, `amenities`, `accommodation_types`, `availability`)
+- Scrapers under `source/scraper/`: discovery, booking IDs, availability/prices, amenity enrichment
 
 This plan extends that into a full ingestion → retrieval → agent → eval → production stack.
 
@@ -99,7 +105,7 @@ Campsite list → Google Places / Reviews API
   → raw reviews store
   → claim splitter
   → normalize (HE/EN), polarity, confidence
-  → embed (text-embedding-3-small)
+  → embed (Qwen3-Embedding-8B via Nebius, 1536 dims — same as amenities / claims search)
   → upsert claims (claim_uid)
 ```
 
@@ -255,27 +261,27 @@ Update rules: merge on each user turn (LLM structured extract → merge with dec
 ## 5. Agent (LangGraph) + Streamlit test UI
 
 ### Agent (extend `graph.py`)
-Rough graph:
+Rough graph (current + planned):
 
 ```text
 START
-  → light router / cleaner (existing)
-  → state merge (update conversation JSON)
-  → planner (semantic + numeric + availability constraints)
-  → tools in parallel:
-       search_claims | search_site_chunks | search_availability | search_campsites
-  → rank / explain
-  → recommender reply
+  → light router / cleaner (keep|drop; trivial short-circuit)
+  → planner (structured constraints — migrate to {date, amenities, …})
+  → tools:
+       search_claims | search_amenities / accommodation RAG | search_availability | search_campsites
+  → recommender reply (never empty)
 END
 ```
 
-Tools must be grounded: no invented prices or amenities.
+Tools must be grounded: no invented prices or amenities. Chat + claim query embeddings on Nebius Qwen (not OpenAI).
 
-### Streamlit (dev harness)
-- Chat UI calling the same graph
-- Sidebar: show extracted `state` JSON, tool traces, top retrieved claims
-- “Reset conversation” / load fixture sessions
-- Not for production users — Telegram later
+**Near-term:** make `test_planner_next_friday_running_water_constraint_schema` pass (`date` + `amenities` lists).
+
+### Streamlit (dev harness) — landed on `hook-agent-to-search-and-RAG`
+- Chat UI calling the same graph (no Telegram token)
+- Sidebar / expanders: graph messages, per-turn LangGraph trace (nodes, prompts, tools)
+- Reset conversation; JSON download of state/trace
+- Not for production users — Telegram remains the product channel
 
 ---
 
@@ -366,7 +372,8 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 | **P1** | Google reviews ingest + claim splitter | Rich claims RAG |
 | **P2** | Availability/price scraper + buckets | Date/budget/party queries work |
 | **P3** | Conversation state table + merge logic | Multi-turn memory |
-| **P4** | Streamlit harness + tool wiring in LangGraph | Demoable agent |
+| **P4** | Streamlit harness + tool wiring in LangGraph | Demoable agent — **Streamlit + Qwen wiring in progress on `hook-agent-to-search-and-RAG`** |
+| **P4b** | Planner `{date, amenities}` schema + amenity/availability tools | Failing test → green; grounded date+amenity answers |
 | **P5** | Golden eval + LLM judge + CI | Regression safety |
 | **P6** | Nebius deploy, Telegram, caching, Grafana | Production path |
 | **P7** | Writeup | External narrative |
