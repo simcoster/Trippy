@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -17,6 +18,8 @@ NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
 CHAT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 EMBED_MODEL = "Qwen/Qwen3-Embedding-8B"
 EMBED_DIM = 1536  # HNSW index limit is 2000; Qwen3-Embedding supports MRL dims
+RESULTS_BASE_URL = "https://secure-hotels.net/INPA/"
+MAX_IMAGE_URLS = 3
 
 EXTRACT_SYSTEM = """You are a precise JSON extraction engine.
 Extract accommodation details from Hebrew raw text into structured JSON.
@@ -76,25 +79,63 @@ def load_types_with_amenities(conn, hotel_id: int) -> set[str]:
         return {row[0] for row in cur.fetchall()}
 
 
-def parse_room_tooltips(html: str, normalize_name) -> dict[str, str]:
-    """
-    Map normalized room type → tooltip description text.
+def _absolute_image_url(href: str) -> str | None:
+    href = (href or "").strip()
+    if not href or href.startswith("#") or href.lower().startswith("javascript:"):
+        return None
+    return urljoin(RESULTS_BASE_URL, href)
 
-    Source: within each .roomcategory, `#toolTip_n_m > div.tt-desc > span`
-    (also matches `.tt-desc .desc-span`).
+
+def _image_urls_from_holder(cat) -> list[str]:
+    """Up to MAX_IMAGE_URLS full-size gallery links from `.imageholder`."""
+    urls: list[str] = []
+    seen: set[str] = set()
+    holder = cat.select_one(".imageholder")
+    if not holder:
+        return urls
+    for anchor in holder.select("a[href]"):
+        abs_url = _absolute_image_url(anchor.get("href") or "")
+        if not abs_url or abs_url in seen:
+            continue
+        seen.add(abs_url)
+        urls.append(abs_url)
+        if len(urls) >= MAX_IMAGE_URLS:
+            break
+    return urls
+
+
+def parse_room_categories(html: str, normalize_name) -> dict[str, dict[str, Any]]:
+    """
+    Map normalized room type → {description, image_urls}.
+
+    Description: `#toolTip_n_m > div.tt-desc > span` (also `.tt-desc .desc-span`).
+    Images: up to 3 absolute URLs from `.imageholder a[href]`.
     """
     soup = BeautifulSoup(html, "html.parser")
-    out: dict[str, str] = {}
+    out: dict[str, dict[str, Any]] = {}
     for cat in soup.select("div.roomcategory"):
         name_el = cat.select_one(".roomname") or cat.select_one(".tt-roomname")
-        desc_el = cat.select_one(".tt-desc span") or cat.select_one(".tt-desc")
-        if not name_el or not desc_el:
+        if not name_el:
             continue
         name = normalize_name(name_el.get_text(strip=True))
-        text = desc_el.get_text(" ", strip=True)
-        if name and text and name not in out:
-            out[name] = text
+        if not name or name in out:
+            continue
+        desc_el = cat.select_one(".tt-desc span") or cat.select_one(".tt-desc")
+        description = desc_el.get_text(" ", strip=True) if desc_el else ""
+        out[name] = {
+            "description": description,
+            "image_urls": _image_urls_from_holder(cat),
+        }
     return out
+
+
+def parse_room_tooltips(html: str, normalize_name) -> dict[str, str]:
+    """Map normalized room type → tooltip description text."""
+    return {
+        name: meta["description"]
+        for name, meta in parse_room_categories(html, normalize_name).items()
+        if meta.get("description")
+    }
 
 
 def _parse_json_payload(raw: str) -> dict[str, Any]:
@@ -204,6 +245,7 @@ def update_accommodation_type_details(
     details: dict[str, Any],
     amenity_ids: list[int],
     not_included_ids: list[int],
+    image_urls: list[str] | None = None,
 ) -> None:
     double_beds = int(details.get("double_bed") or 0)
     single_beds = int(details.get("single_bed") or 0)
@@ -212,6 +254,7 @@ def update_accommodation_type_details(
         "single_beds": single_beds,
     }
     total_beds = double_beds + single_beds
+    urls = [u for u in (image_urls or []) if u][:MAX_IMAGE_URLS]
     cur.execute(
         """
         UPDATE accommodation_types
@@ -220,7 +263,8 @@ def update_accommodation_type_details(
             not_included = %(not_included)s::jsonb,
             max_occupancy = %(max_occupancy)s,
             total_beds = %(total_beds)s,
-            bed_configuration = %(bed_configuration)s::jsonb
+            bed_configuration = %(bed_configuration)s::jsonb,
+            image_urls = %(image_urls)s::jsonb
         WHERE id = %(id)s
         """,
         {
@@ -231,8 +275,44 @@ def update_accommodation_type_details(
             "max_occupancy": details.get("max_people"),
             "total_beds": total_beds if total_beds > 0 else None,
             "bed_configuration": json.dumps(bed_configuration),
+            "image_urls": json.dumps(urls) if urls else None,
         },
     )
+
+
+def fill_missing_image_urls(
+    conn,
+    *,
+    hotel_id: int,
+    room_media: dict[str, dict[str, Any]],
+) -> int:
+    """Set image_urls for types that exist but have none yet. Returns rows updated."""
+    updated = 0
+    with conn.cursor() as cur:
+        for name, meta in room_media.items():
+            urls = [u for u in (meta.get("image_urls") or []) if u][:MAX_IMAGE_URLS]
+            if not urls:
+                continue
+            cur.execute(
+                """
+                UPDATE accommodation_types
+                SET image_urls = %(image_urls)s::jsonb
+                WHERE hotel_id = %(hotel_id)s
+                  AND name = %(name)s
+                  AND (
+                    image_urls IS NULL
+                    OR jsonb_typeof(image_urls) <> 'array'
+                    OR jsonb_array_length(image_urls) = 0
+                  )
+                """,
+                {
+                    "hotel_id": hotel_id,
+                    "name": name,
+                    "image_urls": json.dumps(urls),
+                },
+            )
+            updated += cur.rowcount
+    return updated
 
 
 def enrich_accommodation_types(
@@ -241,17 +321,18 @@ def enrich_accommodation_types(
     *,
     hotel_id: int,
     type_names: list[str],
-    tooltips: dict[str, str],
+    room_media: dict[str, dict[str, Any]],
     get_or_create_type,
 ) -> set[str]:
     """
     For each type name lacking amenities, parse tooltip → LLM → DB.
 
+    `room_media` maps normalized name → {description, image_urls}.
     Returns the set of type names successfully enriched in this call.
     """
     pending: list[tuple[str, str]] = []
     for name in type_names:
-        text = (tooltips.get(name) or "").strip()
+        text = ((room_media.get(name) or {}).get("description") or "").strip()
         if text:
             pending.append((name, text))
         else:
@@ -297,6 +378,7 @@ def enrich_accommodation_types(
             if not amenity_ids and not not_included_ids:
                 print(f"    no amenity ids resolved for {name!r}; leaving empty")
                 continue
+            image_urls = (room_media.get(name) or {}).get("image_urls") or []
             update_accommodation_type_details(
                 cur,
                 accommodation_type_id=accom_id,
@@ -304,12 +386,14 @@ def enrich_accommodation_types(
                 details=details,
                 amenity_ids=amenity_ids,
                 not_included_ids=not_included_ids,
+                image_urls=image_urls,
             )
             enriched.add(name)
             print(
                 f"    enriched {name}: "
                 f"{len(amenity_ids)} amenities, "
                 f"{len(not_included_ids)} not_included, "
+                f"{len(image_urls[:MAX_IMAGE_URLS])} images, "
                 f"max_people={details.get('max_people')}, "
                 f"beds={details.get('double_bed')}+{details.get('single_bed')}"
             )

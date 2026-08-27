@@ -94,6 +94,8 @@ class AccommodationType(Base):
     total_beds: Mapped[int | None] = mapped_column(Integer)
     # e.g. {"double_beds": 1, "single_beds": 2}
     bed_configuration = mapped_column(JSONB)
+    # Up to 3 absolute image URLs from the booking .imageholder gallery
+    image_urls = mapped_column(JSONB)
 
     campsite: Mapped[Campsite] = relationship(back_populates="accommodation_types")
     availability: Mapped[list[Availability]] = relationship(

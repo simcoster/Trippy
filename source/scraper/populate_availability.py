@@ -25,9 +25,10 @@ from dotenv import load_dotenv
 
 from amenity_enrichment import (
     enrich_accommodation_types,
+    fill_missing_image_urls,
     load_types_with_amenities,
     nebius_client,
-    parse_room_tooltips,
+    parse_room_categories,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -392,7 +393,9 @@ def main() -> None:
                     continue
 
                 offerings = parse_rooms(html)
-                tooltips = parse_room_tooltips(html, normalize_accommodation_name)
+                room_media = parse_room_categories(
+                    html, normalize_accommodation_name
+                )
 
                 if not offerings:
                     print("    No room types returned")
@@ -429,11 +432,20 @@ def main() -> None:
                             llm_client,
                             hotel_id=site["id"],
                             type_names=missing_amenity_types,
-                            tooltips=tooltips,
+                            room_media=room_media,
                             get_or_create_type=get_or_create_accommodation_type,
                         )
                         types_with_amenities.update(newly)
                         conn.commit()
+
+                    filled = fill_missing_image_urls(
+                        conn,
+                        hotel_id=site["id"],
+                        room_media=room_media,
+                    )
+                    if filled:
+                        conn.commit()
+                        print(f"    filled image_urls on {filled} type(s)")
 
                     saved = upsert_availability_rows(
                         conn,
