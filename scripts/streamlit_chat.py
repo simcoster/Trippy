@@ -40,7 +40,7 @@ from langchain_core.messages import (
 from langchain_core.outputs import LLMResult
 
 import source.agent.graph as agent_graph
-from source.agent.graph import ChatState, graph
+from source.agent.graph import AGENT_CHAT_MODEL, ChatState, graph
 
 load_dotenv(_ROOT / ".env")
 
@@ -251,12 +251,18 @@ def _serialize_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
 
 def _last_ai_reply(messages: list[BaseMessage]) -> str:
     ai_messages = [m for m in messages if isinstance(m, AIMessage)]
-    if ai_messages:
-        return _content_to_str(ai_messages[-1].content)
+    for msg in reversed(ai_messages):
+        text = _content_to_str(msg.content).strip()
+        if text:
+            return text
     last = messages[-1] if messages else None
     if last is not None and hasattr(last, "content"):
-        return _content_to_str(last.content)
-    return "I'm here to help you plan your trip!"
+        text = _content_to_str(last.content).strip()
+        if text:
+            return text
+    return (
+        "לא הצלחתי להשלים תשובה כרגע. נסו לנסח שוב עם תאריך, מיקום או העדפה."
+    )
 
 
 def _json_block(data: Any) -> None:
@@ -376,7 +382,10 @@ def invoke_agent(user_text: str) -> tuple[str, list[dict[str, Any]]]:
 _init_session()
 
 st.title("Trippy agent")
-st.caption("Local Streamlit client · production remains Telegram")
+st.caption(
+    f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
+    "production remains Telegram"
+)
 
 with st.sidebar:
     st.header("Session")

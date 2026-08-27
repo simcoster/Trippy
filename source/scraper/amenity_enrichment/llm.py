@@ -1,4 +1,7 @@
-"""Nebius chat extract + embedding clients for amenity enrichment."""
+"""Nebius chat extract + embedding clients for amenity enrichment.
+
+Also provides the LangGraph agent chat model (same Nebius Qwen instruct endpoint).
+"""
 
 from __future__ import annotations
 
@@ -10,11 +13,14 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
 from .schemas import AccommodationExtract
 
 NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
+# Shared instruct model for amenity extract + Trippy agent chat
+QWEN_INSTRUCT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
@@ -114,10 +120,54 @@ def _parse_json_payload(raw: str) -> dict[str, Any]:
     return data
 
 
+class AgentChatClient:
+    """Nebius chat client for the Trippy LangGraph agent (Streamlit / Telegram)."""
+
+    MODEL = QWEN_INSTRUCT_MODEL
+    INPUT_USD_PER_MTOK = 0.10
+    OUTPUT_USD_PER_MTOK = 0.30
+    TEMPERATURE = 0.7
+
+    def __init__(
+        self,
+        client: OpenAI | None = None,
+        *,
+        temperature: float | None = None,
+        model: str | None = None,
+    ) -> None:
+        self._client = client
+        self.model = model or self.MODEL
+        self.temperature = self.TEMPERATURE if temperature is None else temperature
+
+    @property
+    def client(self) -> OpenAI:
+        if self._client is None:
+            self._client = make_nebius_openai_client()
+        return self._client
+
+    def as_langchain(self) -> ChatOpenAI:
+        """LangChain `ChatOpenAI` bound to Nebius + Qwen instruct."""
+        api_key = os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY")
+        if not api_key:
+            raise RuntimeError("NEBIUS_API_KEY (or NEBULA_API_KEY) is required")
+        return ChatOpenAI(
+            model=self.model,
+            api_key=api_key,
+            base_url=NEBIUS_BASE_URL,
+            temperature=self.temperature,
+            http_client=httpx.Client(verify=_ssl_context(), timeout=120.0),
+        )
+
+
+def make_agent_chat_model(*, temperature: float = 0.7) -> ChatOpenAI:
+    """Factory for the agent’s LangChain chat model (Qwen3-30B-A3B-Instruct-2507)."""
+    return AgentChatClient(temperature=temperature).as_langchain()
+
+
 class ExtractorLLMClient:
     """Nebius chat model for Hebrew tooltip → structured accommodation JSON."""
 
-    MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
+    MODEL = QWEN_INSTRUCT_MODEL
     INPUT_USD_PER_MTOK = 0.10
     OUTPUT_USD_PER_MTOK = 0.30
     TEMPERATURE = 0
@@ -226,6 +276,10 @@ class EmbeddingLLMClient:
             usage.add_embed(resp.usage)
         by_index = {item.index: item.embedding for item in resp.data}
         return [by_index[i] for i in range(len(texts))]
+
+
+class ClaimsEmbeddingLLMClient(EmbeddingLLMClient):
+    """Nebius embedding model for claims RAG (same Qwen3-Embedding-8B + 1536 dims)."""
 
 
 def amenity_llm_clients() -> tuple[ExtractorLLMClient, EmbeddingLLMClient]:

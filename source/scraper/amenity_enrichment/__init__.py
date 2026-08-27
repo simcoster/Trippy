@@ -13,26 +13,34 @@ from .html_parse import (
     parse_room_tooltips,
 )
 from .llm import (
+    AgentChatClient,
+    ClaimsEmbeddingLLMClient,
     EmbeddingLLMClient,
     ExtractorLLMClient,
     LlmUsage,
+    QWEN_INSTRUCT_MODEL,
     amenity_llm_clients,
+    make_agent_chat_model,
     make_nebius_openai_client,
 )
 from .schemas import AccommodationExtract, PolicyRules
 
 __all__ = [
     "AccommodationExtract",
+    "AgentChatClient",
+    "ClaimsEmbeddingLLMClient",
     "EmbeddingLLMClient",
     "ExtractorLLMClient",
     "LlmUsage",
     "MAX_IMAGE_URLS",
     "PolicyRules",
+    "QWEN_INSTRUCT_MODEL",
     "amenity_llm_clients",
     "enrich_accommodation_types",
     "ensure_amenities",
     "fill_missing_image_urls",
     "load_types_with_amenities",
+    "make_agent_chat_model",
     "make_nebius_openai_client",
     "parse_room_categories",
     "parse_room_tooltips",
