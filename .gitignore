@@ -27,4 +27,7 @@ env/
 .DS_Store
 Thumbs.db
 
+# Agent scratch / non-production probe output
+temp/
+
 __pycache__/graph.cpython-314.pyc

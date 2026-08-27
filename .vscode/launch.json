@@ -5,7 +5,7 @@
             "name": "Python Debugger: import_json.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/temp_data/import_json.py",
+            "program": "${workspaceFolder}/temp/import_json.py",
             "console": "integratedTerminal"
         },
         {
@@ -19,7 +19,7 @@
             "name": "Python Debugger: replay.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/replay.py",
+            "program": "${workspaceFolder}/scripts/replay.py",
             "console": "integratedTerminal"
         },
         {
@@ -40,6 +40,35 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             },
+            "envFile": "${workspaceFolder}/.env",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python: pytest (all)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "-v"
+            ],
+            "justMyCode": false,
+            "envFile": "${workspaceFolder}/.env",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python: pytest (current file)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${relativeFile}",
+                "-v"
+            ],
+            "justMyCode": false,
             "envFile": "${workspaceFolder}/.env",
             "python": "${workspaceFolder}/.venv/Scripts/python.exe",
             "console": "integratedTerminal",

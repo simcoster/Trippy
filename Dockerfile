@@ -28,7 +28,7 @@ RUN uv sync --frozen --no-dev
 COPY . .
 
 # Copy startup script
-COPY start.sh /start.sh
+COPY scripts/startup.sh /start.sh
 RUN chmod +x /start.sh
 
 # Expose port
