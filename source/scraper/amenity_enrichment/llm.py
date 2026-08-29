@@ -188,6 +188,16 @@ Rules:
   - חיבור חשמל / נקודת חשמל → electric_hookup (not electricity / power_outlet)
   - חיבור מים → water_hookup
   - ביוב / ניקוז → sewage_hookup
+- Named places (LLM must expand — do not rely on a fixed place list):
+  Whenever a specific place, landmark, or region is named, ALSO add its type(s)
+  as separate amenity strings so generic queries can match.
+  Rule: named place → keep the specific label AND add the geographic / feature type.
+  Examples (illustrative only; apply the same idea to any place you recognize):
+  - כינרת / Kineret → ["near the Kineret", "near a lake", "near a body of water"]
+  - נגב תחתון / lower Negev → ["near lower Negev", "near a desert"]
+  - ים המלח / Dead Sea → ["near the Dead Sea", "near a body of water"]
+  - מכתש רמון → ["near Ramon crater", "near a crater", "near a desert"]
+  Use English snake_case or short phrases consistently (e.g. near_a_desert / "near a desert").
 - Only add amenities to "not_included" if explicitly stated as not included or that guests should bring their own (e.g. "bring your own towels"). Do not infer not_included from absence alone.
 - Extract check_in_time / check_out_time when stated (HH:MM 24h, e.g. "15:00"). Use null if unknown.
 - Extract policy_rules only when explicitly stated. Use null for unknown keys. Typical keys:

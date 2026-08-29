@@ -44,19 +44,17 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 
 ### Next — planner constraints + amenity RAG wiring
 
-**Planner output schema (failing test drives this)**
-- Replace / extend `semantic_constraints` + `numeric_constraints` with structured prefs, e.g.:
-  ```json
-  {"date": ["2026-08-28"], "amenities": ["running water"]}
-  ```
-- Resolve “שישי הבא” to a concrete ISO date (timezone IL)
-- Map amenity phrases to canonical keys / embeddings (`running water` → `water_hookup` / claim RAG)
+**Extractor schema (landed)**
+- Structured prefs: `date: {start, end}`, `amenities` (AND list + `{op:"or", values}`), plus numeric/semantic leftovers
+- Relative dates resolved in Python (Asia/Jerusalem)
+- Named-place → type expansion is done by the **extract LLM** at ingest (not a place list / regex tool): e.g. Kineret also yields lake + body of water; Negev also yields desert. Same rule should apply when splitting review claims.
 
-**Still open from amenities track**
-- Site-level `campsites.amenities` jsonb + GIN (unit-level mostly done via enrichment)
-- Agent must search **accommodation** amenities for “room with shower”, not only site amenities
+**Still open**
+- `search_availability` / SQL filter by extracted `date`
+- Site-level `campsites.amenities` jsonb + GIN
+- Agent must search **accommodation** amenities for “room with shower”, not only site / claims
 - Semantic amenity match explanations (“running water ≈ sink with faucet”)
-- Re-embed `claims` with Qwen after clearing OpenAI vectors (table was truncated 2026-08-27)
+- Re-embed `claims` with Qwen after clearing OpenAI vectors
 
 ### Later — second booking source + standardization
 
@@ -266,16 +264,16 @@ Rough graph (current + planned):
 ```text
 START
   → light router / cleaner (keep|drop; trivial short-circuit)
-  → planner (structured constraints — migrate to {date, amenities, …})
-  → tools:
-       search_claims | search_amenities / accommodation RAG | search_availability | search_campsites
+  → extractor (date + amenities OR groups + numeric/semantic)
+  → planner / searcher:
+       search_claims | amenity OR expand | search_campsites
   → recommender reply (never empty)
 END
 ```
 
 Tools must be grounded: no invented prices or amenities. Chat + claim query embeddings on Nebius Qwen (not OpenAI).
 
-**Near-term:** make `test_planner_next_friday_running_water_constraint_schema` pass (`date` + `amenities` lists).
+**Near-term:** wire `date` into availability search; accommodation amenity RAG (not only claims).
 
 ### Streamlit (dev harness) — landed on `hook-agent-to-search-and-RAG`
 - Chat UI calling the same graph (no Telegram token)

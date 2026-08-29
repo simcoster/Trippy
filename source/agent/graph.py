@@ -19,6 +19,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from pgvector.psycopg import register_vector
 
+from source.agent.constraints import (
+    EMPTY_CONSTRAINTS,
+    amenity_search_queries,
+    normalize_constraints,
+    parse_constraints_dict,
+    today_il,
+)
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_MODEL,
     ClaimsEmbeddingLLMClient,
@@ -144,7 +151,7 @@ claims_search_tool = StructuredTool.from_function(
 
 # ---- 3. Two models: light + heavy (Nebius Qwen instruct) ----
 
-# Do NOT bind_tools on the chat models: planner/recommender need text/JSON
+# Do NOT bind_tools on the chat models: extractor/recommender need text/JSON
 # replies. Tools are invoked imperatively in planner_node. Binding tools made
 # Qwen return empty content + tool_calls, which surfaced as blank agent replies.
 light_model = make_agent_chat_model(temperature=0.7)
@@ -190,29 +197,11 @@ def _is_keep_decision(text: str) -> bool:
 
 
 def _parse_constraints_json(raw: str) -> dict:
-    """Parse planner JSON; never raises — falls back to empty constraint lists."""
-    import json
-    import re
-
-    text = _message_text(raw).strip()
-    if not text:
-        return {"semantic_constraints": [], "numeric_constraints": []}
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if not match:
-            return {"semantic_constraints": [], "numeric_constraints": []}
-        try:
-            data = json.loads(match.group())
-        except json.JSONDecodeError:
-            return {"semantic_constraints": [], "numeric_constraints": []}
-    if not isinstance(data, dict):
-        return {"semantic_constraints": [], "numeric_constraints": []}
-    return {
-        "semantic_constraints": data.get("semantic_constraints") or [],
-        "numeric_constraints": data.get("numeric_constraints") or [],
-    }
+    """Parse extractor JSON then normalize to date/amenities schema."""
+    parsed = parse_constraints_dict(raw)
+    if not parsed:
+        return dict(EMPTY_CONSTRAINTS)
+    return normalize_constraints(parsed)
 
 
 def _constraints_from_tool_calls(tool_calls) -> dict:
@@ -224,10 +213,23 @@ def _constraints_from_tool_calls(tool_calls) -> dict:
             query = args.get("query")
             if query:
                 semantic.append({"query": query})
-    return {
-        "semantic_constraints": semantic,
-        "numeric_constraints": [],
-    }
+    return normalize_constraints(
+        {
+            "semantic_constraints": semantic,
+            "numeric_constraints": [],
+            "amenities": [],
+            "date": None,
+        }
+    )
+
+
+def _latest_user_text(messages: list[BaseMessage]) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            text = _message_text(msg.content).strip()
+            if text:
+                return text
+    return ""
 
 
 # ---- 4. Nodes ----
@@ -332,7 +334,7 @@ def light_node(state: ChatState) -> ChatState:
         cleaned_content = _message_text(cleaned_response.content)
         
         # On keep: add no messages so the user's HumanMessage stays last and
-        # check_after_cleaning routes to the planner (avoid injecting "keep").
+        # check_after_cleaning routes to the extractor (avoid injecting "keep").
         if _is_keep_decision(cleaned_content):
             return {}
         return {
@@ -364,51 +366,62 @@ def check_after_cleaning(state: ChatState) -> str:
         return "end"
 
 
-def planner_node(state: ChatState) -> ChatState:
-    """Extract constraints from user query and run RAG searches. Returns constraints + tool results."""
+def extractor_node(state: ChatState) -> ChatState:
+    """Extract structured constraints from the user query (JSON only; no tools)."""
     import json
 
+    today = today_il()
     system_msg = SystemMessage(
         content=(
-            """
+            f"""
             You are a structured query extractor for a campsite recommendation system called Trippy.
-            Your task is to analyze a user query and extract all relevant constraints in a precise JSON format.
+            Analyze the user query and extract constraints as JSON only (no commentary).
+
+            Today's date (Asia/Jerusalem): {today.isoformat()}
+            (weekday: {today.strftime("%A")})
+
+            Schema (all keys required; use empty arrays / null when absent):
+            {{
+              "date": {{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}} | null,
+              "amenities": [
+                "running water",
+                {{"op": "or", "values": ["near the sea", "near a body of water"]}}
+              ],
+              "numeric_constraints": [
+                {{"field": "price_per_night", "operator": "<=", "value": 500}}
+              ],
+              "semantic_constraints": [
+                {{"query": "quiet"}}
+              ]
+            }}
 
             Rules:
-            1. Output ONLY JSON. No text, commentary, or explanations.
-            2. Separate constraints into:
-                a) semantic_constraints: qualitative queries about campsite attributes
-                    (e.g., "quiet", "good for kids", "has hot water", "running water").
-                    Each item must have a "query" field containing the user-expressed concept.
-                b) numeric_constraints: quantitative filters (e.g., price, distance, rating).
-                    Each item must have "field", "operator", "value", and optionally "unit".
-                c) Also capture date/time intent when stated (e.g. "next Friday") as a
-                    semantic_constraints query such as {"query": "available next Friday"}.
-            3. Include every constraint explicitly mentioned or clearly implied by the user.
-            4. Preserve negation (e.g., "not suitable for kids" → query: "not suitable for kids").
-            5. Avoid interpretation beyond what is stated; do not assume preferences or motivations.
-            6. Keep queries concise; use the same wording as the user where possible.
-            7. Return JSON in a single object with exactly two keys:
-                "semantic_constraints" and "numeric_constraints".
-                If no constraints exist in a category, use an empty array for that key.
-            8. All constraints must be in English
+            1. Output ONLY JSON.
+            2. date: concrete stay nights as ISO start/end. Single night ⇒ start == end.
+               Resolve relative phrases using today's date (e.g. "next Friday" → that Friday).
+               Do NOT put dates in numeric_constraints or semantic_constraints.
+            3. amenities: site/unit features and location-near-water prefs.
+               Top-level list is AND. Use {{"op":"or","values":[...]}} for alternatives
+               (e.g. "near the sea or some body of water").
+               Prefer English canonical labels: "running water", "near the sea",
+               "near a body of water".
+            4. numeric_constraints: price, party size, distance (km), rating only — never dates.
+            5. semantic_constraints: soft vibes not covered by amenities (quiet, good for kids).
+               Each item: {{"query": "..."}}.
+            6. Preserve negation in wording when stated.
+            7. Do not invent constraints the user did not imply.
 
-            Example output:
-
-            Input:
-            "Looking for a quiet campsite, clean, suitable for kids, and costs less than 500 NIS per night."
-
+            Example:
+            Input: "next friday, near the sea or some body of water to swim in"
             Output:
-            {
-                "semantic_constraints": [
-                    {"query": "quiet"},
-                    {"query": "clean"},
-                    {"query": "suitable for kids"},
-                ],
-                    "numeric_constraints": [
-                        {"field": "price_per_night", "operator": "<=", "value": 500},
-                ]
-            }
+            {{
+              "date": {{"start": "<that Friday ISO>", "end": "<that Friday ISO>"}},
+              "amenities": [
+                {{"op": "or", "values": ["near the sea", "near a body of water"]}}
+              ],
+              "numeric_constraints": [],
+              "semantic_constraints": []
+            }}
             """.strip().replace("            ", "")
         )
     )
@@ -416,18 +429,73 @@ def planner_node(state: ChatState) -> ChatState:
     response = heavy_model.invoke([system_msg] + state["messages"])
     raw = _message_text(response.content)
     tool_calls = getattr(response, "tool_calls", None) or []
+    user_text = _latest_user_text(state["messages"])
 
-    constraints_json = _parse_constraints_json(raw)
+    constraints_json = normalize_constraints(
+        parse_constraints_dict(raw),
+        today=today,
+        user_text=user_text,
+    )
     # If the model emitted tool calls instead of JSON, recover queries from args.
     if (
-        not constraints_json["semantic_constraints"]
-        and not constraints_json["numeric_constraints"]
+        not constraints_json.get("amenities")
+        and not constraints_json.get("semantic_constraints")
+        and not constraints_json.get("numeric_constraints")
+        and constraints_json.get("date") is None
         and tool_calls
     ):
         constraints_json = _constraints_from_tool_calls(tool_calls)
+        constraints_json = normalize_constraints(
+            constraints_json, today=today, user_text=user_text
+        )
 
-    # Run RAG searches based on constraints
+    constraints_payload = json.dumps(constraints_json, ensure_ascii=False)
+    if not constraints_payload.strip():
+        constraints_payload = json.dumps(EMPTY_CONSTRAINTS, ensure_ascii=False)
+    return {"messages": [AIMessage(content=constraints_payload)]}
+
+
+def _latest_constraints_json(messages: list[BaseMessage]) -> dict:
+    """Read the most recent constraints AIMessage (from extractor_node)."""
+    import json
+
+    for msg in reversed(messages):
+        if not isinstance(msg, AIMessage):
+            continue
+        raw = _message_text(msg.content).strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = parse_constraints_dict(raw)
+        if isinstance(data, dict) and (
+            "semantic_constraints" in data
+            or "numeric_constraints" in data
+            or "date" in data
+            or "amenities" in data
+        ):
+            return normalize_constraints(data)
+    return dict(EMPTY_CONSTRAINTS)
+
+
+def planner_node(state: ChatState) -> ChatState:
+    """Run RAG / campsite searches from extractor constraints. Tools only."""
+    constraints_json = _latest_constraints_json(state["messages"])
+
     tool_messages = []
+
+    # Amenities: AND across groups; OR within a group (merge results)
+    for queries in amenity_search_queries(constraints_json.get("amenities") or []):
+        chunks: list[str] = []
+        for query in queries:
+            result = search_claims(query, limit=5)
+            text = _message_text(result) or f"No claims found matching: {query}"
+            chunks.append(f"[{query}]\n{text}")
+        tool_messages.append(
+            ChatMessage(content="\n---\n".join(chunks), role="assistant")
+        )
+
     for semantic in constraints_json.get("semantic_constraints", []):
         query = semantic.get("query") if isinstance(semantic, dict) else None
         if query:
@@ -448,16 +516,20 @@ def planner_node(state: ChatState) -> ChatState:
             )
         )
 
-    # Always emit non-empty planner output for the recommender / UI.
-    constraints_payload = json.dumps(constraints_json, ensure_ascii=False)
-    if not constraints_payload.strip():
-        constraints_payload = json.dumps(
-            {"semantic_constraints": [], "numeric_constraints": []},
-            ensure_ascii=False,
+    # Surface date to recommender via a short tool-style note (no availability SQL yet)
+    date_range = constraints_json.get("date")
+    if isinstance(date_range, dict) and date_range.get("start"):
+        tool_messages.append(
+            ChatMessage(
+                content=(
+                    "Requested stay nights: "
+                    f"{date_range.get('start')} .. {date_range.get('end', date_range.get('start'))}"
+                ),
+                role="assistant",
+            )
         )
-    constraints_msg = AIMessage(content=constraints_payload)
 
-    return {"messages": [constraints_msg] + tool_messages}
+    return {"messages": tool_messages}
 
 
 def recommender_node(state: ChatState) -> ChatState:
@@ -493,6 +565,7 @@ def recommender_node(state: ChatState) -> ChatState:
 builder = StateGraph(ChatState)
 
 builder.add_node("light", light_node)
+builder.add_node("extractor", extractor_node)
 builder.add_node("planner", planner_node)
 builder.add_node("recommender", recommender_node)
 
@@ -506,20 +579,18 @@ builder.add_conditional_edges(
     },
 )
 
-# After light node, check if we need heavy model
+# After light node, check if we need the heavy path (extractor → planner → recommender)
 builder.add_conditional_edges(
     "light",
     check_after_cleaning,
     {
-        "heavy": "planner",
+        "heavy": "extractor",
         "end": END,
     },
 )
 
-# After planner node, go to recommender
+builder.add_edge("extractor", "planner")
 builder.add_edge("planner", "recommender")
-
-# After recommender, go to END
 builder.add_edge("recommender", END)
 
 graph = builder.compile()
