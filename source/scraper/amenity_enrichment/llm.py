@@ -19,8 +19,12 @@ from openai import OpenAI
 from .schemas import AccommodationExtract
 
 NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
-# Shared instruct model for amenity extract + Trippy agent chat
-QWEN_INSTRUCT_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
+# Shared instruct model for amenity extract + most agent nodes
+QWEN_INSTRUCT_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
+QWEN_INSTRUCT_INPUT_USD_PER_MTOK = 0.20
+QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK = 0.60
+# Agent planner / query-constraint extract — keep 30B for now (easy to bump later)
+QWEN_INSTRUCT_30B_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
@@ -124,8 +128,8 @@ class AgentChatClient:
     """Nebius chat client for the Trippy LangGraph agent (Streamlit / Telegram)."""
 
     MODEL = QWEN_INSTRUCT_MODEL
-    INPUT_USD_PER_MTOK = 0.10
-    OUTPUT_USD_PER_MTOK = 0.30
+    INPUT_USD_PER_MTOK = QWEN_INSTRUCT_INPUT_USD_PER_MTOK
+    OUTPUT_USD_PER_MTOK = QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK
     TEMPERATURE = 0.7
 
     def __init__(
@@ -159,17 +163,21 @@ class AgentChatClient:
         )
 
 
-def make_agent_chat_model(*, temperature: float = 0.7) -> ChatOpenAI:
-    """Factory for the agent’s LangChain chat model (Qwen3-30B-A3B-Instruct-2507)."""
-    return AgentChatClient(temperature=temperature).as_langchain()
+def make_agent_chat_model(
+    *,
+    temperature: float = 0.7,
+    model: str | None = None,
+) -> ChatOpenAI:
+    """Factory for a LangChain chat model on Nebius Qwen instruct."""
+    return AgentChatClient(temperature=temperature, model=model).as_langchain()
 
 
 class ExtractorLLMClient:
     """Nebius chat model for Hebrew tooltip → structured accommodation JSON."""
 
     MODEL = QWEN_INSTRUCT_MODEL
-    INPUT_USD_PER_MTOK = 0.10
-    OUTPUT_USD_PER_MTOK = 0.30
+    INPUT_USD_PER_MTOK = QWEN_INSTRUCT_INPUT_USD_PER_MTOK
+    OUTPUT_USD_PER_MTOK = QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK
     TEMPERATURE = 0
     SYSTEM_PROMPT = """You are a precise JSON extraction engine.
 Extract accommodation details from Hebrew raw text into structured JSON.
@@ -231,8 +239,16 @@ Schema:
 }
 """
 
-    def __init__(self, client: OpenAI | None = None) -> None:
+    def __init__(
+        self,
+        client: OpenAI | None = None,
+        *,
+        model: str | None = None,
+        system_prompt: str | None = None,
+    ) -> None:
         self.client = client or make_nebius_openai_client()
+        self.model = model or self.MODEL
+        self.system_prompt = system_prompt or self.SYSTEM_PROMPT
 
     def extract(
         self,
@@ -245,7 +261,88 @@ Schema:
             f"Accommodation type: {type_name}\n\nTooltip:\n{raw_text}"
         )
         response = self.client.chat.completions.create(
-            model=self.MODEL,
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=self.TEMPERATURE,
+        )
+        if usage is not None:
+            usage.add_chat(response.usage)
+        content = response.choices[0].message.content or ""
+        data = _parse_json_payload(content)
+        return AccommodationExtract.model_validate(data).as_details_dict()
+
+
+# Same extract prompt without named-place expansion (used by the dedicated place node path).
+EXTRACT_WITHOUT_PLACE_EXPANSION_PROMPT = re.sub(
+    r"- Named places \(LLM must expand.*?(?=\n- Only add amenities to \"not_included\")",
+    "",
+    ExtractorLLMClient.SYSTEM_PROMPT,
+    count=1,
+    flags=re.DOTALL,
+)
+
+
+class PlaceEnrichmentLLMClient:
+    """Second-pass: add geographic types for places named in the tooltip."""
+
+    MODEL = QWEN_INSTRUCT_MODEL
+    INPUT_USD_PER_MTOK = QWEN_INSTRUCT_INPUT_USD_PER_MTOK
+    OUTPUT_USD_PER_MTOK = QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK
+    TEMPERATURE = 0
+    SYSTEM_PROMPT = """You enrich campsite amenities with geographic types.
+
+You are given:
+1. The original Hebrew tooltip (source of truth)
+2. Amenities already extracted from that tooltip
+
+Task:
+1. Keep every amenity already listed (do not drop or rename any).
+2. For EVERY specific place / landmark / region named in the tooltip,
+   add a dedicated snake_case place label if it is missing
+   (e.g. near_ramon_crater, near_the_kineret, near_eilat).
+   The place name itself must appear in an amenity string.
+3. Then add that place's geographic TYPE labels
+   (near_a_lake, near_a_desert, near_the_sea, near_a_beach,
+   near_a_crater, near_a_coral_reef, near_the_red_sea,
+   near_a_body_of_water, …).
+
+Rules:
+- Output valid JSON only: {"amenities": ["..."]}
+- ONLY use places that appear in THIS tooltip. Do not invent other
+  Israeli sites (no Dead Sea / Kineret / Negev / Ramon / Eilat unless
+  this tooltip names them).
+- Do not add types that contradict the tooltip.
+- If there are no named places, return the amenities unchanged.
+
+Do not copy example places from any training pattern. Apply the rule to
+whatever THIS tooltip actually names.
+"""
+
+    def __init__(
+        self,
+        client: OpenAI | None = None,
+        *,
+        model: str | None = None,
+    ) -> None:
+        self.client = client or make_nebius_openai_client()
+        self.model = model or self.MODEL
+
+    def enrich(
+        self,
+        raw_text: str,
+        amenities: list[str],
+        *,
+        usage: LlmUsage | None = None,
+    ) -> list[str]:
+        user_content = (
+            f"Tooltip:\n{raw_text}\n\n"
+            f"Extracted amenities:\n{json.dumps(amenities, ensure_ascii=False)}"
+        )
+        response = self.client.chat.completions.create(
+            model=self.model,
             messages=[
                 {"role": "system", "content": self.SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
@@ -256,7 +353,10 @@ Schema:
             usage.add_chat(response.usage)
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
-        return AccommodationExtract.model_validate(data).as_details_dict()
+        raw_list = data.get("amenities", amenities)
+        if not isinstance(raw_list, list):
+            return list(amenities)
+        return [str(a).strip() for a in raw_list if str(a).strip()]
 
 
 class EmbeddingLLMClient:

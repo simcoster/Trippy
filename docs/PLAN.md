@@ -6,6 +6,10 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-08-30)
+
+Locked instruct model on **Qwen3-235B-A22B-Instruct-2507** for amenity extract + light/recommender (`QWEN_INSTRUCT_MODEL`). Agent **planner / query-constraint extract** stays on **Qwen3-30B-A3B** for now (`QWEN_INSTRUCT_30B_MODEL`) — easy to bump later. 30B failed to generalize named-place amenities off few-shot (Eilat); 235B passed on the same prompt. See “Locked — chat / extract model” below.
+
 ### Done (2026-08-27)
 
 Spent the day mostly on amenities + getting a real local loop on the agent.
@@ -83,7 +87,7 @@ Already in repo:
 
 - LangGraph agent (`source/agent/graph.py`) with claims RAG + campsite list tool; production channel = Telegram (`main.py`)
 - Local Streamlit harness (`scripts/streamlit_chat.py`) with node/LLM/tool traces
-- Nebius Qwen instruct for agent chat; Nebius Qwen embeddings for amenities + claims queries
+- Nebius **Qwen3-235B-A22B-Instruct-2507** for amenity extract + agent light/recommender; **Qwen3-30B-A3B** for agent planner / query-constraint extract; Qwen embeddings for amenities + claims queries
 - Postgres + pgvector + Alembic (`campsites`, `claims`, `amenities`, `accommodation_types`, `availability`)
 - Scrapers under `source/scraper/`: discovery, booking IDs, availability/prices, amenity enrichment
 
@@ -385,6 +389,20 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 3. Party-size / stay-type bucket validation on real pages  
 4. Conversation store: Postgres JSONB first vs Redis KV first  
 5. Nebius target shape: serverless vs small always-on + jobs  
+
+### Locked — chat / extract model: Qwen3-235B-A22B (2026-08-30)
+
+**Choice:** Nebius **Qwen3-235B-A22B-Instruct-2507** for amenity ingest extract and the agent light/recommender nodes (`QWEN_INSTRUCT_MODEL`). Exception: the agent **planner / query-constraint extract** stays on **Qwen3-30B-A3B-Instruct-2507** (`QWEN_INSTRUCT_30B_MODEL` → `planner_model` in `graph.py`) until we decide it needs the larger model.
+
+**Why not stay on 30B-A3B:** the 30B extract prompt generalized poorly off few-shot place examples. “חוף אילת” invented Dead Sea / lake; Ramon and Kineret (in the prompt) worked. 235B with the **same** prompt passed all three (Eilat → beach + Red Sea, no Dead Sea).
+
+**Why not a cheap 30B extract + dedicated place node:** after a prompt fix that path also hit 3/3 and was only ~1.6× extract-only 30B (~+$0.013 / 200 listings). We still picked 235B for ingest because (1) the $ delta vs 30B-only is small at our volume (~2× token price → about **+$0.02 per 200-listing scrape**), (2) one hop / one prompt is simpler. Agent query-constraint extract stays on 30B until we decide otherwise.
+
+**Cost (Nebius Token Factory, 2026-08-30):** $0.20 / $0.60 per 1M in/out vs $0.10 / $0.30 on 30B-A3B. Embeddings stay `Qwen/Qwen3-Embedding-8B`.
+
+**Revisit if:** scrape volume jumps an order of magnitude, or 235B latency/availability becomes a problem. Then consider 30B extract + 235B (or 30B) place node.
+
+---
 
 ---
 

@@ -27,6 +27,7 @@ from source.agent.constraints import (
     today_il,
 )
 from source.scraper.amenity_enrichment.llm import (
+    QWEN_INSTRUCT_30B_MODEL,
     QWEN_INSTRUCT_MODEL,
     ClaimsEmbeddingLLMClient,
     make_agent_chat_model,
@@ -156,7 +157,13 @@ claims_search_tool = StructuredTool.from_function(
 # Qwen return empty content + tool_calls, which surfaced as blank agent replies.
 light_model = make_agent_chat_model(temperature=0.7)
 heavy_model = make_agent_chat_model(temperature=0.7)
+# Query-constraint extract (the LLM that used to live in planner). Flip to
+# QWEN_INSTRUCT_MODEL when we want 235B here too.
+planner_model = make_agent_chat_model(
+    temperature=0.7, model=QWEN_INSTRUCT_30B_MODEL
+)
 AGENT_CHAT_MODEL = QWEN_INSTRUCT_MODEL
+PLANNER_CHAT_MODEL = QWEN_INSTRUCT_30B_MODEL
 
 _EMPTY_REPLY_FALLBACK = (
     "לא הצלחתי להשלים תשובה כרגע. נסו לנסח שוב עם תאריך, מיקום או העדפה (למשל מים זורמים)."
@@ -367,7 +374,10 @@ def check_after_cleaning(state: ChatState) -> str:
 
 
 def extractor_node(state: ChatState) -> ChatState:
-    """Extract structured constraints from the user query (JSON only; no tools)."""
+    """Extract structured constraints from the user query (JSON only; no tools).
+
+    Uses planner_model (30B). Flip that binding to 235B when we want it.
+    """
     import json
 
     today = today_il()
@@ -426,7 +436,7 @@ def extractor_node(state: ChatState) -> ChatState:
         )
     )
 
-    response = heavy_model.invoke([system_msg] + state["messages"])
+    response = planner_model.invoke([system_msg] + state["messages"])
     raw = _message_text(response.content)
     tool_calls = getattr(response, "tool_calls", None) or []
     user_text = _latest_user_text(state["messages"])
