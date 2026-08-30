@@ -39,6 +39,7 @@ class Campsite(Base):
         back_populates="campsite"
     )
     notices: Mapped[list[Notice]] = relationship(back_populates="campsite")
+    list_prices: Mapped[list[ListPrice]] = relationship(back_populates="campsite")
 
 
 class Claim(Base):
@@ -163,6 +164,9 @@ class AccommodationType(Base):
     availability: Mapped[list[Availability]] = relationship(
         back_populates="accommodation_type"
     )
+    list_prices: Mapped[list[ListPrice]] = relationship(
+        back_populates="accommodation_type"
+    )
 
 
 class Availability(Base):
@@ -206,4 +210,52 @@ class Availability(Base):
     campsite: Mapped[Campsite] = relationship(back_populates="availability")
     accommodation_type: Mapped[AccommodationType] = relationship(
         back_populates="availability"
+    )
+
+
+class ListPrice(Base):
+    """Published parks.org.il rate-card prices (not date-specific availability)."""
+
+    __tablename__ = "list_prices"
+    __table_args__ = (
+        UniqueConstraint(
+            "site_id",
+            "accommodation_type_id",
+            "guest_type",
+            "rate_period",
+            "rate_class",
+            name="list_prices_unique_rate",
+        ),
+        Index("list_prices_site_idx", "site_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    accommodation_type_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("accommodation_types.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    guest_type: Mapped[str] = mapped_column(Text, nullable=False)
+    rate_period: Mapped[str] = mapped_column(Text, nullable=False)
+    rate_class: Mapped[str] = mapped_column(Text, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, default="ILS")
+    notes: Mapped[str | None] = mapped_column(Text)
+    raw_label: Mapped[str] = mapped_column(Text, nullable=False)
+    scraped_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    campsite: Mapped[Campsite] = relationship(back_populates="list_prices")
+    accommodation_type: Mapped[AccommodationType] = relationship(
+        back_populates="list_prices"
     )

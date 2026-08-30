@@ -6,6 +6,15 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-08-30, later)
+
+**Info-site rate card (`source/scraper/info_site/`)**
+- New `list_prices` table (`011_list_prices`): published parks.org.il tariffs (guest type, weekday/weekend, regular class), not INPA date slots
+- Scraper reads `#table1` / `.tableMain[data-id=1]` (רגיל), classifies lodging rows with Qwen 30B, get-or-creates `accommodation_types` from those names
+- Fee rows (`תוספת…`) are parsed and skipped; failing test left until persist lands
+- Newsflash helpers (`newsflashes.py`) + failing persist test exist but are **not** called from `scrape.py --prices`
+- Availability now searches **1 adult**; matches existing types only and **aborts** on unknown names
+
 ### Done (2026-08-30)
 
 Locked instruct model on **Qwen3-235B-A22B-Instruct-2507** for amenity extract + light/recommender (`QWEN_INSTRUCT_MODEL`). Agent **planner / query-constraint extract** stays on **Qwen3-30B-A3B** for now (`QWEN_INSTRUCT_30B_MODEL`) — easy to bump later. 30B failed to generalize named-place amenities off few-shot (Eilat); 235B passed on the same prompt. See “Locked — chat / extract model” below.
@@ -31,10 +40,10 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 
 **Availability scraper (INPA / secure-hotels.net)**
 - `populate_availability.py` queries `BE_Results.aspx` HTML (no public API; prices live in embedded `roomData` JSON)
-- Rolls next **14 nights**, one night at a time, for configured adults (default 2)
+- Rolls next **14 nights**, one night at a time, for configured adults (default **1**)
 - Parses room offerings; strips `מספר N` suffixes and aggregates → `room_count`
+- `accommodation_types` are created by the **info-site** scraper; availability only matches
 - Upserts into:
-  - `accommodation_types` (`id`, `name`) — created on first sight
   - `availability` (`site_id`, `start_date`, `end_date`, `accommodation_type_id`, `price`, `adults_no`, `room_count`, `scraped_at`)
 - Re-scrape for a site/night **deletes existing rows first**, then inserts (avoids stale room types)
 - Config: `source/scraper/config.json` (`nights`, `adults`, `limit_campsites`, …)
@@ -61,8 +70,12 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Agent must search **accommodation** amenities for “room with shower”, not only site / claims
 - Semantic amenity match explanations (“running water ≈ sink with faucet”)
 - Re-embed `claims` with Qwen after clearing OpenAI vectors
-- Notice scraper (find official banners, store `html_element`, delete when the element is gone)
+- Notice scraper (helpers in `info_site/newsflashes.py`; not wired into `scrape.py` yet)
 - Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
+- Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)
+- Scrape other `#tableN` tabs (מנוי, חייל, קבוצה, אזרח ותיק, …) and `ציוד להשכרה`
+- Listing-level **מה חדש** / site-wide ticker when `site_id` is unknown
+- Availability unknown-type: **log and continue** instead of aborting the scrape
 
 ### Later — second booking source + standardization
 
@@ -92,8 +105,8 @@ Already in repo:
 - LangGraph agent (`source/agent/graph.py`) with claims RAG + campsite list tool; production channel = Telegram (`main.py`)
 - Local Streamlit harness (`scripts/streamlit_chat.py`) with node/LLM/tool traces
 - Nebius **Qwen3-235B-A22B-Instruct-2507** for amenity extract + agent light/recommender; **Qwen3-30B-A3B** for agent planner / query-constraint extract; Qwen embeddings for amenities + claims queries
-- Postgres + pgvector + Alembic (`campsites`, `claims`, `notices`, `amenities`, `accommodation_types`, `availability`)
-- Scrapers under `source/scraper/`: discovery, booking IDs, availability/prices, amenity enrichment
+- Postgres + pgvector + Alembic (`campsites`, `claims`, `notices`, `amenities`, `accommodation_types`, `availability`, `list_prices`)
+- Scrapers under `source/scraper/`: discovery, booking IDs, info-site rate cards, availability/prices, amenity enrichment
 
 This plan extends that into a full ingestion → retrieval → agent → eval → production stack.
 

@@ -16,7 +16,7 @@ from populate_availability import (  # noqa: E402
 
 
 def test_normalize_strips_single_unit_number():
-    assert normalize_accommodation_namecommodation_name("בונגלו עם מזגן מספר 1") == "בונגלו עם מזגן"
+    assert normalize_accommodation_name("בונגלו עם מזגן מספר 1") == "בונגלו עם מזגן"
     assert normalize_accommodation_name("בונגלו עם מזגן מספר 42") == "בונגלו עם מזגן"
 
 
