@@ -74,6 +74,9 @@
                 "-v"
             ],
             "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "envFile": "${workspaceFolder}/.env",
             "python": "${workspaceFolder}/.venv/Scripts/python.exe",
             "console": "integratedTerminal",
@@ -89,6 +92,9 @@
                 "-v"
             ],
             "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "envFile": "${workspaceFolder}/.env",
             "python": "${workspaceFolder}/.venv/Scripts/python.exe",
             "console": "integratedTerminal",

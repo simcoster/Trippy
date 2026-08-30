@@ -1,0 +1,27 @@
+---
+description: Import Python modules from source.* so Ctrl+click / Pylance resolve
+globs: "**/*.py"
+alwaysApply: true
+---
+
+# Python imports
+
+Import from the workspace package `source.`, never by mutating `sys.path`.
+
+Pylance does not execute `sys.path.insert`. Top-level names like `info_site` or `populate_availability` do not resolve, so Ctrl+click on a call goes nowhere.
+
+```python
+# BAD — pytest-only path hack
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scraper"))
+from info_site.quote import quote_night
+
+# GOOD — same module, Go to Definition works
+from source.scraper.info_site.quote import quote_night
+from source.agent.constraints import normalize_constraints
+```
+
+- Tests, agent, scripts, and new scraper code: `from source.<area>.<module> import ...`
+- Do not add `# noqa: E402` to paper over imports after `sys.path` changes
+- `PYTHONPATH` is the repo root (`pyproject.toml` `[tool.pytest.ini_options] pythonpath`, `.vscode/launch.json`). Do not set it to `source/scraper` for new entry points

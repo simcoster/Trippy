@@ -1,0 +1,27 @@
+---
+description: Ask before changing any existing test; new tests are fine
+alwaysApply: true
+---
+
+# Existing tests need permission
+
+Do not edit, rewrite, delete, or weaken a test that already exists in the repo unless the user has explicitly allowed that change in this conversation.
+
+That includes assertions, fixtures, helpers, parametrization, skips/xfails, names, and imports inside an existing test file.
+
+```text
+# BAD — agent changes an existing test to match new code
+# (no user yes)
+
+# GOOD — ask first, wait for yes, then edit
+# "This would change test_quote_night in test_list_price_quote.py. OK to update it?"
+```
+
+Allowed without asking:
+
+- Creating a **new** test file
+- Adding a **new** test function in a **new** file
+
+Adding a new test function to an existing file still counts as modifying that file — ask first.
+
+If the user said to implement a feature or fix a bug, that is not permission to change existing tests. Ask, then wait.

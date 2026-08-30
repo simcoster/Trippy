@@ -22,6 +22,7 @@ dependencies = [
     "sqlalchemy>=2.0.52",
     "alembic>=1.19.1",
     "pydantic>=2.0.0",
+    "streamlit-mcp>=0.7.1",
 ]
 
 [tool.uv.workspace]
@@ -33,3 +34,6 @@ members = [
 dev = [
     "streamlit>=1.62.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

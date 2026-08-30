@@ -9,6 +9,9 @@ tool calls (params + returns), token cost, and latency.
 
 Run from repo root:
   uv run streamlit run scripts/streamlit_chat.py
+
+streamlit-mcp cannot drive st.chat_input. The sidebar "MCP prompt" form is
+driveable (text_area + submit).
 """
 
 from __future__ import annotations
@@ -109,6 +112,20 @@ def _format_prompt_messages(messages: list[Any]) -> list[dict[str, Any]]:
             flat.extend(batch)
         messages = flat
     return [_format_lc_message(m) for m in messages]
+
+
+def _format_node_input(inputs: Any) -> list[dict[str, Any]]:
+    """LangGraph node enter: ChatState (or a messages list) → trace rows."""
+    if inputs is None:
+        return []
+    if isinstance(inputs, dict):
+        messages = inputs.get("messages")
+        if messages is None:
+            return []
+        return _format_prompt_messages(list(messages))
+    if isinstance(inputs, list):
+        return _format_prompt_messages(inputs)
+    return []
 
 
 def _int_or_zero(value: Any) -> int:
@@ -223,6 +240,7 @@ class TraceCallbackHandler(BaseCallbackHandler):
                 "name": node,
                 "run_id": str(run_id),
                 "phase": "start",
+                "input": _format_node_input(inputs),
             }
         )
 
@@ -304,10 +322,36 @@ def _install_tool_hooks() -> None:
             result = fn(*args, **kwargs)
             latency_ms = (time.perf_counter() - started) * 1000
             if _current_trace is not None:
-                if name == "search_claims":
+                if name in (
+                    "search_claims",
+                    "search_review_claims",
+                    "search_stated_amenities",
+                ):
                     params = {
                         "query": args[0] if args else kwargs.get("query"),
                         "limit": args[1] if len(args) > 1 else kwargs.get("limit", 5),
+                    }
+                    if name == "search_stated_amenities":
+                        params["accommodation_type_ids"] = kwargs.get(
+                            "accommodation_type_ids"
+                        )
+                elif name == "lookup_campsite_by_name":
+                    params = {"name": args[0] if args else kwargs.get("name")}
+                elif name == "search_open_slots":
+                    params = {
+                        "date_range": kwargs.get("date_range"),
+                        "site_id": kwargs.get("site_id"),
+                        "party_size": kwargs.get("party_size"),
+                        "numeric_constraints": kwargs.get("numeric_constraints"),
+                    }
+                    last = getattr(agent_graph, "_LAST_OPEN_SLOTS_QUERY", None)
+                    if isinstance(last, dict):
+                        params.update(last)
+                elif name == "search_availability":
+                    params = {
+                        "hotel_id": args[0] if args else kwargs.get("hotel_id"),
+                        "date_range": kwargs.get("date_range"),
+                        "party_size": kwargs.get("party_size"),
                     }
                 elif name == "search_campsites":
                     params = {
@@ -333,6 +377,21 @@ def _install_tool_hooks() -> None:
         return wrapper
 
     agent_graph.search_claims = _wrap("search_claims", agent_graph.search_claims)
+    agent_graph.search_review_claims = _wrap(
+        "search_review_claims", agent_graph.search_review_claims
+    )
+    agent_graph.search_stated_amenities = _wrap(
+        "search_stated_amenities", agent_graph.search_stated_amenities
+    )
+    agent_graph.lookup_campsite_by_name = _wrap(
+        "lookup_campsite_by_name", agent_graph.lookup_campsite_by_name
+    )
+    agent_graph.search_open_slots = _wrap(
+        "search_open_slots", agent_graph.search_open_slots
+    )
+    agent_graph.search_availability = _wrap(
+        "search_availability", agent_graph.search_availability
+    )
     agent_graph.search_campsites = _wrap(
         "search_campsites", agent_graph.search_campsites
     )
@@ -371,7 +430,40 @@ def _install_tool_hooks() -> None:
     agent_graph._trippy_streamlit_hooks = True
 
 
+def _install_node_input_hooks() -> None:
+    """Stamp each node's enter event with the ChatState it actually received."""
+    if getattr(agent_graph, "_trippy_streamlit_node_input_hooks", False):
+        return
+
+    def _wrap_node(name: str, fn: Any) -> Any:
+        def wrapper(state: Any, *args: Any, **kwargs: Any) -> Any:
+            if _current_trace is not None:
+                incoming = _format_node_input(state)
+                for event in reversed(_current_trace):
+                    if (
+                        event.get("kind") == "node"
+                        and event.get("name") == name
+                        and event.get("phase") == "start"
+                    ):
+                        event["input"] = incoming
+                        break
+            return fn(state, *args, **kwargs)
+
+        wrapper.__name__ = getattr(fn, "__name__", name)
+        wrapper.__doc__ = getattr(fn, "__doc__", None)
+        return wrapper
+
+    agent_graph.light_node = _wrap_node("light", agent_graph.light_node)
+    agent_graph.extractor_node = _wrap_node("extractor", agent_graph.extractor_node)
+    agent_graph.planner_node = _wrap_node("planner", agent_graph.planner_node)
+    agent_graph.recommender_node = _wrap_node(
+        "recommender", agent_graph.recommender_node
+    )
+    agent_graph._trippy_streamlit_node_input_hooks = True
+
+
 _install_tool_hooks()
+_install_node_input_hooks()
 
 
 def _init_session() -> None:
@@ -408,21 +500,62 @@ def _serialize_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     return rows
 
 
+def _tool_queries_since_node_start(
+    trace: list[dict[str, Any]], node_name: str
+) -> list[dict[str, Any]]:
+    start_at: int | None = None
+    for i, event in enumerate(trace):
+        if (
+            event.get("kind") == "node"
+            and event.get("name") == node_name
+            and event.get("phase") == "start"
+        ):
+            start_at = i
+    if start_at is None:
+        return []
+    queries: list[dict[str, Any]] = []
+    for event in trace[start_at + 1 :]:
+        if event.get("kind") != "tool":
+            continue
+        row: dict[str, Any] = {"tool": event.get("name")}
+        params = event.get("params")
+        if isinstance(params, dict):
+            row.update(params)
+        queries.append(row)
+    return queries
+
+
+def _planner_queries_reply(trace: list[dict[str, Any]]) -> str | None:
+    for event in reversed(trace):
+        if (
+            event.get("kind") == "node"
+            and event.get("name") == "planner"
+            and event.get("phase") == "update"
+        ):
+            update = event.get("update") or {}
+            if "fits" in update:
+                body = {
+                    "fits": update.get("fits"),
+                    "rejected": update.get("rejected"),
+                    "rejected_count": update.get("rejected_count"),
+                    "queries": update.get("queries"),
+                }
+                for key in ("error", "skipped", "open_slots_query"):
+                    if update.get(key) is not None:
+                        body[key] = update[key]
+                return json.dumps(body, ensure_ascii=False, indent=2, default=str)
+            queries = update.get("queries")
+            if queries is None:
+                return None
+            return json.dumps(queries, ensure_ascii=False, indent=2, default=str)
+    return None
+
+
 def _last_ai_reply(
     messages: list[BaseMessage],
     *,
     stop_after: HeavyThrough = "recommender",
 ) -> str:
-    if stop_after == "planner":
-        tool_texts = [
-            text
-            for msg in messages
-            if isinstance(msg, ChatMessage)
-            for text in [_content_to_str(msg.content).strip()]
-            if text
-        ]
-        if tool_texts:
-            return "\n\n---\n\n".join(tool_texts)
     ai_messages = [m for m in messages if isinstance(m, AIMessage)]
     for msg in reversed(ai_messages):
         text = _content_to_str(msg.content).strip()
@@ -602,10 +735,36 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
             title = f"{i + 1}. Node `{event['name']}`"
             latency = _format_latency(event.get("latency_ms"))
             if phase == "start":
-                st.markdown(f"**{title}** _(enter)_")
+                incoming = event.get("input") or []
+                if incoming:
+                    with st.expander(f"{title} _(enter)_", expanded=True):
+                        for msg in incoming:
+                            label = msg.get("type") or "message"
+                            role = msg.get("role")
+                            if role:
+                                label = f"{label} ({role})"
+                            st.markdown(f"**{label}**")
+                            st.code(
+                                _truncate(msg.get("content") or ""),
+                                language=None,
+                            )
+                else:
+                    st.markdown(f"**{title}** _(enter)_")
                 continue
-            with st.expander(f"{title} · state update · {latency}", expanded=False):
-                _json_block(event.get("update"))
+            update = event.get("update")
+            is_queries = (
+                event.get("name") == "planner"
+                and isinstance(update, dict)
+                and "queries" in update
+            )
+            label = "queries" if is_queries else "state update"
+            if is_queries and isinstance(update, dict) and "fits" in update:
+                label = "fits"
+            with st.expander(
+                f"{title} · {label} · {latency}",
+                expanded=is_queries,
+            ):
+                _json_block(update)
         elif kind == "llm_start":
             node = event.get("node")
             label = f"{i + 1}. LLM prompt · `{event.get('model', 'chat_model')}`"
@@ -688,8 +847,37 @@ def invoke_agent(
         ):
             if mode == "updates" and isinstance(chunk, dict):
                 for node_name, update in chunk.items():
-                    if isinstance(update, dict) and "messages" in update:
-                        serialized_update: Any = {
+                    if node_name == "planner" and isinstance(update, dict):
+                        queries = _tool_queries_since_node_start(trace, "planner")
+                        fits_payload: dict[str, Any] | None = None
+                        for msg in update.get("messages") or []:
+                            raw = _content_to_str(getattr(msg, "content", ""))
+                            try:
+                                data = json.loads(raw)
+                            except json.JSONDecodeError:
+                                continue
+                            if isinstance(data, dict) and "fits" in data:
+                                fits_payload = data
+                                break
+                        serialized_update = {"queries": queries}
+                        if fits_payload is not None:
+                            serialized_update["fits"] = fits_payload.get("fits")
+                            serialized_update["rejected"] = fits_payload.get(
+                                "rejected"
+                            )
+                            serialized_update["rejected_count"] = (
+                                fits_payload.get("rejected_count")
+                            )
+                            for key in (
+                                "error",
+                                "skipped",
+                                "constraints",
+                                "open_slots_query",
+                            ):
+                                if fits_payload.get(key) is not None:
+                                    serialized_update[key] = fits_payload[key]
+                    elif isinstance(update, dict) and "messages" in update:
+                        serialized_update = {
                             "messages": _serialize_messages(update["messages"])
                         }
                     else:
@@ -724,6 +912,10 @@ def invoke_agent(
     trace.append({"kind": "summary", **summary})
 
     st.session_state.graph_messages = final_messages
+    if stop_after == "planner":
+        reply = _planner_queries_reply(trace)
+        if reply:
+            return reply, trace
     return _last_ai_reply(final_messages, stop_after=stop_after), trace
 
 
@@ -761,6 +953,24 @@ with st.sidebar:
     if st.button("Reset conversation", width="stretch"):
         _reset_conversation()
         st.rerun()
+
+    st.divider()
+    st.subheader("MCP prompt")
+    st.caption("streamlit-mcp cannot drive chat_input. Send from here.")
+    with st.form("agent_prompt_form", clear_on_submit=True, border=False):
+        mcp_text = st.text_area(
+            "Prompt",
+            key="agent_prompt",
+            placeholder="Ask about campsites…",
+            height=80,
+        )
+        agent_send = st.form_submit_button(
+            "Send prompt",
+            key="agent_send",
+            icon=":material/send:",
+            width="stretch",
+        )
+    mcp_prompt = (mcp_text or "").strip() if agent_send else ""
 
     st.divider()
     st.subheader("Last turn trace")
@@ -813,7 +1023,8 @@ for turn in st.session_state.display:
             with st.expander("LangGraph trace", expanded=False):
                 _render_trace(turn["trace"])
 
-if prompt := st.chat_input("Ask about campsites…"):
+prompt = st.chat_input("Ask about campsites…") or mcp_prompt
+if prompt:
     st.session_state.display.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)

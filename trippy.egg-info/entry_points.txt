@@ -1,0 +1,7 @@
+[console_scripts]
+scrape-all = scrape_cli:scrape_all
+scrape-availability = scrape_cli:scrape_availability
+scrape-booking-ids = scrape_cli:scrape_booking_ids
+scrape-help = scrape_cli:scrape_help
+scrape-prices = scrape_cli:scrape_prices
+scrape-sites = scrape_cli:scrape_sites

@@ -49,6 +49,45 @@ def _parse_iso_day(value: Any) -> date | None:
         return None
 
 
+_REVIEW_DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%Y/%m/%d",
+    "%d/%m/%Y",
+    "%d.%m.%Y",
+    "%Y-%m-%dT%H:%M:%S",
+    "%B %Y",
+    "%b %Y",
+)
+
+
+def parse_review_day(value: Any) -> date | None:
+    """Best-effort calendar day from claims.review_date (text)."""
+    parsed = _parse_iso_day(value)
+    if parsed is not None:
+        return parsed
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in _REVIEW_DATE_FORMATS:
+        try:
+            return datetime.strptime(text[:32], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def claim_recency(
+    value: Any, *, today: date | None = None
+) -> tuple[str | None, int | None]:
+    """Return (YYYY-MM-DD, days_ago) for a review date; both None if unknown."""
+    parsed = parse_review_day(value)
+    if parsed is None:
+        return None, None
+    return parsed.isoformat(), (today_il(today) - parsed).days
+
+
 def _as_stay_range(start: date, end: date | None = None) -> dict[str, str]:
     """Check-in / check-out ISO range. End is exclusive; always at least one night."""
     if end is None or end <= start:
@@ -81,43 +120,43 @@ def resolve_relative_date_phrase(
     return None
 
 
-def _normalize_amenity_item(item: Any) -> str | dict[str, Any] | None:
+def _normalize_semantic_item(item: Any) -> dict[str, Any] | None:
+    """Normalize one semantic / leftover amenity item to {query} or {op: or, values}."""
     if item is None:
         return None
     if isinstance(item, str):
         text = item.strip()
-        return text or None
+        return {"query": text} if text else None
     if isinstance(item, dict):
-        op = str(item.get("op") or "and").strip().lower()
+        op = str(item.get("op") or "").strip().lower()
         values = item.get("values")
-        if values is None and "query" in item:
-            q = str(item.get("query") or "").strip()
-            return q or None
-        if not isinstance(values, list):
-            return None
-        cleaned = [str(v).strip() for v in values if str(v).strip()]
-        if not cleaned:
-            return None
-        if op == "or":
-            return {"op": "or", "values": cleaned}
-        # AND group of strings → flatten as separate AND terms later; keep as list expand
-        if len(cleaned) == 1:
-            return cleaned[0]
-        return {"op": "or", "values": cleaned} if op == "or" else cleaned[0]
-    return str(item).strip() or None
+        if isinstance(values, list):
+            cleaned = [str(v).strip() for v in values if str(v).strip()]
+            if not cleaned:
+                return None
+            if op == "or" or (not op and len(cleaned) > 1):
+                return {"op": "or", "values": cleaned}
+            return {"query": cleaned[0]}
+        q = str(item.get("query") or item.get("text") or "").strip()
+        return {"query": q} if q else None
+    text = str(item).strip()
+    return {"query": text} if text else None
 
 
-def _normalize_amenities(raw: Any) -> list[str | dict[str, Any]]:
+def _normalize_semantic_list(raw: Any) -> list[dict[str, Any]]:
     if raw is None:
         return []
-    if not isinstance(raw, list):
-        item = _normalize_amenity_item(raw)
-        return [item] if item is not None else []
-    out: list[str | dict[str, Any]] = []
-    for item in raw:
-        norm = _normalize_amenity_item(item)
+    items = raw if isinstance(raw, list) else [raw]
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        norm = _normalize_semantic_item(item)
         if norm is None:
             continue
+        key = json.dumps(norm, sort_keys=True, ensure_ascii=False)
+        if key in seen:
+            continue
+        seen.add(key)
         out.append(norm)
     return out
 
@@ -221,30 +260,31 @@ def normalize_constraints(
     """
     Normalize extractor output to:
       date: {start, end} | null
-      amenities: [str | {op: or, values: [...]}]
       numeric_constraints: [...]
-      semantic_constraints: [{query: ...}, ...]
+      semantic_constraints: [{query: ...} | {op: or, values: [...]}, ...]
+
+    Legacy `amenities` keys are folded into semantic_constraints.
     """
     parsed = parse_constraints_dict(data)
     today = today_il(today)
 
-    semantic = list(parsed.get("semantic_constraints") or [])
+    semantic = _normalize_semantic_list(
+        list(parsed.get("semantic_constraints") or [])
+        + list(parsed.get("amenities") or [])
+    )
     numeric = list(parsed.get("numeric_constraints") or [])
-    amenities = _normalize_amenities(parsed.get("amenities"))
 
     date_range = _normalize_date_field(parsed.get("date"), today=today)
     from_semantic, semantic = _date_from_semantic_queries(semantic, today=today)
     if date_range is None:
         date_range = from_semantic
+    semantic = _normalize_semantic_list(semantic)
 
     # Prefer code for relative phrases in the user text (LLM ISO is often off by a day).
     if user_text:
         match = _DATE_IN_QUERY_RE.search(user_text)
         if match:
             date_range = resolve_relative_date_phrase(match.group(1), today=today) or date_range
-
-    # Move amenity-like semantics that are clearly amenities into amenities if empty
-    # (keep quiet/kids as semantic)
 
     # Strip date-like numeric junk (field containing date)
     cleaned_numeric: list[Any] = []
@@ -258,23 +298,32 @@ def normalize_constraints(
                 continue
         cleaned_numeric.append(item)
 
-    out: dict[str, Any] = {
+    return {
         "date": date_range,
-        "amenities": amenities,
         "numeric_constraints": cleaned_numeric,
         "semantic_constraints": semantic,
     }
-    return out
 
 
-def amenity_search_queries(amenities: list[Any]) -> list[list[str]]:
+def campsite_name_from_parsed(parsed: dict[str, Any] | None) -> str | None:
+    """Named park the user asked to stay at — not a region vibe, not the catalog."""
+    if not parsed:
+        return None
+    raw = parsed.get("campsite")
+    if isinstance(raw, dict):
+        raw = raw.get("name") or raw.get("query") or raw.get("text")
+    text = str(raw or "").strip()
+    return text or None
+
+
+def semantic_search_queries(constraints: list[Any]) -> list[list[str]]:
     """
     For each AND group, return query strings (OR within the group).
 
     No ontology expansion here — place→type parents are added by the extract LLM at ingest.
     """
     groups: list[list[str]] = []
-    for item in amenities or []:
+    for item in constraints or []:
         if isinstance(item, str):
             text = item.strip()
             if text:
@@ -292,9 +341,12 @@ def amenity_search_queries(amenities: list[Any]) -> list[list[str]]:
     return groups
 
 
+# Back-compat alias: amenities were folded into semantic_constraints.
+amenity_search_queries = semantic_search_queries
+
+
 EMPTY_CONSTRAINTS: dict[str, Any] = {
     "date": None,
-    "amenities": [],
     "numeric_constraints": [],
     "semantic_constraints": [],
 }

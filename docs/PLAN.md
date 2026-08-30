@@ -6,9 +6,28 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-08-30, evening)
+
+**Two-stage planner (vacancies → amenity intersection)**
+- Stage 1: catalog vacancies for the extractor stay window. Availability is always **one-night** rows; a type must have a row for every night in `[start, end)` (`GROUP BY` + `HAVING COUNT(DISTINCT start_date)`). Named park → `site_id`; else all sites. Party size uses `max_occupancy` (scrape is 1 adult — do not filter `availability.adults_no`). Prices from `list_prices` + `quote_night`.
+- Stage 2: official amenity RAG **only on those type ids**. AND groups / OR values. A hit counts only when pgvector `<#>` ≤ **−0.8** (drops “least-bad” matches like tent ≈ air conditioning). Review claims are extra evidence, not the filter.
+- One `ChatMessage`: `fits` (with `why`), `rejected` sample, `rejected_count`, `open_slots_query` (interpolated SQL). Recommender may pick only from `fits`. Empty `fits` and `rejected_count: 0` means stage 1 found no vacancy rows.
+- Streamlit traces show the real vacancy SQL and fits payload, not a synthetic date tool.
+
+### Done (2026-08-30, later)
+
+**Info-site rate card (`source/scraper/info_site/`)**
+- New `list_prices` table (`011_list_prices`): published parks.org.il tariffs (guest type, weekday/weekend, regular class), not INPA date slots
+- Scraper reads `#table1` / `.tableMain[data-id=1]` (רגיל), classifies lodging rows with Qwen 30B, get-or-creates `accommodation_types` from those names
+- Fee rows (`תוספת…`) are parsed and skipped; failing test left until persist lands
+- Newsflash helpers (`newsflashes.py`) + failing persist test exist but are **not** called from `scrape.py --prices`
+- Availability now searches **1 adult**; matches existing types only and **aborts** on unknown names
+
 ### Done (2026-08-30)
 
 Locked instruct model on **Qwen3-235B-A22B-Instruct-2507** for amenity extract + light/recommender (`QWEN_INSTRUCT_MODEL`). Agent **planner / query-constraint extract** stays on **Qwen3-30B-A3B** for now (`QWEN_INSTRUCT_30B_MODEL`) — easy to bump later. 30B failed to generalize named-place amenities off few-shot (Eilat); 235B passed on the same prompt. See “Locked — chat / extract model” below.
+
+Schema: `notices` table for ephemeral official-site banners (e.g. “hot showers temporarily out of order”). Not catalog amenities, not review claims. Row is keyed by `site_id` + SHA-256 of the exact HTML element; next scrape deletes the row if that element is gone. Scraper + planner RAG not wired yet (`010_notices`).
 
 ### Done (2026-08-27)
 
@@ -29,11 +48,11 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 
 **Availability scraper (INPA / secure-hotels.net)**
 - `populate_availability.py` queries `BE_Results.aspx` HTML (no public API; prices live in embedded `roomData` JSON)
-- Rolls next **14 nights**, one night at a time, for configured adults (default 2)
+- Rolls next **14 nights**, one night at a time, for configured adults (default **1**)
 - Parses room offerings; strips `מספר N` suffixes and aggregates → `room_count`
+- `accommodation_types` are created by the **info-site** scraper; availability only matches
 - Upserts into:
-  - `accommodation_types` (`id`, `name`) — created on first sight
-  - `availability` (`site_id`, `start_date`, `end_date`, `accommodation_type_id`, `price`, `adults_no`, `room_count`, `scraped_at`)
+  - `availability` (`site_id`, `start_date`, `end_date`, `accommodation_type_id`, `adults_no`, `room_count`, `scraped_at`)
 - Re-scrape for a site/night **deletes existing rows first**, then inserts (avoids stale room types)
 - Config: `source/scraper/config.json` (`nights`, `adults`, `limit_campsites`, …)
 - SSL: OS trust store + relax `VERIFY_X509_STRICT` (corporate MITM)
@@ -46,19 +65,23 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 **Also in place (earlier)**
 - LangGraph agent + claims RAG skeleton, FastAPI, Docker Compose Postgres/pgvector
 
-### Next — planner constraints + amenity RAG wiring
+### Next — notices, site amenities, rate-card leftovers
 
-**Extractor schema (landed)**
+**Extractor + planner (landed)**
 - Structured prefs: `date: {start, end}`, `amenities` (AND list + `{op:"or", values}`), plus numeric/semantic leftovers
 - Relative dates resolved in Python (Asia/Jerusalem)
 - Named-place → type expansion is done by the **extract LLM** at ingest (not a place list / regex tool): e.g. Kineret also yields lake + body of water; Negev also yields desert. Same rule should apply when splitting review claims.
+- Planner stage 1 filters one-night availability for the stay; stage 2 intersects official accommodation amenities (`<#> ≤ −0.8`) with `why` on each fit
 
 **Still open**
-- `search_availability` / SQL filter by extracted `date`
 - Site-level `campsites.amenities` jsonb + GIN
-- Agent must search **accommodation** amenities for “room with shower”, not only site / claims
-- Semantic amenity match explanations (“running water ≈ sink with faucet”)
 - Re-embed `claims` with Qwen after clearing OpenAI vectors
+- Notice scraper (helpers in `info_site/newsflashes.py`; not wired into `scrape.py` yet)
+- Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
+- Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)
+- Scrape other `#tableN` tabs (מנוי, חייל, קבוצה, אזרח ותיק, …) and `ציוד להשכרה`
+- Listing-level **מה חדש** / site-wide ticker when `site_id` is unknown
+- Availability unknown-type: **log and continue** instead of aborting the scrape
 
 ### Later — second booking source + standardization
 
@@ -88,8 +111,8 @@ Already in repo:
 - LangGraph agent (`source/agent/graph.py`) with claims RAG + campsite list tool; production channel = Telegram (`main.py`)
 - Local Streamlit harness (`scripts/streamlit_chat.py`) with node/LLM/tool traces
 - Nebius **Qwen3-235B-A22B-Instruct-2507** for amenity extract + agent light/recommender; **Qwen3-30B-A3B** for agent planner / query-constraint extract; Qwen embeddings for amenities + claims queries
-- Postgres + pgvector + Alembic (`campsites`, `claims`, `amenities`, `accommodation_types`, `availability`)
-- Scrapers under `source/scraper/`: discovery, booking IDs, availability/prices, amenity enrichment
+- Postgres + pgvector + Alembic (`campsites`, `claims`, `notices`, `amenities`, `accommodation_types`, `availability`, `list_prices`)
+- Scrapers under `source/scraper/`: discovery, booking IDs, info-site rate cards, availability/prices, amenity enrichment
 
 This plan extends that into a full ingestion → retrieval → agent → eval → production stack.
 
@@ -207,6 +230,34 @@ Agent uses:
 
 - **claims RAG** → experiential / review-derived attributes  
 - **site RAG** → official facts, location, amenities wording  
+- **notices RAG** → live official banners (outages / temporary closures); overrides stated amenities while the row exists  
+
+### Table: `notices` (schema landed; scraper not wired)
+
+Ephemeral operator notices from the official page — a third evidence type, not `stated_amenities` and not review `claims`.
+
+Example: catalog still lists `hot_showers`; the site banner says “hot showers do not work temporarily.”
+
+| Field | Purpose |
+|-------|---------|
+| `site_id` | FK `campsites.id` (CASCADE) |
+| `source` | `inpa` / parks.org.il / … |
+| `page_url` | Page where the banner was found |
+| `notice_he` / `notice_en` | Normalized notice text for RAG / display |
+| `html_element` | **Exact HTML node** that carried the notice |
+| `html_element_sha256` | Unique with `site_id` (btree-safe; element text can be long) |
+| `embedding` | Same Qwen 1536-d space as amenities / claims |
+| `first_seen` | When we first stored this element |
+| `last_seen` | Last scrape that still found the element |
+
+**Lifecycle (scraper, later):**
+
+1. Load existing notices for the site (`html_element` + hash).
+2. If that exact element is still in the page → bump `last_seen`.
+3. If the element is **missing** → `DELETE` the row (notice is gone).
+4. New banner elements → insert (embed text, keep the raw HTML for the next check).
+
+Do not put these in `claims` with `review_date = last_scraped`. `last_seen` is liveness (“we still see this banner”), not a guest stay date. A live notice beats `stated_amenities` for current status; reviews can corroborate but do not outrank a live official outage.
 
 ---
 
@@ -374,8 +425,8 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 | **P1** | Google reviews ingest + claim splitter | Rich claims RAG |
 | **P2** | Availability/price scraper + buckets | Date/budget/party queries work |
 | **P3** | Conversation state table + merge logic | Multi-turn memory |
-| **P4** | Streamlit harness + tool wiring in LangGraph | Demoable agent — **Streamlit + Qwen wiring in progress on `hook-agent-to-search-and-RAG`** |
-| **P4b** | Planner `{date, amenities}` schema + amenity/availability tools | Failing test → green; grounded date+amenity answers |
+| **P4** | Streamlit harness + tool wiring in LangGraph | Demoable agent — **Streamlit + Qwen on `main`** |
+| **P4b** | Planner vacancies + amenity intersection | **Landed:** one-night rows for the stay, official amenity `<#>` ≤ −0.8 |
 | **P5** | Golden eval + LLM judge + CI | Regression safety |
 | **P6** | Nebius deploy, Telegram, caching, Grafana | Production path |
 | **P7** | Writeup | External narrative |

@@ -218,7 +218,7 @@ def search_url(
     check_out: date,
     *,
     rooms: int = 1,
-    adults: int = 2,
+    adults: int = 1,
     children: int = 0,
     infants: int = 0,
     lang: str = "heb",

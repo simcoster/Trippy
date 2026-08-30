@@ -10,9 +10,11 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from source.agent.constraints import (
     amenity_search_queries,
+    claim_recency,
     next_friday,
     normalize_constraints,
     resolve_relative_date_phrase,
+    semantic_search_queries,
 )
 
 load_dotenv()
@@ -54,12 +56,15 @@ def _date_covers_friday(constraints: dict, friday: date) -> bool:
     return False
 
 
-def _amenities_include_running_water(amenities: list) -> bool:
-    for item in amenities or []:
+def _semantic_includes_running_water(semantic: list) -> bool:
+    for item in semantic or []:
         if isinstance(item, str):
             if "running water" in item.lower().replace("_", " "):
                 return True
         elif isinstance(item, dict):
+            query = str(item.get("query") or "")
+            if "running water" in query.lower().replace("_", " "):
+                return True
             for v in item.get("values") or []:
                 if "running water" in str(v).lower().replace("_", " "):
                     return True
@@ -97,13 +102,13 @@ def test_normalize_same_day_bumps_end_to_one_night():
     out = normalize_constraints(
         {
             "date": {"start": "2026-08-28", "end": "2026-08-28"},
-            "amenities": [],
             "numeric_constraints": [],
             "semantic_constraints": [],
         },
         today=today,
     )
     assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
+    assert set(out) == {"date", "numeric_constraints", "semantic_constraints"}
 
 
 def test_normalize_moves_date_out_of_semantic():
@@ -115,11 +120,11 @@ def test_normalize_moves_date_out_of_semantic():
                 {"query": "quiet"},
             ],
             "numeric_constraints": [],
-            "amenities": [],
         },
         today=today,
     )
     assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
+    assert "amenities" not in out
     queries = [
         (s.get("query") if isinstance(s, dict) else s) for s in out["semantic_constraints"]
     ]
@@ -127,7 +132,7 @@ def test_normalize_moves_date_out_of_semantic():
     assert any(q and "quiet" in str(q).lower() for q in queries)
 
 
-def test_normalize_or_amenities_and_user_text_date():
+def test_normalize_folds_amenities_into_semantic():
     today = date(2026, 8, 27)
     out = normalize_constraints(
         {
@@ -139,22 +144,31 @@ def test_normalize_or_amenities_and_user_text_date():
                 }
             ],
             "numeric_constraints": [],
-            "semantic_constraints": [],
+            "semantic_constraints": [{"query": "quiet"}],
         },
         today=today,
         user_text=PROMPT_SEA_OR_WATER,
     )
     assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
-    group = _find_or_group(out["amenities"])
+    assert "amenities" not in out
+    group = _find_or_group(out["semantic_constraints"])
     assert group is not None
     norms = {_norm_label(v) for v in group["values"]}
     assert "near the sea" in norms
     assert "near a body of water" in norms
+    queries = [
+        (s.get("query") if isinstance(s, dict) else s)
+        for s in out["semantic_constraints"]
+    ]
+    assert any(q and "quiet" in str(q).lower() for q in queries)
 
 
 def test_amenity_search_queries_or_group_no_query_expand():
     """Planner searches exact OR values; place→type expansion is LLM ingest only."""
-    groups = amenity_search_queries(
+    groups = semantic_search_queries(
+        [{"op": "or", "values": ["near the sea", "near a body of water"]}]
+    )
+    assert groups == amenity_search_queries(
         [{"op": "or", "values": ["near the sea", "near a body of water"]}]
     )
     assert len(groups) == 1
@@ -164,11 +178,32 @@ def test_amenity_search_queries_or_group_no_query_expand():
     assert not any("kineret" in n for n in norms)
 
 
+def test_claim_recency_iso_and_days_ago():
+    day, days_ago = claim_recency("2026-05-22", today=date(2026, 8, 30))
+    assert day == "2026-05-22"
+    assert days_ago == 100
+
+
+def test_claim_recency_missing():
+    assert claim_recency(None, today=date(2026, 8, 30)) == (None, None)
+    assert claim_recency("", today=date(2026, 8, 30)) == (None, None)
+
+
+def test_semantic_evidence_payload_empty_queries():
+    from source.agent.graph import _semantic_evidence_payload
+
+    out = _semantic_evidence_payload([])
+    assert out["stated_amenities"] == []
+    assert out["review_claims"] == []
+    assert "stated_amenity_hits" not in out
+    assert "query" in out
+
+
 # ---- Integration tests (LLM extractor) ----
 
 
 def test_extractor_next_friday_running_water_constraint_schema():
-    """Hebrew trip ask → structured date + amenities."""
+    """Hebrew trip ask → structured date + semantic running water."""
     from source.agent.graph import extractor_node
 
     result = extractor_node({"messages": [HumanMessage(content=PROMPT_HE_RUNNING_WATER)]})
@@ -178,11 +213,14 @@ def test_extractor_next_friday_running_water_constraint_schema():
     assert _date_covers_friday(constraints, friday), (
         f"expected next Friday {friday.isoformat()} in date={constraints.get('date')!r}"
     )
-    assert "amenities" in constraints, (
-        f"expected amenities; got keys {sorted(constraints)}: {constraints}"
+    assert "amenities" not in constraints, (
+        f"amenities should be folded into semantic_constraints: {constraints}"
     )
-    assert _amenities_include_running_water(constraints.get("amenities") or []), (
-        f"expected running water in amenities={constraints.get('amenities')!r}"
+    assert _semantic_includes_running_water(
+        constraints.get("semantic_constraints") or []
+    ), (
+        f"expected running water in semantic_constraints="
+        f"{constraints.get('semantic_constraints')!r}"
     )
     # Date must not live only in semantic/numeric
     for item in constraints.get("semantic_constraints") or []:
@@ -194,7 +232,7 @@ def test_extractor_next_friday_running_water_constraint_schema():
 
 
 def test_extractor_next_friday_sea_or_body_of_water():
-    """English sea OR body-of-water + next Friday → date range + OR amenity group."""
+    """English sea OR body-of-water + next Friday → date range + OR semantic group."""
     from source.agent.graph import extractor_node
 
     result = extractor_node({"messages": [HumanMessage(content=PROMPT_SEA_OR_WATER)]})
@@ -209,9 +247,10 @@ def test_extractor_next_friday_sea_or_body_of_water():
         friday + timedelta(days=1)
     ).isoformat()
 
-    group = _find_or_group(constraints.get("amenities") or [])
+    group = _find_or_group(constraints.get("semantic_constraints") or [])
     assert group is not None, (
-        f"expected one OR amenity group; got {constraints.get('amenities')!r}"
+        f"expected one OR semantic group; got "
+        f"{constraints.get('semantic_constraints')!r}"
     )
     norms = {_norm_label(v) for v in group.get("values") or []}
     assert any("sea" in n for n in norms), norms
