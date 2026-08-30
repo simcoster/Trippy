@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+scrape_cli.py
+trippy.egg-info/PKG-INFO
+trippy.egg-info/SOURCES.txt
+trippy.egg-info/dependency_links.txt
+trippy.egg-info/entry_points.txt
+trippy.egg-info/requires.txt
+trippy.egg-info/top_level.txt
