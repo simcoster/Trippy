@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "streamlit-mcp": {
+      "command": "c:\\users\\omri\\appdata\\roaming\\python\\python314\\scripts\\uv.exe",
+      "args": [
+        "run",
+        "streamlit-mcp",
+        "serve",
+        "c:\\dev\\Trippy\\scripts\\streamlit_chat.py"
+      ],
+      "cwd": "c:\\dev\\Trippy"
+    }
+  }
+}

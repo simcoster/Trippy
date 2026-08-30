@@ -328,6 +328,14 @@ def _install_tool_hooks() -> None:
                         "query": args[0] if args else kwargs.get("query"),
                         "limit": args[1] if len(args) > 1 else kwargs.get("limit", 5),
                     }
+                elif name == "lookup_campsite_by_name":
+                    params = {"name": args[0] if args else kwargs.get("name")}
+                elif name == "search_availability":
+                    params = {
+                        "hotel_id": args[0] if args else kwargs.get("hotel_id"),
+                        "date_range": kwargs.get("date_range"),
+                        "party_size": kwargs.get("party_size"),
+                    }
                 elif name == "search_campsites":
                     params = {
                         "numeric_constraints": args[0]
@@ -357,6 +365,12 @@ def _install_tool_hooks() -> None:
     )
     agent_graph.search_stated_amenities = _wrap(
         "search_stated_amenities", agent_graph.search_stated_amenities
+    )
+    agent_graph.lookup_campsite_by_name = _wrap(
+        "lookup_campsite_by_name", agent_graph.lookup_campsite_by_name
+    )
+    agent_graph.search_availability = _wrap(
+        "search_availability", agent_graph.search_availability
     )
     agent_graph.search_campsites = _wrap(
         "search_campsites", agent_graph.search_campsites
@@ -466,21 +480,59 @@ def _serialize_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     return rows
 
 
+def _tool_queries_since_node_start(
+    trace: list[dict[str, Any]], node_name: str
+) -> list[dict[str, Any]]:
+    start_at: int | None = None
+    for i, event in enumerate(trace):
+        if (
+            event.get("kind") == "node"
+            and event.get("name") == node_name
+            and event.get("phase") == "start"
+        ):
+            start_at = i
+    if start_at is None:
+        return []
+    queries: list[dict[str, Any]] = []
+    for event in trace[start_at + 1 :]:
+        if event.get("kind") != "tool":
+            continue
+        row: dict[str, Any] = {"tool": event.get("name")}
+        params = event.get("params")
+        if isinstance(params, dict):
+            row.update(params)
+        queries.append(row)
+    return queries
+
+
+def _stay_nights_from_messages(messages: list[Any]) -> str | None:
+    prefix = "Requested stay nights:"
+    for msg in messages:
+        text = _content_to_str(getattr(msg, "content", "")).strip()
+        if text.startswith(prefix):
+            return text[len(prefix) :].strip()
+    return None
+
+
+def _planner_queries_reply(trace: list[dict[str, Any]]) -> str | None:
+    for event in reversed(trace):
+        if (
+            event.get("kind") == "node"
+            and event.get("name") == "planner"
+            and event.get("phase") == "update"
+        ):
+            queries = (event.get("update") or {}).get("queries")
+            if queries is None:
+                return None
+            return json.dumps(queries, ensure_ascii=False, indent=2, default=str)
+    return None
+
+
 def _last_ai_reply(
     messages: list[BaseMessage],
     *,
     stop_after: HeavyThrough = "recommender",
 ) -> str:
-    if stop_after == "planner":
-        tool_texts = [
-            text
-            for msg in messages
-            if isinstance(msg, ChatMessage)
-            for text in [_content_to_str(msg.content).strip()]
-            if text
-        ]
-        if tool_texts:
-            return "\n\n---\n\n".join(tool_texts)
     ai_messages = [m for m in messages if isinstance(m, AIMessage)]
     for msg in reversed(ai_messages):
         text = _content_to_str(msg.content).strip()
@@ -676,8 +728,21 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
                 else:
                     st.markdown(f"**{title}** _(enter)_")
                 continue
-            with st.expander(f"{title} · state update · {latency}", expanded=False):
-                _json_block(event.get("update"))
+            update = event.get("update")
+            is_queries = (
+                event.get("name") == "planner"
+                and isinstance(update, dict)
+                and "queries" in update
+            )
+            label = "queries" if is_queries else "state update"
+            with st.expander(
+                f"{title} · {label} · {latency}",
+                expanded=is_queries,
+            ):
+                if is_queries:
+                    _json_block(update.get("queries"))
+                else:
+                    _json_block(update)
         elif kind == "llm_start":
             node = event.get("node")
             label = f"{i + 1}. LLM prompt · `{event.get('model', 'chat_model')}`"
@@ -760,8 +825,16 @@ def invoke_agent(
         ):
             if mode == "updates" and isinstance(chunk, dict):
                 for node_name, update in chunk.items():
-                    if isinstance(update, dict) and "messages" in update:
-                        serialized_update: Any = {
+                    if node_name == "planner" and isinstance(update, dict):
+                        queries = _tool_queries_since_node_start(trace, "planner")
+                        stay = _stay_nights_from_messages(
+                            update.get("messages") or []
+                        )
+                        if stay:
+                            queries.append({"tool": "date", "stay_nights": stay})
+                        serialized_update: Any = {"queries": queries}
+                    elif isinstance(update, dict) and "messages" in update:
+                        serialized_update = {
                             "messages": _serialize_messages(update["messages"])
                         }
                     else:
@@ -796,6 +869,10 @@ def invoke_agent(
     trace.append({"kind": "summary", **summary})
 
     st.session_state.graph_messages = final_messages
+    if stop_after == "planner":
+        reply = _planner_queries_reply(trace)
+        if reply:
+            return reply, trace
     return _last_ai_reply(final_messages, stop_after=stop_after), trace
 
 

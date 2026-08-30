@@ -27,3 +27,7 @@ scrape-availability:
 
 # sites, booking ids, prices, then availability
 scrape-all: scrape-sites scrape-booking-ids scrape-prices scrape-availability
+
+# Local Streamlit agent (Telegram remains production)
+streamlit:
+    uv run streamlit run scripts/streamlit_chat.py

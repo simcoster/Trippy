@@ -22,6 +22,7 @@ from pgvector.psycopg import register_vector
 
 from source.agent.constraints import (
     EMPTY_CONSTRAINTS,
+    campsite_name_from_parsed,
     claim_recency,
     normalize_constraints,
     parse_constraints_dict,
@@ -48,6 +49,126 @@ class ChatState(TypedDict):
 # ---- 2. RAG Tool for Claims Search ----
 
 _claims_embedder = ClaimsEmbeddingLLMClient()
+
+
+def lookup_campsite_by_name(name: str) -> list[dict]:
+    """Resolve a user-named park to campsite id(s). Not a catalog dump."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return []
+    terms = _campsite_lookup_terms(name)
+    if not terms:
+        return []
+    like_patterns = [f"%{term}%" for term in terms]
+    sql = """
+        SELECT id, name, booking_hotel_id
+        FROM campsites
+        WHERE name ILIKE ANY(%s)
+        ORDER BY id
+        LIMIT 5
+    """
+    try:
+        with psycopg.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (like_patterns,))
+                rows = cur.fetchall()
+        return [
+            {
+                "id": int(row[0]),
+                "name": row[1],
+                "hotel_id": int(row[0]),
+                "booking_hotel_id": row[2],
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        return [{"error": f"Error looking up campsite: {e}"}]
+
+
+def search_availability(
+    hotel_id: int,
+    *,
+    date_range: dict | None = None,
+    party_size: int | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Vacancies for one campsite (campsites.id / accommodation_types.hotel_id)."""
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return []
+    clauses = ["a.site_id = %s"]
+    params: list = [hotel_id]
+    if isinstance(date_range, dict) and date_range.get("start"):
+        clauses.append("a.start_date = %s")
+        params.append(date_range["start"])
+        if date_range.get("end"):
+            clauses.append("a.end_date = %s")
+            params.append(date_range["end"])
+    if party_size is not None:
+        clauses.append("a.adults_no = %s")
+        params.append(party_size)
+    params.append(limit)
+    sql = f"""
+        SELECT a.site_id, a.start_date, a.end_date, a.adults_no, a.room_count,
+               at.id, at.name
+        FROM availability a
+        JOIN accommodation_types at ON at.id = a.accommodation_type_id
+        WHERE {' AND '.join(clauses)}
+        ORDER BY a.start_date, at.id
+        LIMIT %s
+    """
+    try:
+        with psycopg.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+        return [
+            {
+                "hotel_id": int(row[0]),
+                "start": row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1]),
+                "end": row[2].isoformat() if hasattr(row[2], "isoformat") else str(row[2]),
+                "adults_no": int(row[3]),
+                "room_count": int(row[4]),
+                "accommodation_type_id": int(row[5]),
+                "accommodation_type": row[6],
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        return [{"error": f"Error searching availability: {e}"}]
+
+
+def _campsite_lookup_terms(name: str) -> list[str]:
+    text = (name or "").strip()
+    if not text:
+        return []
+    terms = [text]
+    key = " ".join(text.lower().replace("-", " ").split())
+    alias = _NAMED_CAMPSITE_ALIASES.get(key)
+    if alias and alias not in terms:
+        terms.append(alias)
+    return terms
+
+
+_NAMED_CAMPSITE_ALIASES = {
+    "horshat tal": "חורשת טל",
+    "horashat tal": "חורשת טל",
+    "hurshat tal": "חורשת טל",
+}
+
+
+def _party_size_from_numeric(numeric: list) -> int | None:
+    for item in numeric or []:
+        if not isinstance(item, dict):
+            continue
+        field = str(item.get("field") or "").lower()
+        if field not in {"party_size", "adults", "guests"}:
+            continue
+        try:
+            return int(item.get("value"))
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def search_campsites(numeric_constraints):
@@ -266,7 +387,7 @@ heavy_model = make_agent_chat_model(temperature=0.7)
 # Query-constraint extract (the LLM that used to live in planner). Flip to
 # QWEN_INSTRUCT_MODEL when we want 235B here too.
 planner_model = make_agent_chat_model(
-    temperature=0.7, model=QWEN_INSTRUCT_30B_MODEL
+    temperature=0, model=QWEN_INSTRUCT_30B_MODEL
 )
 AGENT_CHAT_MODEL = QWEN_INSTRUCT_MODEL
 PLANNER_CHAT_MODEL = QWEN_INSTRUCT_30B_MODEL
@@ -496,6 +617,7 @@ def extractor_node(state: ChatState) -> ChatState:
             Schema (all keys required; use empty arrays / null when absent):
             {{
               "date": {{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}} | null,
+              "campsite": "Horashat Tal" | null,
               "numeric_constraints": [
                 {{"field": "price_per_night", "operator": "<=", "value": 500}}
               ],
@@ -515,21 +637,27 @@ def extractor_node(state: ChatState) -> ChatState:
                Resolve relative phrases using today's date.
                Do NOT put dates in numeric_constraints or semantic_constraints.
             3. numeric_constraints: price, party size, distance (km), rating only — never dates.
-            4. semantic_constraints: features, amenities, location prefs, and vibes
+            4. campsite: only when the user names a specific park to stay at
+               (e.g. "2 rooms in Horshat Tal" → "Horashat Tal" / "חורשת טל").
+               Do NOT put that name in semantic_constraints.
+               Region/vibe ("near the sea", "Negev") stays in semantic_constraints;
+               campsite stays null.
+            5. semantic_constraints: features, amenities, location prefs, and vibes
                (hot showers, running water, near the sea, quiet, good for kids).
                Top-level list is AND. Use {{"op":"or","values":[...]}} for alternatives
                (e.g. "near the sea or some body of water").
                Each other item: {{"query": "..."}}.
                Prefer English labels: "hot showers", "running water", "near the sea".
                Do not emit an "amenities" key.
-            5. Preserve negation in wording when stated.
-            6. Do not invent constraints the user did not imply.
+            6. Preserve negation in wording when stated.
+            7. Do not invent constraints the user did not imply.
 
             Example:
             Input: "next friday, near the sea or some body of water to swim in"
             Output:
             {{
               "date": {{"start": "<that Friday ISO>", "end": "<Saturday after that Friday>"}},
+              "campsite": null,
               "numeric_constraints": [],
               "semantic_constraints": [
                 {{"op": "or", "values": ["near the sea", "near a body of water"]}}
@@ -549,6 +677,7 @@ def extractor_node(state: ChatState) -> ChatState:
         today=today,
         user_text=user_text,
     )
+    constraints_json = _attach_campsite(constraints_json, parse_constraints_dict(raw))
     # If the model emitted tool calls instead of JSON, recover queries from args.
     if (
         not constraints_json.get("semantic_constraints")
@@ -560,11 +689,21 @@ def extractor_node(state: ChatState) -> ChatState:
         constraints_json = normalize_constraints(
             constraints_json, today=today, user_text=user_text
         )
+        constraints_json = _attach_campsite(
+            constraints_json, parse_constraints_dict(raw)
+        )
 
     constraints_payload = json.dumps(constraints_json, ensure_ascii=False)
     if not constraints_payload.strip():
         constraints_payload = json.dumps(EMPTY_CONSTRAINTS, ensure_ascii=False)
     return {"messages": [AIMessage(content=constraints_payload)]}
+
+
+def _attach_campsite(constraints: dict, parsed: dict) -> dict:
+    name = campsite_name_from_parsed(parsed)
+    if name:
+        constraints["campsite"] = name
+    return constraints
 
 
 def _latest_constraints_json(messages: list[BaseMessage]) -> dict:
@@ -586,13 +725,14 @@ def _latest_constraints_json(messages: list[BaseMessage]) -> dict:
             or "numeric_constraints" in data
             or "date" in data
             or "amenities" in data
+            or "campsite" in data
         ):
-            return normalize_constraints(data)
+            return _attach_campsite(normalize_constraints(data), data)
     return dict(EMPTY_CONSTRAINTS)
 
 
 def planner_node(state: ChatState) -> ChatState:
-    """Run RAG / campsite searches from extractor constraints. Tools only."""
+    """Run RAG / named-site availability. Never dump the campsite catalog."""
     constraints_json = _latest_constraints_json(state["messages"])
 
     tool_messages = []
@@ -610,15 +750,61 @@ def planner_node(state: ChatState) -> ChatState:
         )
 
     if constraints_json.get("numeric_constraints"):
-        campsites_result = search_campsites(constraints_json["numeric_constraints"])
         tool_messages.append(
             ChatMessage(
-                content=_message_text(str(campsites_result)) or "No campsites found",
+                content=json.dumps(
+                    {
+                        "numeric_constraints": constraints_json[
+                            "numeric_constraints"
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
                 role="assistant",
             )
         )
 
-    # Surface date to recommender via a short tool-style note (no availability SQL yet)
+    named = constraints_json.get("campsite")
+    if named:
+        hits = lookup_campsite_by_name(str(named))
+        if hits and not hits[0].get("error"):
+            site = hits[0]
+            availability = search_availability(
+                int(site["hotel_id"]),
+                date_range=constraints_json.get("date"),
+                party_size=_party_size_from_numeric(
+                    constraints_json.get("numeric_constraints") or []
+                ),
+            )
+            tool_messages.append(
+                ChatMessage(
+                    content=json.dumps(
+                        {
+                            "campsite": site,
+                            "availability": availability,
+                        },
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                    role="assistant",
+                )
+            )
+        else:
+            tool_messages.append(
+                ChatMessage(
+                    content=json.dumps(
+                        {
+                            "campsite": None,
+                            "query": named,
+                            "availability": [],
+                            "error": "No campsite matched that name",
+                        },
+                        ensure_ascii=False,
+                    ),
+                    role="assistant",
+                )
+            )
+
     date_range = constraints_json.get("date")
     if isinstance(date_range, dict) and date_range.get("start"):
         tool_messages.append(

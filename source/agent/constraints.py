@@ -305,6 +305,17 @@ def normalize_constraints(
     }
 
 
+def campsite_name_from_parsed(parsed: dict[str, Any] | None) -> str | None:
+    """Named park the user asked to stay at — not a region vibe, not the catalog."""
+    if not parsed:
+        return None
+    raw = parsed.get("campsite")
+    if isinstance(raw, dict):
+        raw = raw.get("name") or raw.get("query") or raw.get("text")
+    text = str(raw or "").strip()
+    return text or None
+
+
 def semantic_search_queries(constraints: list[Any]) -> list[list[str]]:
     """
     For each AND group, return query strings (OR within the group).
