@@ -1,6 +1,6 @@
 import os
 import warnings
-from typing import Annotated, TypedDict
+from typing import Annotated, Literal, TypedDict
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
@@ -407,8 +407,11 @@ def extractor_node(state: ChatState) -> ChatState:
 
             Rules:
             1. Output ONLY JSON.
-            2. date: concrete stay nights as ISO start/end. Single night ⇒ start == end.
-               Resolve relative phrases using today's date (e.g. "next Friday" → that Friday).
+            2. date: check-in/check-out as ISO start/end (end is exclusive).
+               One night ⇒ end is the day after start. Always at least one night
+               (never start == end). "this Friday" / "next Friday" → Friday check-in,
+               Saturday check-out.
+               Resolve relative phrases using today's date.
                Do NOT put dates in numeric_constraints or semantic_constraints.
             3. amenities: site/unit features and location-near-water prefs.
                Top-level list is AND. Use {{"op":"or","values":[...]}} for alternatives
@@ -425,7 +428,7 @@ def extractor_node(state: ChatState) -> ChatState:
             Input: "next friday, near the sea or some body of water to swim in"
             Output:
             {{
-              "date": {{"start": "<that Friday ISO>", "end": "<that Friday ISO>"}},
+              "date": {{"start": "<that Friday ISO>", "end": "<Saturday after that Friday>"}},
               "amenities": [
                 {{"op": "or", "values": ["near the sea", "near a body of water"]}}
               ],
@@ -572,35 +575,49 @@ def recommender_node(state: ChatState) -> ChatState:
 
 # ---- 5. Build the graph ----
 
-builder = StateGraph(ChatState)
+HeavyThrough = Literal["extractor", "planner", "recommender"]
 
-builder.add_node("light", light_node)
-builder.add_node("extractor", extractor_node)
-builder.add_node("planner", planner_node)
-builder.add_node("recommender", recommender_node)
 
-# Router: from START decide if trivial or non-trivial
-builder.add_conditional_edges(
-    START,
-    router,
-    {
-        "trivial": "light",
-        "non_trivial": "light",
-    },
-)
+def build_graph(*, stop_after: HeavyThrough = "recommender"):
+    """Compile the agent. `stop_after` is the last heavy node to run (Streamlit)."""
+    builder = StateGraph(ChatState)
 
-# After light node, check if we need the heavy path (extractor → planner → recommender)
-builder.add_conditional_edges(
-    "light",
-    check_after_cleaning,
-    {
-        "heavy": "extractor",
-        "end": END,
-    },
-)
+    builder.add_node("light", light_node)
+    builder.add_node("extractor", extractor_node)
+    if stop_after in ("planner", "recommender"):
+        builder.add_node("planner", planner_node)
+    if stop_after == "recommender":
+        builder.add_node("recommender", recommender_node)
 
-builder.add_edge("extractor", "planner")
-builder.add_edge("planner", "recommender")
-builder.add_edge("recommender", END)
+    builder.add_conditional_edges(
+        START,
+        router,
+        {
+            "trivial": "light",
+            "non_trivial": "light",
+        },
+    )
+    builder.add_conditional_edges(
+        "light",
+        check_after_cleaning,
+        {
+            "heavy": "extractor",
+            "end": END,
+        },
+    )
 
-graph = builder.compile()
+    if stop_after == "extractor":
+        builder.add_edge("extractor", END)
+    elif stop_after == "planner":
+        builder.add_edge("extractor", "planner")
+        builder.add_edge("planner", END)
+    else:
+        builder.add_edge("extractor", "planner")
+        builder.add_edge("planner", "recommender")
+        builder.add_edge("recommender", END)
+
+    return builder.compile()
+
+
+# Production / Telegram: full path
+graph = build_graph()

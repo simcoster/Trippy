@@ -25,6 +25,19 @@ QWEN_INSTRUCT_INPUT_USD_PER_MTOK = 0.20
 QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK = 0.60
 # Agent planner / query-constraint extract — keep 30B for now (easy to bump later)
 QWEN_INSTRUCT_30B_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
+QWEN_INSTRUCT_30B_INPUT_USD_PER_MTOK = 0.10
+QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK = 0.30
+
+
+def chat_usd_per_mtok(model: str | None) -> tuple[float, float]:
+    """Nebius Token Factory in/out USD per 1M tokens for an instruct model."""
+    name = model or ""
+    if "30B" in name:
+        return (
+            QWEN_INSTRUCT_30B_INPUT_USD_PER_MTOK,
+            QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK,
+        )
+    return (QWEN_INSTRUCT_INPUT_USD_PER_MTOK, QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK)
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 

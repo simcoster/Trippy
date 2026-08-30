@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
@@ -83,7 +83,27 @@ def _norm_label(s: str) -> str:
 def test_resolve_next_friday_single_night():
     today = date(2026, 8, 27)  # Thursday
     resolved = resolve_relative_date_phrase("next Friday", today=today)
-    assert resolved == {"start": "2026-08-28", "end": "2026-08-28"}
+    assert resolved == {"start": "2026-08-28", "end": "2026-08-29"}
+
+
+def test_resolve_this_friday_single_night():
+    today = date(2026, 8, 27)  # Thursday
+    resolved = resolve_relative_date_phrase("this Friday", today=today)
+    assert resolved == {"start": "2026-08-28", "end": "2026-08-29"}
+
+
+def test_normalize_same_day_bumps_end_to_one_night():
+    today = date(2026, 8, 27)
+    out = normalize_constraints(
+        {
+            "date": {"start": "2026-08-28", "end": "2026-08-28"},
+            "amenities": [],
+            "numeric_constraints": [],
+            "semantic_constraints": [],
+        },
+        today=today,
+    )
+    assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
 
 
 def test_normalize_moves_date_out_of_semantic():
@@ -99,7 +119,7 @@ def test_normalize_moves_date_out_of_semantic():
         },
         today=today,
     )
-    assert out["date"] == {"start": "2026-08-28", "end": "2026-08-28"}
+    assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
     queries = [
         (s.get("query") if isinstance(s, dict) else s) for s in out["semantic_constraints"]
     ]
@@ -124,7 +144,7 @@ def test_normalize_or_amenities_and_user_text_date():
         today=today,
         user_text=PROMPT_SEA_OR_WATER,
     )
-    assert out["date"] == {"start": "2026-08-28", "end": "2026-08-28"}
+    assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
     group = _find_or_group(out["amenities"])
     assert group is not None
     norms = {_norm_label(v) for v in group["values"]}
@@ -185,7 +205,9 @@ def test_extractor_next_friday_sea_or_body_of_water():
     date_field = constraints.get("date")
     assert isinstance(date_field, dict), f"expected date object, got {date_field!r}"
     assert str(date_field.get("start"))[:10] == friday_iso
-    assert str(date_field.get("end") or date_field.get("start"))[:10] == friday_iso
+    assert str(date_field.get("end") or date_field.get("start"))[:10] == (
+        friday + timedelta(days=1)
+    ).isoformat()
 
     group = _find_or_group(constraints.get("amenities") or [])
     assert group is not None, (

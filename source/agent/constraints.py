@@ -49,12 +49,19 @@ def _parse_iso_day(value: Any) -> date | None:
         return None
 
 
+def _as_stay_range(start: date, end: date | None = None) -> dict[str, str]:
+    """Check-in / check-out ISO range. End is exclusive; always at least one night."""
+    if end is None or end <= start:
+        end = start + timedelta(days=1)
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
 def resolve_relative_date_phrase(
     phrase: str,
     *,
     today: date | None = None,
 ) -> dict[str, str] | None:
-    """Map a relative date phrase to {start, end} ISO nights."""
+    """Map a relative date phrase to {start, end} check-in/check-out ISO dates."""
     t = (phrase or "").strip().lower()
     if not t:
         return None
@@ -62,16 +69,14 @@ def resolve_relative_date_phrase(
 
     if "weekend" in t or "סופ" in t:
         start = next_friday(today)
-        end = next_saturday(today)
-        return {"start": start.isoformat(), "end": end.isoformat()}
+        # Fri night + Sat night → checkout Sunday
+        return _as_stay_range(start, start + timedelta(days=2))
 
     if "friday" in t or "שישי" in t:
-        d = next_friday(today)
-        return {"start": d.isoformat(), "end": d.isoformat()}
+        return _as_stay_range(next_friday(today))
 
     if "saturday" in t or "שבת" in t:
-        d = next_saturday(today)
-        return {"start": d.isoformat(), "end": d.isoformat()}
+        return _as_stay_range(next_saturday(today))
 
     return None
 
@@ -160,11 +165,11 @@ def _normalize_date_field(raw: Any, *, today: date | None = None) -> dict[str, s
         if start and end:
             if end < start:
                 start, end = end, start
-            return {"start": start.isoformat(), "end": end.isoformat()}
+            return _as_stay_range(start, end)
         # Single ISO under "date"
         single = _parse_iso_day(raw.get("date") or raw.get("day"))
         if single:
-            return {"start": single.isoformat(), "end": single.isoformat()}
+            return _as_stay_range(single)
         return None
     if isinstance(raw, list):
         days = [_parse_iso_day(x) for x in raw]
@@ -176,11 +181,11 @@ def _normalize_date_field(raw: Any, *, today: date | None = None) -> dict[str, s
                 if resolved:
                     return resolved
             return None
-        return {"start": min(days).isoformat(), "end": max(days).isoformat()}
+        return _as_stay_range(min(days), max(days))
     if isinstance(raw, str):
         iso = _parse_iso_day(raw)
         if iso:
-            return {"start": iso.isoformat(), "end": iso.isoformat()}
+            return _as_stay_range(iso)
         return resolve_relative_date_phrase(raw, today=today)
     return None
 
