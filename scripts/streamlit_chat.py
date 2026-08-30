@@ -111,6 +111,20 @@ def _format_prompt_messages(messages: list[Any]) -> list[dict[str, Any]]:
     return [_format_lc_message(m) for m in messages]
 
 
+def _format_node_input(inputs: Any) -> list[dict[str, Any]]:
+    """LangGraph node enter: ChatState (or a messages list) → trace rows."""
+    if inputs is None:
+        return []
+    if isinstance(inputs, dict):
+        messages = inputs.get("messages")
+        if messages is None:
+            return []
+        return _format_prompt_messages(list(messages))
+    if isinstance(inputs, list):
+        return _format_prompt_messages(inputs)
+    return []
+
+
 def _int_or_zero(value: Any) -> int:
     try:
         return int(value or 0)
@@ -223,6 +237,7 @@ class TraceCallbackHandler(BaseCallbackHandler):
                 "name": node,
                 "run_id": str(run_id),
                 "phase": "start",
+                "input": _format_node_input(inputs),
             }
         )
 
@@ -381,7 +396,40 @@ def _install_tool_hooks() -> None:
     agent_graph._trippy_streamlit_hooks = True
 
 
+def _install_node_input_hooks() -> None:
+    """Stamp each node's enter event with the ChatState it actually received."""
+    if getattr(agent_graph, "_trippy_streamlit_node_input_hooks", False):
+        return
+
+    def _wrap_node(name: str, fn: Any) -> Any:
+        def wrapper(state: Any, *args: Any, **kwargs: Any) -> Any:
+            if _current_trace is not None:
+                incoming = _format_node_input(state)
+                for event in reversed(_current_trace):
+                    if (
+                        event.get("kind") == "node"
+                        and event.get("name") == name
+                        and event.get("phase") == "start"
+                    ):
+                        event["input"] = incoming
+                        break
+            return fn(state, *args, **kwargs)
+
+        wrapper.__name__ = getattr(fn, "__name__", name)
+        wrapper.__doc__ = getattr(fn, "__doc__", None)
+        return wrapper
+
+    agent_graph.light_node = _wrap_node("light", agent_graph.light_node)
+    agent_graph.extractor_node = _wrap_node("extractor", agent_graph.extractor_node)
+    agent_graph.planner_node = _wrap_node("planner", agent_graph.planner_node)
+    agent_graph.recommender_node = _wrap_node(
+        "recommender", agent_graph.recommender_node
+    )
+    agent_graph._trippy_streamlit_node_input_hooks = True
+
+
 _install_tool_hooks()
+_install_node_input_hooks()
 
 
 def _init_session() -> None:
@@ -612,7 +660,21 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
             title = f"{i + 1}. Node `{event['name']}`"
             latency = _format_latency(event.get("latency_ms"))
             if phase == "start":
-                st.markdown(f"**{title}** _(enter)_")
+                incoming = event.get("input") or []
+                if incoming:
+                    with st.expander(f"{title} _(enter)_", expanded=True):
+                        for msg in incoming:
+                            label = msg.get("type") or "message"
+                            role = msg.get("role")
+                            if role:
+                                label = f"{label} ({role})"
+                            st.markdown(f"**{label}**")
+                            st.code(
+                                _truncate(msg.get("content") or ""),
+                                language=None,
+                            )
+                else:
+                    st.markdown(f"**{title}** _(enter)_")
                 continue
             with st.expander(f"{title} · state update · {latency}", expanded=False):
                 _json_block(event.get("update"))
