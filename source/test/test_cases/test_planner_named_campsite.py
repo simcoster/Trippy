@@ -1,4 +1,4 @@
-"""Named-site lookup is only for an explicit park name, then availability by hotel_id."""
+"""Named-site lookup filters catalog vacancies; no name searches all sites."""
 
 from __future__ import annotations
 
@@ -12,6 +12,21 @@ from langchain_core.messages import AIMessage, ChatMessage, HumanMessage
 from source.agent.constraints import campsite_name_from_parsed
 from source.agent.graph import planner_node
 
+DATE = {"start": "2026-08-30", "end": "2026-09-01"}
+
+SLOT = {
+    "campsite_id": 1,
+    "campsite": "חניון לילה גן לאומי חורשת טל",
+    "start": "2026-08-30",
+    "end": "2026-09-01",
+    "room_count": 2,
+    "accommodation_type_id": 3,
+    "accommodation_type": "בונגלו עם מזגן",
+    "max_occupancy": 4,
+    "occupancy_unknown": False,
+    "price_per_night": 430.0,
+}
+
 
 def _constraints_state(constraints: dict) -> dict:
     return {
@@ -22,18 +37,14 @@ def _constraints_state(constraints: dict) -> dict:
     }
 
 
-def _chat_payloads(result: dict) -> list[dict]:
-    out: list[dict] = []
+def _fits_payload(result: dict) -> dict:
     for msg in result["messages"]:
         if not isinstance(msg, ChatMessage):
             continue
-        try:
-            data = json.loads(str(msg.content))
-        except json.JSONDecodeError:
-            continue
-        if isinstance(data, dict):
-            out.append(data)
-    return out
+        data = json.loads(str(msg.content))
+        if isinstance(data, dict) and "fits" in data:
+            return data
+    raise AssertionError("planner did not return a fits payload")
 
 
 @pytest.fixture
@@ -51,22 +62,10 @@ def named_site_db(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             }
         ]
     )
-    availability = MagicMock(
-        return_value=[
-            {
-                "hotel_id": 1,
-                "start": "2026-08-30",
-                "end": "2026-09-01",
-                "adults_no": 3,
-                "room_count": 2,
-                "accommodation_type_id": 3,
-                "accommodation_type": "בונגלו עם מזגן",
-            }
-        ]
-    )
+    slots = MagicMock(return_value=[dict(SLOT)])
     campsites = MagicMock(return_value=[])
     monkeypatch.setattr("source.agent.graph.lookup_campsite_by_name", lookup)
-    monkeypatch.setattr("source.agent.graph.search_availability", availability)
+    monkeypatch.setattr("source.agent.graph.search_open_slots", slots)
     monkeypatch.setattr("source.agent.graph.search_campsites", campsites)
     monkeypatch.setattr(
         "source.agent.graph.search_stated_amenities", MagicMock(return_value=[])
@@ -74,9 +73,7 @@ def named_site_db(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
         "source.agent.graph.search_review_claims", MagicMock(return_value=[])
     )
-    return SimpleNamespace(
-        lookup=lookup, availability=availability, campsites=campsites
-    )
+    return SimpleNamespace(lookup=lookup, slots=slots, campsites=campsites)
 
 
 def test_campsite_name_from_parsed_string():
@@ -85,13 +82,13 @@ def test_campsite_name_from_parsed_string():
     assert campsite_name_from_parsed({"campsite": {"name": "חורשת טל"}}) == "חורשת טל"
 
 
-def test_planner_named_campsite_looks_up_id_then_availability(
+def test_planner_named_campsite_looks_up_id_then_open_slots(
     named_site_db: SimpleNamespace,
 ):
     result = planner_node(
         _constraints_state(
             {
-                "date": {"start": "2026-08-30", "end": "2026-09-01"},
+                "date": DATE,
                 "campsite": "Horshat Tal",
                 "numeric_constraints": [
                     {"field": "party_size", "operator": "=", "value": 3}
@@ -101,21 +98,42 @@ def test_planner_named_campsite_looks_up_id_then_availability(
         )
     )
     named_site_db.lookup.assert_called_once_with("Horshat Tal")
-    named_site_db.availability.assert_called_once_with(
-        1,
-        date_range={"start": "2026-08-30", "end": "2026-09-01"},
+    named_site_db.slots.assert_called_once_with(
+        date_range=DATE,
+        site_id=1,
         party_size=3,
+        numeric_constraints=[
+            {"field": "party_size", "operator": "=", "value": 3}
+        ],
     )
     named_site_db.campsites.assert_not_called()
 
-    payload = next(p for p in _chat_payloads(result) if "availability" in p)
-    assert payload["campsite"]["hotel_id"] == 1
-    assert payload["availability"][0]["accommodation_type_id"] == 3
-    joined = json.dumps(_chat_payloads(result), ensure_ascii=False)
+    payload = _fits_payload(result)
+    assert payload["fits"][0]["campsite_id"] == 1
+    assert payload["fits"][0]["accommodation_type_id"] == 3
+    joined = json.dumps(payload, ensure_ascii=False)
     assert "parks.org.il" not in joined
 
 
-def test_planner_without_named_campsite_skips_lookup(
+def test_planner_without_named_campsite_searches_catalog_when_dated(
+    named_site_db: SimpleNamespace,
+):
+    planner_node(
+        _constraints_state(
+            {
+                "date": DATE,
+                "numeric_constraints": [],
+                "semantic_constraints": [{"query": "air conditioning"}],
+            }
+        )
+    )
+    named_site_db.lookup.assert_not_called()
+    named_site_db.slots.assert_called_once()
+    assert named_site_db.slots.call_args.kwargs["site_id"] is None
+    named_site_db.campsites.assert_not_called()
+
+
+def test_planner_without_date_skips_lookup_and_slots(
     named_site_db: SimpleNamespace,
 ):
     planner_node(
@@ -128,5 +146,5 @@ def test_planner_without_named_campsite_skips_lookup(
         )
     )
     named_site_db.lookup.assert_not_called()
-    named_site_db.availability.assert_not_called()
+    named_site_db.slots.assert_not_called()
     named_site_db.campsites.assert_not_called()

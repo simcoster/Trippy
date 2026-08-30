@@ -9,6 +9,9 @@ tool calls (params + returns), token cost, and latency.
 
 Run from repo root:
   uv run streamlit run scripts/streamlit_chat.py
+
+streamlit-mcp cannot drive st.chat_input. The sidebar "MCP prompt" form is
+driveable (text_area + submit).
 """
 
 from __future__ import annotations
@@ -328,8 +331,22 @@ def _install_tool_hooks() -> None:
                         "query": args[0] if args else kwargs.get("query"),
                         "limit": args[1] if len(args) > 1 else kwargs.get("limit", 5),
                     }
+                    if name == "search_stated_amenities":
+                        params["accommodation_type_ids"] = kwargs.get(
+                            "accommodation_type_ids"
+                        )
                 elif name == "lookup_campsite_by_name":
                     params = {"name": args[0] if args else kwargs.get("name")}
+                elif name == "search_open_slots":
+                    params = {
+                        "date_range": kwargs.get("date_range"),
+                        "site_id": kwargs.get("site_id"),
+                        "party_size": kwargs.get("party_size"),
+                        "numeric_constraints": kwargs.get("numeric_constraints"),
+                    }
+                    last = getattr(agent_graph, "_LAST_OPEN_SLOTS_QUERY", None)
+                    if isinstance(last, dict):
+                        params.update(last)
                 elif name == "search_availability":
                     params = {
                         "hotel_id": args[0] if args else kwargs.get("hotel_id"),
@@ -368,6 +385,9 @@ def _install_tool_hooks() -> None:
     )
     agent_graph.lookup_campsite_by_name = _wrap(
         "lookup_campsite_by_name", agent_graph.lookup_campsite_by_name
+    )
+    agent_graph.search_open_slots = _wrap(
+        "search_open_slots", agent_graph.search_open_slots
     )
     agent_graph.search_availability = _wrap(
         "search_availability", agent_graph.search_availability
@@ -505,15 +525,6 @@ def _tool_queries_since_node_start(
     return queries
 
 
-def _stay_nights_from_messages(messages: list[Any]) -> str | None:
-    prefix = "Requested stay nights:"
-    for msg in messages:
-        text = _content_to_str(getattr(msg, "content", "")).strip()
-        if text.startswith(prefix):
-            return text[len(prefix) :].strip()
-    return None
-
-
 def _planner_queries_reply(trace: list[dict[str, Any]]) -> str | None:
     for event in reversed(trace):
         if (
@@ -521,7 +532,19 @@ def _planner_queries_reply(trace: list[dict[str, Any]]) -> str | None:
             and event.get("name") == "planner"
             and event.get("phase") == "update"
         ):
-            queries = (event.get("update") or {}).get("queries")
+            update = event.get("update") or {}
+            if "fits" in update:
+                body = {
+                    "fits": update.get("fits"),
+                    "rejected": update.get("rejected"),
+                    "rejected_count": update.get("rejected_count"),
+                    "queries": update.get("queries"),
+                }
+                for key in ("error", "skipped", "open_slots_query"):
+                    if update.get(key) is not None:
+                        body[key] = update[key]
+                return json.dumps(body, ensure_ascii=False, indent=2, default=str)
+            queries = update.get("queries")
             if queries is None:
                 return None
             return json.dumps(queries, ensure_ascii=False, indent=2, default=str)
@@ -735,14 +758,13 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
                 and "queries" in update
             )
             label = "queries" if is_queries else "state update"
+            if is_queries and isinstance(update, dict) and "fits" in update:
+                label = "fits"
             with st.expander(
                 f"{title} · {label} · {latency}",
                 expanded=is_queries,
             ):
-                if is_queries:
-                    _json_block(update.get("queries"))
-                else:
-                    _json_block(update)
+                _json_block(update)
         elif kind == "llm_start":
             node = event.get("node")
             label = f"{i + 1}. LLM prompt · `{event.get('model', 'chat_model')}`"
@@ -827,12 +849,33 @@ def invoke_agent(
                 for node_name, update in chunk.items():
                     if node_name == "planner" and isinstance(update, dict):
                         queries = _tool_queries_since_node_start(trace, "planner")
-                        stay = _stay_nights_from_messages(
-                            update.get("messages") or []
-                        )
-                        if stay:
-                            queries.append({"tool": "date", "stay_nights": stay})
-                        serialized_update: Any = {"queries": queries}
+                        fits_payload: dict[str, Any] | None = None
+                        for msg in update.get("messages") or []:
+                            raw = _content_to_str(getattr(msg, "content", ""))
+                            try:
+                                data = json.loads(raw)
+                            except json.JSONDecodeError:
+                                continue
+                            if isinstance(data, dict) and "fits" in data:
+                                fits_payload = data
+                                break
+                        serialized_update = {"queries": queries}
+                        if fits_payload is not None:
+                            serialized_update["fits"] = fits_payload.get("fits")
+                            serialized_update["rejected"] = fits_payload.get(
+                                "rejected"
+                            )
+                            serialized_update["rejected_count"] = (
+                                fits_payload.get("rejected_count")
+                            )
+                            for key in (
+                                "error",
+                                "skipped",
+                                "constraints",
+                                "open_slots_query",
+                            ):
+                                if fits_payload.get(key) is not None:
+                                    serialized_update[key] = fits_payload[key]
                     elif isinstance(update, dict) and "messages" in update:
                         serialized_update = {
                             "messages": _serialize_messages(update["messages"])
@@ -912,6 +955,24 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+    st.subheader("MCP prompt")
+    st.caption("streamlit-mcp cannot drive chat_input. Send from here.")
+    with st.form("agent_prompt_form", clear_on_submit=True, border=False):
+        mcp_text = st.text_area(
+            "Prompt",
+            key="agent_prompt",
+            placeholder="Ask about campsites…",
+            height=80,
+        )
+        agent_send = st.form_submit_button(
+            "Send prompt",
+            key="agent_send",
+            icon=":material/send:",
+            width="stretch",
+        )
+    mcp_prompt = (mcp_text or "").strip() if agent_send else ""
+
+    st.divider()
     st.subheader("Last turn trace")
     last_trace = None
     for turn in reversed(st.session_state.display):
@@ -962,7 +1023,8 @@ for turn in st.session_state.display:
             with st.expander("LangGraph trace", expanded=False):
                 _render_trace(turn["trace"])
 
-if prompt := st.chat_input("Ask about campsites…"):
+prompt = st.chat_input("Ask about campsites…") or mcp_prompt
+if prompt:
     st.session_state.display.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)

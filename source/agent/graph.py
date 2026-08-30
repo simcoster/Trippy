@@ -1,7 +1,9 @@
 import json
 import os
 import warnings
-from typing import Annotated, Literal, TypedDict
+from datetime import date, timedelta
+from types import SimpleNamespace
+from typing import Annotated, Any, Literal, TypedDict
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
@@ -35,6 +37,8 @@ from source.scraper.amenity_enrichment.llm import (
     ClaimsEmbeddingLLMClient,
     make_agent_chat_model,
 )
+from source.scraper.info_site.quote import quote_night
+from source.scraper.info_site.schemas import RatePeriod
 
 # Load environment variables
 load_dotenv()
@@ -85,6 +89,303 @@ def lookup_campsite_by_name(name: str) -> list[dict]:
         return [{"error": f"Error looking up campsite: {e}"}]
 
 
+OPEN_SLOTS_LIMIT = 80
+AMENITY_MATCH_MAX_DISTANCE = -0.8
+REJECTED_SAMPLE_LIMIT = 5
+_LAST_OPEN_SLOTS_QUERY: dict[str, Any] | None = None
+
+
+def _record_open_slots_query(record: dict[str, Any]) -> dict[str, Any]:
+    global _LAST_OPEN_SLOTS_QUERY
+    _LAST_OPEN_SLOTS_QUERY = record
+    return record
+
+
+def _stay_night_starts(date_range: dict) -> list[date] | None:
+    """Check-in dates of each one-night row needed for [start, end)."""
+    start = _parse_iso_date(date_range.get("start"))
+    if start is None:
+        return None
+    end = _parse_iso_date(date_range.get("end"))
+    if end is None or end <= start:
+        return [start]
+    nights: list[date] = []
+    day = start
+    while day < end:
+        nights.append(day)
+        day += timedelta(days=1)
+    return nights
+
+
+def _open_slots_sql(
+    *,
+    date_range: dict,
+    site_id: int | list[int] | None,
+    party_size: int | None,
+    limit: int,
+) -> tuple[str, list[Any]] | tuple[None, str]:
+    nights = _stay_night_starts(date_range)
+    if not nights:
+        return None, "no_date"
+    stay_start = nights[0]
+    stay_end = nights[-1] + timedelta(days=1)
+    clauses = [
+        "a.start_date >= %s",
+        "a.start_date < %s",
+        "a.end_date = a.start_date + 1",
+    ]
+    params: list[Any] = [stay_start, stay_end]
+    if isinstance(site_id, list):
+        ids = [int(x) for x in site_id]
+        if not ids:
+            return None, "empty_site_ids"
+        clauses.append("a.site_id = ANY(%s)")
+        params.append(ids)
+    elif site_id is not None:
+        clauses.append("a.site_id = %s")
+        params.append(int(site_id))
+    if party_size is not None:
+        clauses.append("(at.max_occupancy IS NULL OR at.max_occupancy >= %s)")
+        params.append(int(party_size))
+    params.append(len(nights))
+    params.append(limit)
+    sql = (
+        "SELECT a.site_id, c.name, MIN(a.start_date), MAX(a.end_date),\n"
+        "       MIN(a.room_count), at.id, at.name, at.max_occupancy\n"
+        "FROM availability a\n"
+        "JOIN accommodation_types at ON at.id = a.accommodation_type_id\n"
+        "JOIN campsites c ON c.id = a.site_id\n"
+        f"WHERE {' AND '.join(clauses)}\n"
+        "GROUP BY a.site_id, c.name, at.id, at.name, at.max_occupancy\n"
+        "HAVING COUNT(DISTINCT a.start_date) = %s\n"
+        "ORDER BY MIN(a.start_date), at.id\n"
+        "LIMIT %s"
+    )
+    return sql, params
+
+
+def _sql_literal(value: Any) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return "ARRAY[" + ", ".join(_sql_literal(v) for v in value) + "]"
+    if hasattr(value, "isoformat"):
+        value = value.isoformat()
+    text = str(value).replace("'", "''")
+    return f"'{text}'"
+
+
+def _render_sql(sql: str, params: list[Any]) -> str:
+    parts = sql.split("%s")
+    if len(parts) != len(params) + 1:
+        return sql
+    out = [parts[0]]
+    for part, param in zip(parts[1:], params):
+        out.append(_sql_literal(param))
+        out.append(part)
+    return "".join(out)
+
+
+def _iso_day(value: Any) -> str:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _parse_iso_date(value: Any) -> date | None:
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _rate_period_for_stay(date_range: dict | None) -> RatePeriod:
+    if not isinstance(date_range, dict):
+        return "weekday"
+    start = _parse_iso_date(date_range.get("start"))
+    if start is None:
+        return "weekday"
+    end = _parse_iso_date(date_range.get("end")) or (start + timedelta(days=1))
+    day = start
+    while day < end:
+        if day.weekday() >= 5:
+            return "weekend_holiday"
+        day += timedelta(days=1)
+    return "weekday"
+
+
+def _price_per_night_constraint(
+    numeric: list | None,
+) -> tuple[str, float] | None:
+    for item in numeric or []:
+        if not isinstance(item, dict):
+            continue
+        field = str(item.get("field") or "").lower()
+        if field not in {"price_per_night", "price", "cost"}:
+            continue
+        try:
+            value = float(item.get("value"))
+        except (TypeError, ValueError):
+            return None
+        op = str(item.get("operator") or "=")
+        return op, value
+    return None
+
+
+def _price_matches(price: float | None, constraint: tuple[str, float] | None) -> bool:
+    if constraint is None:
+        return True
+    if price is None:
+        return False
+    op, bound = constraint
+    if op in {"<=", "=<"}:
+        return price <= bound
+    if op in {">=", "=>"}:
+        return price >= bound
+    if op == "<":
+        return price < bound
+    if op == ">":
+        return price > bound
+    return price == bound
+
+
+def _load_list_prices(type_ids: list[int]) -> dict[int, list[SimpleNamespace]]:
+    if not type_ids:
+        return {}
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return {}
+    sql = """
+        SELECT accommodation_type_id, guest_type, rate_period, price
+        FROM list_prices
+        WHERE accommodation_type_id = ANY(%s)
+    """
+    try:
+        with psycopg.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (type_ids,))
+                rows = cur.fetchall()
+    except Exception:
+        return {}
+    by_type: dict[int, list[SimpleNamespace]] = {}
+    for type_id, guest_type, rate_period, price in rows:
+        by_type.setdefault(int(type_id), []).append(
+            SimpleNamespace(
+                guest_type=guest_type,
+                rate_period=rate_period,
+                price=float(price),
+            )
+        )
+    return by_type
+
+
+def _quote_slot_price(
+    rates: list[SimpleNamespace],
+    *,
+    party_size: int | None,
+    rate_period: RatePeriod,
+) -> float | None:
+    if not rates:
+        return None
+    adults = party_size if party_size and party_size > 0 else 1
+    try:
+        return float(quote_night(rates, adults=adults, rate_period=rate_period))
+    except ValueError:
+        return None
+
+
+def search_open_slots(
+    *,
+    date_range: dict | None = None,
+    site_id: int | list[int] | None = None,
+    party_size: int | None = None,
+    numeric_constraints: list | None = None,
+    limit: int = OPEN_SLOTS_LIMIT,
+) -> list[dict]:
+    """Catalog vacancies for a stay window, with list-price quotes.
+
+    Availability is stored as one-night rows. A multi-night stay matches
+    only when the type has a row for every night in [start, end). Party
+    size uses accommodation max_occupancy (scrape is 1-adult). Price
+    filters use quote_night against list_prices. Optional site_id narrows
+    to a named park.
+    """
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        _record_open_slots_query({"skipped": "no_database_url"})
+        return []
+    if not isinstance(date_range, dict) or not date_range.get("start"):
+        _record_open_slots_query({"skipped": "no_date"})
+        return []
+    built = _open_slots_sql(
+        date_range=date_range,
+        site_id=site_id,
+        party_size=party_size,
+        limit=limit,
+    )
+    if built[0] is None:
+        _record_open_slots_query({"skipped": built[1]})
+        return []
+    sql, params = built
+    query_record: dict[str, Any] = {
+        "sql": _render_sql(sql, params),
+        "price_constraint": _price_per_night_constraint(numeric_constraints),
+        "rate_period": _rate_period_for_stay(date_range),
+    }
+    _record_open_slots_query(query_record)
+    try:
+        with psycopg.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+    except Exception as e:
+        query_record["error"] = str(e)
+        return [{"error": f"Error searching availability: {e}"}]
+    query_record["row_count"] = len(rows)
+
+    slots: list[dict] = []
+    for row in rows:
+        occupancy = int(row[7]) if row[7] is not None else None
+        slots.append(
+            {
+                "campsite_id": int(row[0]),
+                "campsite": row[1],
+                "start": _iso_day(row[2]),
+                "end": _iso_day(row[3]),
+                "room_count": int(row[4]),
+                "accommodation_type_id": int(row[5]),
+                "accommodation_type": row[6],
+                "max_occupancy": occupancy,
+                "occupancy_unknown": occupancy is None,
+            }
+        )
+    type_ids = list({int(s["accommodation_type_id"]) for s in slots})
+    prices = _load_list_prices(type_ids)
+    rate_period = _rate_period_for_stay(date_range)
+    price_constraint = _price_per_night_constraint(numeric_constraints)
+    quoted: list[dict] = []
+    for slot in slots:
+        price = _quote_slot_price(
+            prices.get(int(slot["accommodation_type_id"])) or [],
+            party_size=party_size,
+            rate_period=rate_period,
+        )
+        if not _price_matches(price, price_constraint):
+            continue
+        slot["price_per_night"] = price
+        quoted.append(slot)
+    query_record["quoted_count"] = len(quoted)
+    return quoted
+
+
 def search_availability(
     hotel_id: int,
     *,
@@ -93,49 +394,12 @@ def search_availability(
     limit: int = 50,
 ) -> list[dict]:
     """Vacancies for one campsite (campsites.id / accommodation_types.hotel_id)."""
-    db_url = os.environ.get("DATABASE_URL")
-    if not db_url:
-        return []
-    clauses = ["a.site_id = %s"]
-    params: list = [hotel_id]
-    if isinstance(date_range, dict) and date_range.get("start"):
-        clauses.append("a.start_date = %s")
-        params.append(date_range["start"])
-        if date_range.get("end"):
-            clauses.append("a.end_date = %s")
-            params.append(date_range["end"])
-    if party_size is not None:
-        clauses.append("a.adults_no = %s")
-        params.append(party_size)
-    params.append(limit)
-    sql = f"""
-        SELECT a.site_id, a.start_date, a.end_date, a.adults_no, a.room_count,
-               at.id, at.name
-        FROM availability a
-        JOIN accommodation_types at ON at.id = a.accommodation_type_id
-        WHERE {' AND '.join(clauses)}
-        ORDER BY a.start_date, at.id
-        LIMIT %s
-    """
-    try:
-        with psycopg.connect(db_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
-        return [
-            {
-                "hotel_id": int(row[0]),
-                "start": row[1].isoformat() if hasattr(row[1], "isoformat") else str(row[1]),
-                "end": row[2].isoformat() if hasattr(row[2], "isoformat") else str(row[2]),
-                "adults_no": int(row[3]),
-                "room_count": int(row[4]),
-                "accommodation_type_id": int(row[5]),
-                "accommodation_type": row[6],
-            }
-            for row in rows
-        ]
-    except Exception as e:
-        return [{"error": f"Error searching availability: {e}"}]
+    return search_open_slots(
+        date_range=date_range,
+        site_id=hotel_id,
+        party_size=party_size,
+        limit=limit,
+    )
 
 
 def _campsite_lookup_terms(name: str) -> list[str]:
@@ -209,14 +473,26 @@ def _query_vec_literal(query: str) -> str:
 
 
 def search_stated_amenities(
-    query: str, limit: int = 5, *, embedding: str | None = None
+    query: str,
+    limit: int = 5,
+    *,
+    embedding: str | None = None,
+    accommodation_type_ids: list[int] | None = None,
 ) -> list[dict]:
     """Rank accommodation types by closest official amenity embedding."""
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         return []
+    if accommodation_type_ids is not None and not accommodation_type_ids:
+        return []
     vec_literal = embedding or _query_vec_literal(query)
-    sql = """
+    clauses = ["a.embedding IS NOT NULL", "at.amenities IS NOT NULL"]
+    params: list[Any] = [vec_literal, vec_literal]
+    if accommodation_type_ids is not None:
+        clauses.append("at.id = ANY(%s)")
+        params.append([int(x) for x in accommodation_type_ids])
+    params.append(limit)
+    sql = f"""
         SELECT at.id,
                at.name,
                at.hotel_id,
@@ -226,8 +502,7 @@ def search_stated_amenities(
         FROM accommodation_types at
         CROSS JOIN LATERAL jsonb_array_elements(at.amenities) AS elem(val)
         JOIN amenities a ON a.id = (elem.val)::int
-        WHERE a.embedding IS NOT NULL
-          AND at.amenities IS NOT NULL
+        WHERE {' AND '.join(clauses)}
         GROUP BY at.id, at.name, at.hotel_id
         ORDER BY distance
         LIMIT %s
@@ -236,7 +511,7 @@ def search_stated_amenities(
         with psycopg.connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
-                cur.execute(sql, (vec_literal, vec_literal, limit))
+                cur.execute(sql, params)
                 rows = cur.fetchall()
         return [
             {
@@ -731,93 +1006,214 @@ def _latest_constraints_json(messages: list[BaseMessage]) -> dict:
     return dict(EMPTY_CONSTRAINTS)
 
 
-def planner_node(state: ChatState) -> ChatState:
-    """Run RAG / named-site availability. Never dump the campsite catalog."""
-    constraints_json = _latest_constraints_json(state["messages"])
+def _amenity_hit_matches(hit: dict) -> bool:
+    if hit.get("error") or hit.get("accommodation_type_id") is None:
+        return False
+    dist = hit.get("distance")
+    if dist is None:
+        return True
+    return float(dist) <= AMENITY_MATCH_MAX_DISTANCE
 
-    tool_messages = []
 
-    # Each semantic group: official amenity RAG + review-claims RAG
-    for queries in semantic_search_queries(
-        constraints_json.get("semantic_constraints") or []
-    ):
-        payload = _semantic_evidence_payload(queries, limit=5)
-        tool_messages.append(
-            ChatMessage(
-                content=json.dumps(payload, ensure_ascii=False),
-                role="assistant",
+def _semantic_why_by_type(
+    type_ids: list[int],
+    semantic_constraints: list,
+) -> tuple[dict[int, list[dict[str, Any]]], dict[int, list[dict[str, Any]]]]:
+    """AND-groups of amenity queries → (matched why, rejected why) by type id."""
+    unique_ids = list(dict.fromkeys(int(x) for x in type_ids))
+    if not unique_ids:
+        return {}, {}
+    groups = semantic_search_queries(semantic_constraints)
+    if not groups:
+        return {tid: [] for tid in unique_ids}, {}
+
+    why_by_type: dict[int, list[dict[str, Any]]] = {tid: [] for tid in unique_ids}
+    missing_by_type: dict[int, list[dict[str, Any]]] = {tid: [] for tid in unique_ids}
+    matching = set(unique_ids)
+    for queries in groups:
+        group_hits: dict[int, dict[str, Any]] = {}
+        for query in queries:
+            vec = _query_vec_literal(query)
+            hits = search_stated_amenities(
+                query,
+                limit=max(len(unique_ids), 1),
+                embedding=vec,
+                accommodation_type_ids=unique_ids,
             )
-        )
-
-    if constraints_json.get("numeric_constraints"):
-        tool_messages.append(
-            ChatMessage(
-                content=json.dumps(
+            for hit in hits:
+                if not _amenity_hit_matches(hit):
+                    continue
+                tid = int(hit["accommodation_type_id"])
+                if tid not in group_hits:
+                    group_hits[tid] = {
+                        "query": query,
+                        "stated_amenity": hit.get("amenity"),
+                        "distance": hit.get("distance"),
+                    }
+        matching &= set(group_hits)
+        label = queries[0] if len(queries) == 1 else list(queries)
+        for tid in unique_ids:
+            if tid in group_hits:
+                why_by_type[tid].append(group_hits[tid])
+            else:
+                missing_by_type[tid].append(
                     {
-                        "numeric_constraints": constraints_json[
-                            "numeric_constraints"
-                        ]
-                    },
-                    ensure_ascii=False,
-                ),
-                role="assistant",
-            )
-        )
+                        "reason": "missing_stated_amenity",
+                        "query": label,
+                    }
+                )
+    return (
+        {tid: why_by_type[tid] for tid in matching},
+        {tid: missing_by_type[tid] for tid in unique_ids if tid not in matching},
+    )
 
+
+def _review_claims_for_sites(
+    site_ids: set[str],
+    semantic_constraints: list,
+    *,
+    per_query_limit: int = 5,
+) -> dict[str, list[dict[str, Any]]]:
+    if not site_ids:
+        return {}
+    by_site: dict[str, list[dict[str, Any]]] = {sid: [] for sid in site_ids}
+    seen: set[tuple] = set()
+    for queries in semantic_search_queries(semantic_constraints):
+        for query in queries:
+            vec = _query_vec_literal(query)
+            for hit in search_review_claims(
+                query, limit=per_query_limit, embedding=vec
+            ):
+                if hit.get("error"):
+                    continue
+                cid = str(hit.get("campsite_id") or "")
+                if cid not in by_site:
+                    continue
+                rec = {
+                    "query": query,
+                    "claim": hit.get("claim"),
+                    "date": hit.get("date"),
+                    "days_ago": hit.get("days_ago"),
+                }
+                key = (cid, rec["claim"], rec["date"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                by_site[cid].append(rec)
+    return by_site
+
+
+def _named_site_ids(name: str) -> tuple[list[int], dict[str, Any] | None]:
+    hits = lookup_campsite_by_name(name)
+    if not hits:
+        return [], {"error": "No campsite matched that name", "query": name}
+    if hits[0].get("error"):
+        return [], {"error": hits[0]["error"], "query": name}
+    ids = [
+        int(hit["hotel_id"])
+        for hit in hits
+        if hit.get("hotel_id") is not None
+    ]
+    if not ids:
+        return [], {"error": "No campsite matched that name", "query": name}
+    return ids, None
+
+
+def _planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
+    date_range = constraints_json.get("date")
+    numeric = constraints_json.get("numeric_constraints") or []
+    semantic = constraints_json.get("semantic_constraints") or []
+    payload: dict[str, Any] = {
+        "fits": [],
+        "rejected": [],
+        "rejected_count": 0,
+        "constraints": constraints_json,
+    }
+    if not (isinstance(date_range, dict) and date_range.get("start")):
+        payload["skipped"] = "no_date"
+        return payload
+
+    site_id: int | list[int] | None = None
     named = constraints_json.get("campsite")
     if named:
-        hits = lookup_campsite_by_name(str(named))
-        if hits and not hits[0].get("error"):
-            site = hits[0]
-            availability = search_availability(
-                int(site["hotel_id"]),
-                date_range=constraints_json.get("date"),
-                party_size=_party_size_from_numeric(
-                    constraints_json.get("numeric_constraints") or []
-                ),
-            )
-            tool_messages.append(
-                ChatMessage(
-                    content=json.dumps(
-                        {
-                            "campsite": site,
-                            "availability": availability,
-                        },
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                    role="assistant",
-                )
-            )
+        site_ids, error = _named_site_ids(str(named))
+        if error:
+            payload["error"] = error["error"]
+            payload["query"] = error.get("query")
+            return payload
+        site_id = site_ids if len(site_ids) > 1 else site_ids[0]
+
+    slots = search_open_slots(
+        date_range=date_range,
+        site_id=site_id,
+        party_size=_party_size_from_numeric(numeric),
+        numeric_constraints=numeric,
+    )
+    if _LAST_OPEN_SLOTS_QUERY is not None:
+        payload["open_slots_query"] = _LAST_OPEN_SLOTS_QUERY
+    if slots and slots[0].get("error"):
+        payload["error"] = slots[0]["error"]
+        return payload
+
+    type_ids = [int(s["accommodation_type_id"]) for s in slots]
+    why_by_type, reject_why_by_type = _semantic_why_by_type(type_ids, semantic)
+    fits: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+
+    def _slot_row(slot: dict, why: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "campsite_id": slot["campsite_id"],
+            "campsite": slot["campsite"],
+            "accommodation_type_id": int(slot["accommodation_type_id"]),
+            "accommodation_type": slot["accommodation_type"],
+            "start": slot["start"],
+            "end": slot["end"],
+            "room_count": slot.get("room_count"),
+            "max_occupancy": slot.get("max_occupancy"),
+            "occupancy_unknown": slot.get("occupancy_unknown"),
+            "price_per_night": slot.get("price_per_night"),
+            "why": why,
+        }
+
+    for slot in slots:
+        tid = int(slot["accommodation_type_id"])
+        if tid in why_by_type:
+            fits.append(_slot_row(slot, why_by_type[tid]))
         else:
-            tool_messages.append(
-                ChatMessage(
-                    content=json.dumps(
-                        {
-                            "campsite": None,
-                            "query": named,
-                            "availability": [],
-                            "error": "No campsite matched that name",
-                        },
-                        ensure_ascii=False,
-                    ),
-                    role="assistant",
+            rejected.append(
+                _slot_row(
+                    slot,
+                    reject_why_by_type.get(tid)
+                    or [{"reason": "semantic_mismatch"}],
                 )
             )
 
-    date_range = constraints_json.get("date")
-    if isinstance(date_range, dict) and date_range.get("start"):
-        tool_messages.append(
+    if fits and semantic:
+        site_keys = {str(f["campsite_id"]) for f in fits}
+        claims = _review_claims_for_sites(site_keys, semantic)
+        for fit in fits:
+            extra = claims.get(str(fit["campsite_id"])) or []
+            if extra:
+                fit["review_claims"] = extra
+
+    payload["fits"] = fits
+    payload["rejected"] = rejected[:REJECTED_SAMPLE_LIMIT]
+    payload["rejected_count"] = len(rejected)
+    return payload
+
+
+def planner_node(state: ChatState) -> ChatState:
+    """Vacancies + prices, then semantic intersection with evidence."""
+    constraints_json = _latest_constraints_json(state["messages"])
+    payload = _planner_fits_payload(constraints_json)
+    return {
+        "messages": [
             ChatMessage(
-                content=(
-                    "Requested stay nights: "
-                    f"{date_range.get('start')} .. {date_range.get('end', date_range.get('start'))}"
-                ),
+                content=json.dumps(payload, ensure_ascii=False, default=str),
                 role="assistant",
             )
-        )
-
-    return {"messages": tool_messages}
+        ]
+    }
 
 
 def recommender_node(state: ChatState) -> ChatState:
@@ -826,20 +1222,19 @@ def recommender_node(state: ChatState) -> ChatState:
     system_msg = SystemMessage(
         content=(
             "You are a helpful trip-planning assistant for Trippy. "
-            "Based on the user's constraints and the search results provided, "
-            "recommend specific campsites that match their preferences. "
-            "Search results for features are labeled: "
-            "stated_amenities = official listing (website); "
-            "review_claims = guest reviews. "
-            "Trust stated_amenities for whether a feature is listed "
-            "(no dates — catalog only). "
-            "Trust review_claims for lived quality; each has date and days_ago. "
-            "Weigh recent reviews more than old ones. When they conflict, "
-            "still consider the site but mention the caveat and prefer sites "
-            "where both agree. "
-            "Only use information from the search results - do not hallucinate or invent details. "
-            "If no campsites match or search results are empty, say so clearly and ask a "
-            "short follow-up question (dates, area, budget, amenities). "
+            "Recommend only from the planner JSON field `fits`. "
+            "Each fit is an available stay that already matches dates, party size, "
+            "and price when those were given. "
+            "Use `why` as official-listing evidence for requested features "
+            "(stated amenity names). "
+            "`review_claims` are guest reviews — lived quality, with date and "
+            "days_ago. Weigh recent reviews more. When official amenities and "
+            "reviews conflict, still consider the site but mention the caveat. "
+            "Do not invent campsites, prices, or amenities that are not in `fits`. "
+            "`rejected` is a short sample of open stays that failed a feature "
+            "check; use `why` there only to explain misses, never to recommend. "
+            "If `fits` is empty, say so clearly and ask a short follow-up "
+            "(dates, area, budget, amenities). "
             "Never reply with an empty message. "
             "Respond in the same language as the user's query."
         )
