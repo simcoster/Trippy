@@ -58,7 +58,8 @@ INSERT INTO availability (
 ON CONFLICT ON CONSTRAINT availability_unique_slot DO UPDATE
 SET price = EXCLUDED.price,
     room_count = EXCLUDED.room_count,
-    scraped_at = now()
+    scraped_at = now(),
+    updated_at = now()
 RETURNING id;
 """
 

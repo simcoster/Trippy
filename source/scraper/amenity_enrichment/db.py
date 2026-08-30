@@ -113,7 +113,8 @@ def update_accommodation_type_details(
             check_in_time = %(check_in_time)s,
             check_out_time = %(check_out_time)s,
             policy_rules = %(policy_rules)s::jsonb,
-            room_count = %(room_count)s
+            room_count = %(room_count)s,
+            updated_at = now()
         WHERE id = %(id)s
         """,
         {
@@ -149,7 +150,8 @@ def fill_missing_image_urls(
             cur.execute(
                 """
                 UPDATE accommodation_types
-                SET image_urls = %(image_urls)s::jsonb
+                SET image_urls = %(image_urls)s::jsonb,
+                    updated_at = now()
                 WHERE hotel_id = %(hotel_id)s
                   AND name = %(name)s
                   AND (

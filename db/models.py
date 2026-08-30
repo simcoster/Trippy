@@ -104,6 +104,12 @@ class AccommodationType(Base):
     check_out_time: Mapped[time | None] = mapped_column(Time)
     # e.g. {"min_weekend_nights": 2, "min_holiday_nights": 2, "pets_allowed": false}
     policy_rules = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
     campsite: Mapped[Campsite] = relationship(back_populates="accommodation_types")
     availability: Mapped[list[Availability]] = relationship(
@@ -141,6 +147,12 @@ class Availability(Base):
     room_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     scraped_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     campsite: Mapped[Campsite] = relationship(back_populates="availability")
