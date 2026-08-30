@@ -10,6 +10,8 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 Locked instruct model on **Qwen3-235B-A22B-Instruct-2507** for amenity extract + light/recommender (`QWEN_INSTRUCT_MODEL`). Agent **planner / query-constraint extract** stays on **Qwen3-30B-A3B** for now (`QWEN_INSTRUCT_30B_MODEL`) — easy to bump later. 30B failed to generalize named-place amenities off few-shot (Eilat); 235B passed on the same prompt. See “Locked — chat / extract model” below.
 
+Schema: `notices` table for ephemeral official-site banners (e.g. “hot showers temporarily out of order”). Not catalog amenities, not review claims. Row is keyed by `site_id` + SHA-256 of the exact HTML element; next scrape deletes the row if that element is gone. Scraper + planner RAG not wired yet (`010_notices`).
+
 ### Done (2026-08-27)
 
 Spent the day mostly on amenities + getting a real local loop on the agent.
@@ -59,6 +61,8 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Agent must search **accommodation** amenities for “room with shower”, not only site / claims
 - Semantic amenity match explanations (“running water ≈ sink with faucet”)
 - Re-embed `claims` with Qwen after clearing OpenAI vectors
+- Notice scraper (find official banners, store `html_element`, delete when the element is gone)
+- Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
 
 ### Later — second booking source + standardization
 
@@ -88,7 +92,7 @@ Already in repo:
 - LangGraph agent (`source/agent/graph.py`) with claims RAG + campsite list tool; production channel = Telegram (`main.py`)
 - Local Streamlit harness (`scripts/streamlit_chat.py`) with node/LLM/tool traces
 - Nebius **Qwen3-235B-A22B-Instruct-2507** for amenity extract + agent light/recommender; **Qwen3-30B-A3B** for agent planner / query-constraint extract; Qwen embeddings for amenities + claims queries
-- Postgres + pgvector + Alembic (`campsites`, `claims`, `amenities`, `accommodation_types`, `availability`)
+- Postgres + pgvector + Alembic (`campsites`, `claims`, `notices`, `amenities`, `accommodation_types`, `availability`)
 - Scrapers under `source/scraper/`: discovery, booking IDs, availability/prices, amenity enrichment
 
 This plan extends that into a full ingestion → retrieval → agent → eval → production stack.
@@ -207,6 +211,34 @@ Agent uses:
 
 - **claims RAG** → experiential / review-derived attributes  
 - **site RAG** → official facts, location, amenities wording  
+- **notices RAG** → live official banners (outages / temporary closures); overrides stated amenities while the row exists  
+
+### Table: `notices` (schema landed; scraper not wired)
+
+Ephemeral operator notices from the official page — a third evidence type, not `stated_amenities` and not review `claims`.
+
+Example: catalog still lists `hot_showers`; the site banner says “hot showers do not work temporarily.”
+
+| Field | Purpose |
+|-------|---------|
+| `site_id` | FK `campsites.id` (CASCADE) |
+| `source` | `inpa` / parks.org.il / … |
+| `page_url` | Page where the banner was found |
+| `notice_he` / `notice_en` | Normalized notice text for RAG / display |
+| `html_element` | **Exact HTML node** that carried the notice |
+| `html_element_sha256` | Unique with `site_id` (btree-safe; element text can be long) |
+| `embedding` | Same Qwen 1536-d space as amenities / claims |
+| `first_seen` | When we first stored this element |
+| `last_seen` | Last scrape that still found the element |
+
+**Lifecycle (scraper, later):**
+
+1. Load existing notices for the site (`html_element` + hash).
+2. If that exact element is still in the page → bump `last_seen`.
+3. If the element is **missing** → `DELETE` the row (notice is gone).
+4. New banner elements → insert (embed text, keep the raw HTML for the next check).
+
+Do not put these in `claims` with `review_date = last_scraped`. `last_seen` is liveness (“we still see this banner”), not a guest stay date. A live notice beats `stated_amenities` for current status; reviews can corroborate but do not outrank a live official outage.
 
 ---
 

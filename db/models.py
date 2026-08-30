@@ -38,6 +38,7 @@ class Campsite(Base):
     accommodation_types: Mapped[list[AccommodationType]] = relationship(
         back_populates="campsite"
     )
+    notices: Mapped[list[Notice]] = relationship(back_populates="campsite")
 
 
 class Claim(Base):
@@ -68,6 +69,53 @@ class Amenity(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
     embedding = mapped_column(Vector(1536), nullable=True)
+
+
+class Notice(Base):
+    """Ephemeral official-site notices (outages, temporary closures).
+
+    Lifecycle: upsert while the stored HTML element is still on the page;
+    delete the row when the next scrape no longer finds that element.
+    """
+
+    __tablename__ = "notices"
+    __table_args__ = (
+        UniqueConstraint(
+            "site_id",
+            "html_element_sha256",
+            name="notices_site_element_key",
+        ),
+        Index("notices_site_idx", "site_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    page_url: Mapped[str | None] = mapped_column(Text)
+    lang: Mapped[str | None] = mapped_column(Text)
+    notice_he: Mapped[str | None] = mapped_column(Text)
+    notice_en: Mapped[str | None] = mapped_column(Text)
+    # Exact HTML node that carried the notice; missing on next scrape ⇒ delete.
+    html_element: Mapped[str] = mapped_column(Text, nullable=False)
+    html_element_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
+    embedding = mapped_column(Vector(1536), nullable=True)
+    first_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    campsite: Mapped[Campsite] = relationship(back_populates="notices")
 
 
 class AccommodationType(Base):

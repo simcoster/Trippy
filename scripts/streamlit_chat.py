@@ -304,7 +304,11 @@ def _install_tool_hooks() -> None:
             result = fn(*args, **kwargs)
             latency_ms = (time.perf_counter() - started) * 1000
             if _current_trace is not None:
-                if name == "search_claims":
+                if name in (
+                    "search_claims",
+                    "search_review_claims",
+                    "search_stated_amenities",
+                ):
                     params = {
                         "query": args[0] if args else kwargs.get("query"),
                         "limit": args[1] if len(args) > 1 else kwargs.get("limit", 5),
@@ -333,6 +337,12 @@ def _install_tool_hooks() -> None:
         return wrapper
 
     agent_graph.search_claims = _wrap("search_claims", agent_graph.search_claims)
+    agent_graph.search_review_claims = _wrap(
+        "search_review_claims", agent_graph.search_review_claims
+    )
+    agent_graph.search_stated_amenities = _wrap(
+        "search_stated_amenities", agent_graph.search_stated_amenities
+    )
     agent_graph.search_campsites = _wrap(
         "search_campsites", agent_graph.search_campsites
     )

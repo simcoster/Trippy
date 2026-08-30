@@ -71,8 +71,9 @@ WHERE site_id = %(site_id)s
   AND adults_no = %(adults_no)s
 """
 
-# Strip unit suffixes like "מספר 1" / "מספר 42" from room names.
-ROOM_NUMBER_SUFFIX_RE = re.compile(r"\s*מספר\s+\d+\s*$")
+# Strip unit suffixes: "מספר 1", "מספר 1-4", or a trailing unit number ("01", "15").
+ROOM_NUMBER_SUFFIX_RE = re.compile(r"\s*(?:מספר\s+)?\d+(?:\s*-\s*\d+)?\s*$")
+_WS_RE = re.compile(r"\s+")
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
@@ -221,8 +222,9 @@ def fetch_availability(url: str) -> list[dict]:
 
 
 def normalize_accommodation_name(name: str) -> str:
-    """Drop 'מספר N' suffixes so numbered units share one accommodation type."""
-    return ROOM_NUMBER_SUFFIX_RE.sub("", (name or "").strip()).strip()
+    """Drop trailing unit numbers so numbered units share one accommodation type."""
+    stripped = ROOM_NUMBER_SUFFIX_RE.sub("", (name or "").strip()).strip()
+    return _WS_RE.sub(" ", stripped) if stripped else ""
 
 
 def aggregate_offerings(offerings: list[dict]) -> list[dict]:
