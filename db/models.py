@@ -57,7 +57,7 @@ class Claim(Base):
     severity: Mapped[int | None] = mapped_column(Integer)
     confidence: Mapped[float | None] = mapped_column(Float)
     claim_uid: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    # HNSW index is created in the Alembic migration (pgvector).
+    # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
     embedding = mapped_column(Vector(1536), nullable=True)
 
 

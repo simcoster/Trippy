@@ -1,11 +1,12 @@
 import json
-import pytest
-from main import telegram_webhook
-import psycopg
 import os
-from openai import OpenAI
+
+import psycopg
+import pytest
 from pgvector.psycopg import register_vector
-from openai.resources.embeddings import create as _emb_create
+
+from main import telegram_webhook
+from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
 
 # Minimal fake Request to pass to the handler
 class FakeRequest:
@@ -143,34 +144,27 @@ async def test_webhook_with_no_text(fake_request_factory):
 
     assert result == {"ok": True}
 
-MODEL = "text-embedding-3-small"  # 1536 dims by default :contentReference[oaicite:4]{index=4}
+MODEL = ClaimsEmbeddingLLMClient.MODEL
+
 
 @pytest.mark.asyncio
 async def test_embedding_search_fit_for_kids():
     # Prepare
     prompt = "fit for stargazing"
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
     db_url = os.environ.get("DATABASE_URL")
-    assert openai_api_key, "OPENAI_API_KEY is required"
     assert db_url, "DATABASE_URL is required"
-    client = OpenAI(api_key=openai_api_key)
-
-    resp = _emb_create(
-        client.embeddings,
-        model=MODEL,
-        input=prompt,
-        encoding_format="float",
+    assert os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY"), (
+        "NEBIUS_API_KEY (or NEBULA_API_KEY) is required"
     )
 
-    # Get embedding from OpenAI
-    embedding = resp.data[0].embedding
+    embedding = ClaimsEmbeddingLLMClient().embed([prompt])[0]
     vec_literal = "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
 
     # Connect to DB
     with psycopg.connect(db_url) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            # Find the closest embedding (cosine distance or L2, assuming pgvector <-> operator)
+            # Find the closest embedding (cosine distance via pgvector <#>)
             cur.execute(
                 f"""
                 SELECT campsite_id, claim_en, embedding <#> {vec_literal}::vector AS distance

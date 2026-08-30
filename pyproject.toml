@@ -28,3 +28,8 @@ dependencies = [
 members = [
     "langgraph_service",
 ]
+
+[dependency-groups]
+dev = [
+    "streamlit>=1.62.0",
+]
