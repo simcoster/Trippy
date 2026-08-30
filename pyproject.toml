@@ -33,3 +33,6 @@ members = [
 dev = [
     "streamlit>=1.62.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

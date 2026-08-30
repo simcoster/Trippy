@@ -44,7 +44,7 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Parses room offerings; strips `מספר N` suffixes and aggregates → `room_count`
 - `accommodation_types` are created by the **info-site** scraper; availability only matches
 - Upserts into:
-  - `availability` (`site_id`, `start_date`, `end_date`, `accommodation_type_id`, `price`, `adults_no`, `room_count`, `scraped_at`)
+  - `availability` (`site_id`, `start_date`, `end_date`, `accommodation_type_id`, `adults_no`, `room_count`, `scraped_at`)
 - Re-scrape for a site/night **deletes existing rows first**, then inserts (avoids stale room types)
 - Config: `source/scraper/config.json` (`nights`, `adults`, `limit_campsites`, …)
 - SSL: OS trust store + relax `VERIFY_X509_STRICT` (corporate MITM)

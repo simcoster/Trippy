@@ -194,7 +194,6 @@ class Availability(Base):
         ForeignKey("accommodation_types.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    price: Mapped[float] = mapped_column(Float, nullable=False)
     adults_no: Mapped[int] = mapped_column(Integer, nullable=False)
     room_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     scraped_at: Mapped[datetime] = mapped_column(

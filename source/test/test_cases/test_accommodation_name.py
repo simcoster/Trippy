@@ -66,7 +66,6 @@ def test_aggregate_merges_range_and_single_suffix():
     assert len(grouped) == 1
     assert grouped[0]["room_type"] == "חושה כפולה"
     assert grouped[0]["room_count"] == 3
-    assert grouped[0]["price"] == 380
 
 
 def test_aggregate_merges_trailing_padded_unit_numbers():

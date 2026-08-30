@@ -1,5 +1,5 @@
 """
-Fetch vacancies/prices from the INPA booking engine for campsites in Postgres.
+Fetch vacancies from the INPA booking engine for campsites in Postgres.
 
 Iterates the next N nights (default 14, one night each) and upserts into
 `availability`. Accommodation types must already exist (created by the
@@ -49,14 +49,13 @@ SELECT id, name FROM accommodation_types WHERE hotel_id = %(hotel_id)s
 UPSERT_AVAILABILITY_SQL = """
 INSERT INTO availability (
     site_id, start_date, end_date, accommodation_type_id,
-    price, adults_no, room_count
+    adults_no, room_count
 ) VALUES (
     %(site_id)s, %(start_date)s, %(end_date)s,
-    %(accommodation_type_id)s, %(price)s, %(adults_no)s, %(room_count)s
+    %(accommodation_type_id)s, %(adults_no)s, %(room_count)s
 )
 ON CONFLICT ON CONSTRAINT availability_unique_slot DO UPDATE
-SET price = EXCLUDED.price,
-    room_count = EXCLUDED.room_count,
+SET room_count = EXCLUDED.room_count,
     scraped_at = now(),
     updated_at = now()
 RETURNING id;
@@ -231,30 +230,22 @@ def aggregate_offerings(offerings: list[dict]) -> list[dict]:
     Group offerings by normalized room type.
 
     Example: 'בונגלו עם מזגן מספר 1' + '… מספר 3' → one row, room_count=2.
-    Price is the minimum among instances of that type.
     """
     grouped: dict[str, dict] = {}
     for offer in offerings:
         raw_name = (offer.get("room_type") or "").strip()
         if not raw_name:
             continue
-        price = offer.get("price")
-        if price is None:
-            continue
         name = normalize_accommodation_name(raw_name)
         if not name:
             continue
-        price_f = float(price)
         if name not in grouped:
             grouped[name] = {
                 "room_type": name,
-                "price": price_f,
-                "currency": offer.get("currency", "₪"),
                 "room_count": 1,
             }
         else:
             grouped[name]["room_count"] += 1
-            grouped[name]["price"] = min(grouped[name]["price"], price_f)
     return list(grouped.values())
 
 
@@ -379,7 +370,6 @@ def upsert_availability_rows(
                     "start_date": start,
                     "end_date": end,
                     "accommodation_type_id": accom_id,
-                    "price": float(offer["price"]),
                     "adults_no": adults_no,
                     "room_count": int(offer["room_count"]),
                 },
@@ -480,8 +470,7 @@ def main() -> None:
                     aggregated = aggregate_offerings(offerings)
                     for offer in aggregated:
                         print(
-                            f"    {offer['room_type']}  ×{offer['room_count']}  —  "
-                            f"{offer.get('currency', '₪')}{offer['price']}"
+                            f"    {offer['room_type']}  ×{offer['room_count']}"
                         )
                         require_existing_accommodation_type(
                             offer["room_type"],
