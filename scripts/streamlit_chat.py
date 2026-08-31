@@ -45,6 +45,7 @@ from langchain_core.messages import (
 from langchain_core.outputs import LLMResult
 
 import source.agent.graph as agent_graph
+import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
@@ -344,7 +345,7 @@ def _install_tool_hooks() -> None:
                         "party_size": kwargs.get("party_size"),
                         "numeric_constraints": kwargs.get("numeric_constraints"),
                     }
-                    last = getattr(agent_graph, "_LAST_OPEN_SLOTS_QUERY", None)
+                    last = getattr(agent_search, "_LAST_OPEN_SLOTS_QUERY", None)
                     if isinstance(last, dict):
                         params.update(last)
                 elif name == "search_availability":
@@ -376,27 +377,34 @@ def _install_tool_hooks() -> None:
         wrapper.__doc__ = getattr(fn, "__doc__", None)
         return wrapper
 
-    agent_graph.search_claims = _wrap("search_claims", agent_graph.search_claims)
-    agent_graph.search_review_claims = _wrap(
-        "search_review_claims", agent_graph.search_review_claims
+    agent_search.search_claims = _wrap("search_claims", agent_search.search_claims)
+    agent_search.search_review_claims = _wrap(
+        "search_review_claims", agent_search.search_review_claims
     )
-    agent_graph.search_stated_amenities = _wrap(
-        "search_stated_amenities", agent_graph.search_stated_amenities
+    agent_search.search_stated_amenities = _wrap(
+        "search_stated_amenities", agent_search.search_stated_amenities
     )
-    agent_graph.lookup_campsite_by_name = _wrap(
-        "lookup_campsite_by_name", agent_graph.lookup_campsite_by_name
+    agent_search.lookup_campsite_by_name = _wrap(
+        "lookup_campsite_by_name", agent_search.lookup_campsite_by_name
     )
-    agent_graph.search_open_slots = _wrap(
-        "search_open_slots", agent_graph.search_open_slots
+    agent_search.search_open_slots = _wrap(
+        "search_open_slots", agent_search.search_open_slots
     )
-    agent_graph.search_availability = _wrap(
-        "search_availability", agent_graph.search_availability
+    agent_search.search_availability = _wrap(
+        "search_availability", agent_search.search_availability
     )
-    agent_graph.search_campsites = _wrap(
-        "search_campsites", agent_graph.search_campsites
+    agent_search.search_campsites = _wrap(
+        "search_campsites", agent_search.search_campsites
     )
+    agent_graph.search_claims = agent_search.search_claims
+    agent_graph.search_review_claims = agent_search.search_review_claims
+    agent_graph.search_stated_amenities = agent_search.search_stated_amenities
+    agent_graph.lookup_campsite_by_name = agent_search.lookup_campsite_by_name
+    agent_graph.search_open_slots = agent_search.search_open_slots
+    agent_graph.search_availability = agent_search.search_availability
+    agent_graph.search_campsites = agent_search.search_campsites
 
-    embedder = getattr(agent_graph, "_claims_embedder", None)
+    embedder = getattr(agent_search, "_claims_embedder", None)
     orig_embed = getattr(embedder, "embed", None)
     if orig_embed is not None:
 

@@ -1,0 +1,16 @@
+---
+description: Run Ruff after new Python files or import-list changes
+alwaysApply: true
+---
+
+# Ruff on new files and imports
+
+`ruff` is a dev dependency (`uv run ruff`). After you **create a new Python file** or **change an import list** (add, remove, reorder, or rewrite `import` / `from … import`), run Ruff on those files before finishing:
+
+```text
+uv run ruff check path/to/file.py
+```
+
+If Ruff reports import-order (`I`) or unused-import (`F401`) issues you introduced, fix them (`uv run ruff check --fix path/to/file.py` is fine for safe auto-fixes). Do not leave a new or import-edited file with Ruff errors.
+
+Skip this for non-Python files and for edits that do not touch imports.

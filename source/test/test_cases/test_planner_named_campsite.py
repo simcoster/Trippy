@@ -50,7 +50,7 @@ def _fits_payload(result: dict) -> dict:
 @pytest.fixture
 def named_site_db(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
-        "source.agent.graph._query_vec_literal", lambda query: "[0]"
+        "source.agent.search._query_vec_literal", lambda query: "[0]"
     )
     lookup = MagicMock(
         return_value=[
@@ -64,14 +64,14 @@ def named_site_db(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     )
     slots = MagicMock(return_value=[dict(SLOT)])
     campsites = MagicMock(return_value=[])
-    monkeypatch.setattr("source.agent.graph.lookup_campsite_by_name", lookup)
-    monkeypatch.setattr("source.agent.graph.search_open_slots", slots)
-    monkeypatch.setattr("source.agent.graph.search_campsites", campsites)
+    monkeypatch.setattr("source.agent.search.lookup_campsite_by_name", lookup)
+    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.search_campsites", campsites)
     monkeypatch.setattr(
-        "source.agent.graph.search_stated_amenities", MagicMock(return_value=[])
+        "source.agent.search.search_stated_amenities", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.graph.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.search_review_claims", MagicMock(return_value=[])
     )
     return SimpleNamespace(lookup=lookup, slots=slots, campsites=campsites)
 

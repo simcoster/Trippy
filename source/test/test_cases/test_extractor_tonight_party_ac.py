@@ -53,7 +53,7 @@ def _has_air_conditioning(semantic: list) -> bool:
     return False
 
 
-def _party_size_eq_3(numeric: list) -> bool:
+def _party_size_at_least_3(numeric: list) -> bool:
     for item in numeric or []:
         if not isinstance(item, dict):
             continue
@@ -64,14 +64,14 @@ def _party_size_eq_3(numeric: list) -> bool:
             value = int(item.get("value"))
         except (TypeError, ValueError):
             continue
-        op = str(item.get("operator") or item.get("op") or "=").strip()
-        if value == 3 and op in {"=", "==", "eq"}:
+        op = str(item.get("operator") or item.get("op") or "").strip()
+        if value == 3 and op in {">=", "=>", "gte"}:
             return True
     return False
 
 
 def test_extractor_tonight_two_nights_three_adults_ac():
-    """משהו ל3 אנשים החל מהיום ל2 לילות עם מזגן → date + party_size + AC."""
+    """משהו ל3 אנשים החל מהיום ל2 לילות עם מזגן → date + occupancy>=3 + AC."""
     from source.agent.graph import extractor_node, planner_model
 
     assert planner_model.temperature == 0
@@ -84,8 +84,8 @@ def test_extractor_tonight_two_nights_three_adults_ac():
         "start": today.isoformat(),
         "end": (today + timedelta(days=2)).isoformat(),
     }, constraints.get("date")
-    assert _party_size_eq_3(constraints.get("numeric_constraints") or []), (
-        f"expected party_size=3, got {constraints.get('numeric_constraints')!r}"
+    assert _party_size_at_least_3(constraints.get("numeric_constraints") or []), (
+        f"expected party_size>=3, got {constraints.get('numeric_constraints')!r}"
     )
     assert _has_air_conditioning(constraints.get("semantic_constraints") or []), (
         f"expected air conditioning, got {constraints.get('semantic_constraints')!r}"

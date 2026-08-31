@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -9,6 +10,7 @@ from zoneinfo import ZoneInfo
 from langchain_core.tools import StructuredTool
 
 TZ_IL = ZoneInfo("Asia/Jerusalem")
+logger = logging.getLogger(__name__)
 
 MAX_DATE_WINDOWS = 4
 DATE_TRUNCATED_NOTICE = (
@@ -80,6 +82,31 @@ def _parse_iso_day(value: Any) -> date | None:
         return None
 
 
+parse_iso_day = _parse_iso_day
+
+
+def iso_day(value: Any) -> str:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def stay_night_starts(date_range: dict) -> list[date] | None:
+    """Check-in dates of each one-night row needed for [start, end)."""
+    start = _parse_iso_day(date_range.get("start"))
+    if start is None:
+        return None
+    end = _parse_iso_day(date_range.get("end"))
+    if end is None or end <= start:
+        return [start]
+    nights: list[date] = []
+    day = start
+    while day < end:
+        nights.append(day)
+        day += timedelta(days=1)
+    return nights
+
+
 def _as_stay_range(start: date, end: date | None = None) -> dict[str, str]:
     """Check-in / check-out ISO range. End is exclusive; always at least one night."""
     if end is None or end <= start:
@@ -112,11 +139,9 @@ def _weekday_index(value: Any) -> int | None:
     return _WEEKDAY_INDEX.get(text)
 
 
-def _nights_for(kind: str | None, nights: int | None) -> int:
+def _nights_for(_kind: str | None, nights: int | None) -> int:
     if nights is not None and nights > 0:
         return nights
-    if kind == "weekend":
-        return 2
     return 1
 
 
@@ -136,10 +161,15 @@ def _check_in_for_weekday(
             days=7 * weeks_from_now
         )
         return start if start >= today else None
-    ref = (when or "next").strip().lower()
+    ref = str(when).strip().lower() if when else ""
     if ref == "this":
         start = weekday_this_iso_week(today, weekday)
         return start if start >= today else None
+    if ref == "next":
+        return weekday_next_iso_week(today, weekday)
+    start = weekday_this_iso_week(today, weekday)
+    if start >= today:
+        return start
     return weekday_next_iso_week(today, weekday)
 
 
@@ -204,8 +234,6 @@ def resolve_dates(
             kind_n = "weekday"
         elif on or start:
             kind_n = "on"
-        elif horizon_n:
-            kind_n = "weekend"
 
     stay_nights = _nights_for(kind_n, nights_n)
     windows: list[dict[str, str]] = []
@@ -257,11 +285,23 @@ def resolve_dates(
 
     truncated = len(windows) > MAX_DATE_WINDOWS
     windows = windows[:MAX_DATE_WINDOWS]
-    return {
+    out = {
         "windows": windows,
         "truncated": truncated,
         "notice": DATE_TRUNCATED_NOTICE if truncated else None,
     }
+    logger.info(
+        "resolve_dates kind=%s weekday=%s when=%s nights=%s "
+        "horizon_days=%s weeks_from_now=%s → %s",
+        kind_n,
+        weekday,
+        when_n,
+        stay_nights,
+        horizon_n,
+        weeks_n,
+        out,
+    )
+    return out
 
 
 def _resolve_dates_tool(
@@ -294,9 +334,13 @@ resolve_dates_tool = StructuredTool.from_function(
     name="resolve_dates",
     description=(
         "Resolve a date intent into ISO check-in/check-out windows. "
-        "kind=weekday|weekend|on; when=this|next; weeks_from_now for "
-        "'in N weeks'; horizon_days for sparse ranges (capped at 4). "
-        "next weekday is next ISO week, not this week's upcoming day."
+        "kind=weekday|weekend|on; when=this|next (omit when for the "
+        "upcoming weekday). weekend is Friday night only (nights=1, "
+        "checkout Saturday) unless nights is set. weeks_from_now for "
+        "'in N weeks'; horizon_days enumerates kind's weekday "
+        "(weekend=Friday) over a span, capped at 4. Do not set "
+        "kind=weekend unless the user said weekend. next weekday is "
+        "next ISO week, not this week's upcoming day."
     ),
 )
 

@@ -9,12 +9,12 @@ from typing import Any
 
 from source.agent.dates import (
     apply_resolved_dates,
-    next_friday,
     resolve_dates,
     today_il,
 )
 from source.agent.dates import _as_stay_range
 from source.agent.dates import _parse_iso_day
+from source.agent.messages import message_text
 
 
 _REVIEW_DATE_FORMATS = (
@@ -97,10 +97,13 @@ def _normalize_semantic_list(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _intent_nonempty(intent: Any) -> bool:
+def intent_nonempty(intent: Any) -> bool:
     if not isinstance(intent, dict):
         return False
     return any(v not in (None, "", [], {}) for v in intent.values())
+
+
+_intent_nonempty = intent_nonempty
 
 
 def _windows_from_date_field(raw: Any, *, today: date | None = None) -> list[dict[str, str]]:
@@ -262,6 +265,90 @@ def campsite_name_from_parsed(parsed: dict[str, Any] | None) -> str | None:
         raw = raw.get("name") or raw.get("query") or raw.get("text")
     text = str(raw or "").strip()
     return text or None
+
+
+def compact_date_intent(intent: dict[str, Any]) -> dict[str, Any]:
+    """Drop empty date_intent fields so traces show what the extractor actually used."""
+    out: dict[str, Any] = {}
+    for key, value in intent.items():
+        if value in (None, "", [], {}):
+            continue
+        out[key] = value
+    return out
+
+
+def attach_campsite(constraints: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
+    name = campsite_name_from_parsed(parsed)
+    if name:
+        constraints["campsite"] = name
+    return constraints
+
+
+def party_size_from_numeric(numeric: list) -> int | None:
+    for item in numeric or []:
+        if not isinstance(item, dict):
+            continue
+        field = str(item.get("field") or "").lower()
+        if field not in {"party_size", "adults", "guests"}:
+            continue
+        try:
+            return int(item.get("value"))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def parse_constraints_json(raw: str) -> dict[str, Any]:
+    """Parse extractor JSON then normalize to date / numeric / semantic schema."""
+    parsed = parse_constraints_dict(raw)
+    if not parsed:
+        return dict(EMPTY_CONSTRAINTS)
+    return normalize_constraints(parsed)
+
+
+def constraints_from_tool_calls(tool_calls) -> dict[str, Any]:
+    semantic: list[dict] = []
+    for tc in tool_calls or []:
+        name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
+        args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", None)
+        if name == "search_claims" and isinstance(args, dict):
+            query = args.get("query")
+            if query:
+                semantic.append({"query": query})
+    return normalize_constraints(
+        {
+            "semantic_constraints": semantic,
+            "numeric_constraints": [],
+            "date": None,
+        }
+    )
+
+
+def latest_constraints_json(messages: list) -> dict[str, Any]:
+    """Read the most recent constraints AIMessage (from extractor_node)."""
+    from langchain_core.messages import AIMessage
+
+    for msg in reversed(messages):
+        if not isinstance(msg, AIMessage):
+            continue
+        raw = message_text(msg.content).strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            data = parse_constraints_dict(raw)
+        if isinstance(data, dict) and (
+            "semantic_constraints" in data
+            or "numeric_constraints" in data
+            or "date" in data
+            or "date_windows" in data
+            or "date_intent" in data
+            or "amenities" in data
+            or "campsite" in data
+        ):
+            return attach_campsite(normalize_constraints(data), data)
+    return dict(EMPTY_CONSTRAINTS)
 
 
 def semantic_search_queries(constraints: list[Any]) -> list[list[str]]:
