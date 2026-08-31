@@ -81,6 +81,7 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Booking types link to `info_website_names` (exact or 30B); quotes use `list_prices` via that id
 
 **Still open**
+- Extractor policy: “arrive Saturday afternoon” is a **policy / check-in** search (sites that allow Shabbat-afternoon arrival) — no extractor field or planner path yet. Weather + stargazing + Sat→Sun one-night date are covered by `test_extractor_nice_weather_stars_saturday_afternoon_one_night`.
 - Site-level `campsites.amenities` jsonb + GIN
 - Re-embed `claims` with Qwen after clearing OpenAI vectors
 - Notice scraper (helpers in `info_site/newsflashes.py`; not wired into `scrape.py` yet)

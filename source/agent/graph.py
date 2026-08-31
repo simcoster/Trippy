@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import warnings
 from datetime import date, timedelta
@@ -47,6 +48,8 @@ from source.scraper.info_site.schemas import RatePeriod
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 # ---- 1. State type for LangGraph ----
@@ -901,7 +904,7 @@ def extractor_node(state: ChatState) -> ChatState:
                 "weeks_from_now": 3 | null,
                 "horizon_days": 30 | null,
                 "on": "YYYY-MM-DD" | "today" | null,
-                "nights": 2
+                "nights": 1
               }} | null,
               "campsite": "Horashat Tal" | null,
               "numeric_constraints": [
@@ -923,11 +926,25 @@ def extractor_node(state: ChatState) -> ChatState:
                  upcoming weekday).
                - "this" / "הזה" / "הקרוב" / "coming" → when="this" (this ISO week,
                  if that weekday is still ahead).
+               - Named weekday with no this/next (e.g. "בשבת", "on Saturday") →
+                 kind="weekday", that weekday, when="this" if that day is still
+                 ahead this week, else when="next". nights from stay length.
+               - kind="weekend" ONLY if the user said weekend / סופ״ש / סוף שבוע.
+                 Weekend is Friday night only: nights=1, checkout Saturday.
+                 "שבת" / Saturday / "until Sunday" is NOT a weekend. Do not start
+                 those stays on Friday and do not enumerate multiple weekends.
+               - Named span ("Thursday to Saturday", "מחורי עד שבת") →
+                 kind="weekday", weekday=check-in day, nights=checkout-minus-check-in
+                 (Thu→Sat → weekday="thursday", nights=2). Not kind=weekend.
                - "בעוד N שבועות" / "in N weeks" → weeks_from_now=N.
                - "סופ״ש בחודש הקרוב" / weekends in the coming month → kind="weekend",
-                 horizon_days=30 (nights default 2).
+                 horizon_days=30 (nights default 1, Friday→Saturday). horizon_days
+                 only when they asked for several dates over a span — never for a
+                 season or weather ("בקיץ" / "in the summer" is semantic, not a
+                 date horizon).
                - "today" / "החל מהיום" → kind="on", on="today".
-               - nights: stay length ("ל2 לילות" → 2). Weekend defaults to 2 if omitted.
+               - nights: stay length ("לילה אחד" → 1, "ל2 לילות" → 2). Weekend
+                 defaults to 1 if omitted. Never put stay length in semantic_constraints.
                Do NOT put dates in numeric_constraints or semantic_constraints.
             3. numeric_constraints: price, party size, distance (km), rating only — never dates.
             4. campsite: only when the user names a specific park to stay at
@@ -936,12 +953,15 @@ def extractor_node(state: ChatState) -> ChatState:
                Region/vibe ("near the sea", "Negev") stays in semantic_constraints;
                campsite stays null.
             5. semantic_constraints: features, amenities, location prefs, and vibes
-               (hot showers, running water, near the sea, quiet, good for kids).
+               (hot showers, running water, near the sea, quiet, good for kids,
+               nice summer weather, stargazing).
                Top-level list is AND. Use {{"op":"or","values":[...]}} for alternatives
                (e.g. "near the sea or some body of water").
                Each other item: {{"query": "..."}}.
                Prefer English labels: "hot showers", "running water", "near the sea".
                Do not emit an "amenities" key.
+               Do not put check-in time / "arrive Saturday afternoon" / arrival
+               policy in semantic_constraints (omit those until a policy field exists).
             6. Preserve negation in wording when stated.
             7. Do not invent constraints the user did not imply.
 
@@ -955,6 +975,39 @@ def extractor_node(state: ChatState) -> ChatState:
               "semantic_constraints": [
                 {{"op": "or", "values": ["near the sea", "near a body of water"]}}
               ]
+            }}
+
+            Example:
+            Input: "מקום עם מזג אוויר נחמד בקיץ שאפשר לראות בו כוכבים ואפשר להגיע בשבת בצהריים ללילה אחד עד ראשון"
+            Output:
+            {{
+              "date_intent": {{"kind": "weekday", "weekday": "saturday", "when": "this", "nights": 1}},
+              "campsite": null,
+              "numeric_constraints": [],
+              "semantic_constraints": [
+                {{"query": "nice summer weather"}},
+                {{"query": "stargazing"}}
+              ]
+            }}
+
+            Example:
+            Input: "Thursday to Saturday"
+            Output:
+            {{
+              "date_intent": {{"kind": "weekday", "weekday": "thursday", "when": "this", "nights": 2}},
+              "campsite": null,
+              "numeric_constraints": [],
+              "semantic_constraints": []
+            }}
+
+            Example:
+            Input: "סופ״ש"
+            Output:
+            {{
+              "date_intent": {{"kind": "weekend", "when": "this", "nights": 1}},
+              "campsite": null,
+              "numeric_constraints": [],
+              "semantic_constraints": []
             }}
             """.strip().replace("            ", "")
         )
@@ -976,10 +1029,17 @@ def extractor_node(state: ChatState) -> ChatState:
     if not _intent_nonempty(intent):
         intent = {}
 
+    compact = _compact_date_intent(intent) if isinstance(intent, dict) else {}
     resolved = None
     tool_args = intent_tool_args(intent) if isinstance(intent, dict) else {}
     if tool_args:
         resolved = resolve_dates_tool.invoke(tool_args)
+
+    logger.info(
+        "extractor date_intent=%s resolved=%s",
+        json.dumps(compact, ensure_ascii=False) if compact else None,
+        json.dumps(resolved, ensure_ascii=False) if resolved else None,
+    )
 
     constraints_json = normalize_constraints(
         parsed,
@@ -1004,6 +1064,8 @@ def extractor_node(state: ChatState) -> ChatState:
         )
         constraints_json = _attach_campsite(constraints_json, parsed)
 
+    if compact:
+        constraints_json["date_intent"] = compact
     constraints_payload = json.dumps(constraints_json, ensure_ascii=False)
     if not constraints_payload.strip():
         constraints_payload = json.dumps(EMPTY_CONSTRAINTS, ensure_ascii=False)
@@ -1014,6 +1076,16 @@ def _intent_nonempty(intent) -> bool:
     if not isinstance(intent, dict):
         return False
     return any(v not in (None, "", [], {}) for v in intent.values())
+
+
+def _compact_date_intent(intent: dict) -> dict:
+    """Drop empty date_intent fields so traces show what the extractor actually used."""
+    out: dict = {}
+    for key, value in intent.items():
+        if value in (None, "", [], {}):
+            continue
+        out[key] = value
+    return out
 
 
 def _attach_campsite(constraints: dict, parsed: dict) -> dict:
