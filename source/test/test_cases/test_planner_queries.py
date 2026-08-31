@@ -53,7 +53,7 @@ def _fits_payload(result: dict) -> dict:
 @pytest.fixture
 def db_searches(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
-        "source.agent.graph._query_vec_literal", lambda query: FAKE_VEC
+        "source.agent.search._query_vec_literal", lambda query: FAKE_VEC
     )
     slots = MagicMock(return_value=[dict(SLOT)])
     amenities = MagicMock(
@@ -67,10 +67,10 @@ def db_searches(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     )
     claims = MagicMock(return_value=[])
     campsites = MagicMock(return_value=[])
-    monkeypatch.setattr("source.agent.graph.search_open_slots", slots)
-    monkeypatch.setattr("source.agent.graph.search_stated_amenities", amenities)
-    monkeypatch.setattr("source.agent.graph.search_review_claims", claims)
-    monkeypatch.setattr("source.agent.graph.search_campsites", campsites)
+    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.search_stated_amenities", amenities)
+    monkeypatch.setattr("source.agent.search.search_review_claims", claims)
+    monkeypatch.setattr("source.agent.search.search_campsites", campsites)
     return SimpleNamespace(
         slots=slots, amenities=amenities, claims=claims, campsites=campsites
     )

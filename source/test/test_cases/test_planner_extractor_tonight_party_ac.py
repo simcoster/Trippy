@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage, ChatMessage, HumanMessage
 
-from source.agent import graph as agent_graph
+from source.agent import search as agent_search
 from source.agent.graph import (
     _open_slots_sql,
     _render_sql,
@@ -66,7 +66,7 @@ def _planner_payload(result: dict) -> dict:
 @pytest.fixture
 def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
-        "source.agent.graph._query_vec_literal", lambda query: "[0]"
+        "source.agent.search._query_vec_literal", lambda query: "[0]"
     )
     slots = MagicMock(return_value=[dict(SLOT_AC), dict(SLOT_TENT)])
     amenities = MagicMock(
@@ -80,13 +80,13 @@ def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             }
         ]
     )
-    monkeypatch.setattr("source.agent.graph.search_open_slots", slots)
-    monkeypatch.setattr("source.agent.graph.search_stated_amenities", amenities)
+    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.search_stated_amenities", amenities)
     monkeypatch.setattr(
-        "source.agent.graph.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.search_review_claims", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.graph.lookup_campsite_by_name", MagicMock(return_value=[])
+        "source.agent.search.lookup_campsite_by_name", MagicMock(return_value=[])
     )
     return SimpleNamespace(slots=slots, amenities=amenities)
 
@@ -243,7 +243,7 @@ def test_open_slots_queries_db_for_extractor_tonight_party_ac(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("DATABASE_URL", "postgresql://mock")
-    monkeypatch.setattr(agent_graph.psycopg, "connect", lambda _url: _MockConn())
+    monkeypatch.setattr(agent_search.psycopg, "connect", lambda _url: _MockConn())
 
     slots = search_open_slots(
         date_range=EXTRACTOR_JSON["date"],
@@ -251,7 +251,7 @@ def test_open_slots_queries_db_for_extractor_tonight_party_ac(
         party_size=3,
         numeric_constraints=EXTRACTOR_JSON["numeric_constraints"],
     )
-    recorded = agent_graph._LAST_OPEN_SLOTS_QUERY
+    recorded = agent_search._LAST_OPEN_SLOTS_QUERY
     assert recorded is not None
     assert recorded.get("skipped") is None
     if slots and slots[0].get("error"):

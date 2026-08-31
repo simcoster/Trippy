@@ -82,6 +82,31 @@ def _parse_iso_day(value: Any) -> date | None:
         return None
 
 
+parse_iso_day = _parse_iso_day
+
+
+def iso_day(value: Any) -> str:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def stay_night_starts(date_range: dict) -> list[date] | None:
+    """Check-in dates of each one-night row needed for [start, end)."""
+    start = _parse_iso_day(date_range.get("start"))
+    if start is None:
+        return None
+    end = _parse_iso_day(date_range.get("end"))
+    if end is None or end <= start:
+        return [start]
+    nights: list[date] = []
+    day = start
+    while day < end:
+        nights.append(day)
+        day += timedelta(days=1)
+    return nights
+
+
 def _as_stay_range(start: date, end: date | None = None) -> dict[str, str]:
     """Check-in / check-out ISO range. End is exclusive; always at least one night."""
     if end is None or end <= start:

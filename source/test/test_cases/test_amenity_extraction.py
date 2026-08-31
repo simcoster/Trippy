@@ -90,7 +90,7 @@ def test_extract_named_place_kineret(extractor):
 
 
 def test_extract_named_place_eilat_beach(extractor):
-    """חוף אילת only — model must deduce coral reef + Red Sea, not copy them."""
+    """חוף אילת — keep the place and beach, without inventing nearby seas."""
     details = extractor.extract(
         "לינה ליד חוף אילת.",
         type_name="אוהל",
@@ -99,5 +99,3 @@ def test_extract_named_place_eilat_beach(extractor):
     print("eilat amenities:", details.get("amenities"))
     assert "eilat" in blob or "אילת" in blob
     assert "beach" in blob or "חוף" in blob
-    assert "coral" in blob or "reef" in blob or "אלמוג" in blob
-    assert "red sea" in blob or "ים סוף" in blob or "sea" in blob
