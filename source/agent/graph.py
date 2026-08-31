@@ -31,6 +31,11 @@ from source.agent.constraints import (
     semantic_search_queries,
     today_il,
 )
+from source.agent.dates import (
+    MAX_DATE_WINDOWS,
+    intent_tool_args,
+    resolve_dates_tool,
+)
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_30B_MODEL,
     QWEN_INSTRUCT_MODEL,
@@ -876,10 +881,7 @@ def check_after_cleaning(state: ChatState) -> str:
 
 
 def extractor_node(state: ChatState) -> ChatState:
-    """Extract structured constraints from the user query (JSON only; no tools).
-
-    Uses planner_model (30B). Flip that binding to 235B when we want it.
-    """
+    """Extract constraint *intent*, then resolve dates via resolve_dates."""
     today = today_il()
     system_msg = SystemMessage(
         content=(
@@ -892,7 +894,15 @@ def extractor_node(state: ChatState) -> ChatState:
 
             Schema (all keys required; use empty arrays / null when absent):
             {{
-              "date": {{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}} | null,
+              "date_intent": {{
+                "kind": "weekday" | "weekend" | "on" | null,
+                "weekday": "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday" | null,
+                "when": "this" | "next" | null,
+                "weeks_from_now": 3 | null,
+                "horizon_days": 30 | null,
+                "on": "YYYY-MM-DD" | "today" | null,
+                "nights": 2
+              }} | null,
               "campsite": "Horashat Tal" | null,
               "numeric_constraints": [
                 {{"field": "price_per_night", "operator": "<=", "value": 500}}
@@ -906,11 +916,18 @@ def extractor_node(state: ChatState) -> ChatState:
 
             Rules:
             1. Output ONLY JSON.
-            2. date: check-in/check-out as ISO start/end (end is exclusive).
-               One night ⇒ end is the day after start. Always at least one night
-               (never start == end). "this Friday" / "next Friday" → Friday check-in,
-               Saturday check-out.
-               Resolve relative phrases using today's date.
+            2. Dates: emit date_intent only. Do NOT compute ISO calendars and do NOT
+               emit date.start / date.end for relative phrases. A resolve_dates tool
+               turns intent into stay windows after you reply.
+               - "next" / "הבא" → when="next" (next calendar week, not this week's
+                 upcoming weekday).
+               - "this" / "הזה" / "הקרוב" / "coming" → when="this" (this ISO week,
+                 if that weekday is still ahead).
+               - "בעוד N שבועות" / "in N weeks" → weeks_from_now=N.
+               - "סופ״ש בחודש הקרוב" / weekends in the coming month → kind="weekend",
+                 horizon_days=30 (nights default 2).
+               - "today" / "החל מהיום" → kind="on", on="today".
+               - nights: stay length ("ל2 לילות" → 2). Weekend defaults to 2 if omitted.
                Do NOT put dates in numeric_constraints or semantic_constraints.
             3. numeric_constraints: price, party size, distance (km), rating only — never dates.
             4. campsite: only when the user names a specific park to stay at
@@ -932,7 +949,7 @@ def extractor_node(state: ChatState) -> ChatState:
             Input: "next friday, near the sea or some body of water to swim in"
             Output:
             {{
-              "date": {{"start": "<that Friday ISO>", "end": "<Saturday after that Friday>"}},
+              "date_intent": {{"kind": "weekday", "weekday": "friday", "when": "next", "nights": 1}},
               "campsite": null,
               "numeric_constraints": [],
               "semantic_constraints": [
@@ -947,13 +964,30 @@ def extractor_node(state: ChatState) -> ChatState:
     raw = _message_text(response.content)
     tool_calls = getattr(response, "tool_calls", None) or []
     user_text = _latest_user_text(state["messages"])
+    parsed = parse_constraints_dict(raw)
+
+    for tc in tool_calls or []:
+        name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
+        args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", None)
+        if name == "resolve_dates" and isinstance(args, dict):
+            parsed["date_intent"] = {**(parsed.get("date_intent") or {}), **args}
+
+    intent = parsed.get("date_intent")
+    if not _intent_nonempty(intent):
+        intent = {}
+
+    resolved = None
+    tool_args = intent_tool_args(intent) if isinstance(intent, dict) else {}
+    if tool_args:
+        resolved = resolve_dates_tool.invoke(tool_args)
 
     constraints_json = normalize_constraints(
-        parse_constraints_dict(raw),
+        parsed,
         today=today,
         user_text=user_text,
+        resolved=resolved,
     )
-    constraints_json = _attach_campsite(constraints_json, parse_constraints_dict(raw))
+    constraints_json = _attach_campsite(constraints_json, parsed)
     # If the model emitted tool calls instead of JSON, recover queries from args.
     if (
         not constraints_json.get("semantic_constraints")
@@ -963,16 +997,23 @@ def extractor_node(state: ChatState) -> ChatState:
     ):
         constraints_json = _constraints_from_tool_calls(tool_calls)
         constraints_json = normalize_constraints(
-            constraints_json, today=today, user_text=user_text
+            constraints_json,
+            today=today,
+            user_text=user_text,
+            resolved=resolved,
         )
-        constraints_json = _attach_campsite(
-            constraints_json, parse_constraints_dict(raw)
-        )
+        constraints_json = _attach_campsite(constraints_json, parsed)
 
     constraints_payload = json.dumps(constraints_json, ensure_ascii=False)
     if not constraints_payload.strip():
         constraints_payload = json.dumps(EMPTY_CONSTRAINTS, ensure_ascii=False)
     return {"messages": [AIMessage(content=constraints_payload)]}
+
+
+def _intent_nonempty(intent) -> bool:
+    if not isinstance(intent, dict):
+        return False
+    return any(v not in (None, "", [], {}) for v in intent.values())
 
 
 def _attach_campsite(constraints: dict, parsed: dict) -> dict:
@@ -1000,6 +1041,8 @@ def _latest_constraints_json(messages: list[BaseMessage]) -> dict:
             "semantic_constraints" in data
             or "numeric_constraints" in data
             or "date" in data
+            or "date_windows" in data
+            or "date_intent" in data
             or "amenities" in data
             or "campsite" in data
         ):
@@ -1120,8 +1163,22 @@ def _named_site_ids(name: str) -> tuple[list[int], dict[str, Any] | None]:
     return ids, None
 
 
+def _stay_windows(constraints_json: dict) -> list[dict]:
+    """Stay ranges to search, capped at MAX_DATE_WINDOWS."""
+    raw = constraints_json.get("date_windows")
+    windows: list[dict] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict) and item.get("start"):
+                windows.append(item)
+    if not windows:
+        date_range = constraints_json.get("date")
+        if isinstance(date_range, dict) and date_range.get("start"):
+            windows.append(date_range)
+    return windows[:MAX_DATE_WINDOWS]
+
+
 def _planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
-    date_range = constraints_json.get("date")
     numeric = constraints_json.get("numeric_constraints") or []
     semantic = constraints_json.get("semantic_constraints") or []
     payload: dict[str, Any] = {
@@ -1130,9 +1187,16 @@ def _planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         "rejected_count": 0,
         "constraints": constraints_json,
     }
-    if not (isinstance(date_range, dict) and date_range.get("start")):
+    windows = _stay_windows(constraints_json)
+    if not windows:
         payload["skipped"] = "no_date"
         return payload
+    if constraints_json.get("date_notice"):
+        payload["date_notice"] = constraints_json["date_notice"]
+    elif constraints_json.get("date_truncated"):
+        payload["date_notice"] = (
+            "יש יותר מ-4 טווחי תאריכים מתאימים; חיפשתי רק את ארבעת הראשונים."
+        )
 
     site_id: int | list[int] | None = None
     named = constraints_json.get("campsite")
@@ -1144,17 +1208,31 @@ def _planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             return payload
         site_id = site_ids if len(site_ids) > 1 else site_ids[0]
 
-    slots = search_open_slots(
-        date_range=date_range,
-        site_id=site_id,
-        party_size=_party_size_from_numeric(numeric),
-        numeric_constraints=numeric,
+    slots: list[dict] = []
+    query_records: list[Any] = []
+    for window in windows:
+        part = search_open_slots(
+            date_range=window,
+            site_id=site_id,
+            party_size=_party_size_from_numeric(numeric),
+            numeric_constraints=numeric,
+        )
+        record = _LAST_OPEN_SLOTS_QUERY
+        if not isinstance(record, dict):
+            record = {"date_range": window}
+        else:
+            record = {**record, "date_range": record.get("date_range") or window}
+        query_records.append(record)
+        if part and part[0].get("error"):
+            payload["error"] = part[0]["error"]
+            payload["open_slots_query"] = (
+                query_records[0] if len(query_records) == 1 else query_records
+            )
+            return payload
+        slots.extend(part)
+    payload["open_slots_query"] = (
+        query_records[0] if len(query_records) == 1 else query_records
     )
-    if _LAST_OPEN_SLOTS_QUERY is not None:
-        payload["open_slots_query"] = _LAST_OPEN_SLOTS_QUERY
-    if slots and slots[0].get("error"):
-        payload["error"] = slots[0]["error"]
-        return payload
 
     type_ids = [int(s["accommodation_type_id"]) for s in slots]
     why_by_type, reject_why_by_type = _semantic_why_by_type(type_ids, semantic)
@@ -1223,6 +1301,10 @@ def recommender_node(state: ChatState) -> ChatState:
     system_msg = SystemMessage(
         content=(
             "You are a helpful trip-planning assistant for Trippy. "
+            "Lead the reply with the stay date(s) you searched, using day.month "
+            "(from fits[].start/end or constraints.date_windows) — never only "
+            "'next Thursday'. If constraints.date_notice or date_truncated is set, "
+            "say that only the first 4 date ranges were used. "
             "Recommend only from the planner JSON field `fits`. "
             "Each fit is an available stay that already matches dates, party size, "
             "and price when those were given. "

@@ -4,49 +4,17 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
-TZ_IL = ZoneInfo("Asia/Jerusalem")
-
-_DATE_IN_QUERY_RE = re.compile(
-    r"(?i)("
-    r"next\s+friday|this\s+friday|coming\s+friday|"
-    r"next\s+saturday|this\s+weekend|next\s+weekend|"
-    r"ל?שישי\s+הבא|השישי\s+הבא|סופ.?״?ש\s+הבא|סופש\s+הבא"
-    r")"
+from source.agent.dates import (
+    apply_resolved_dates,
+    next_friday,
+    resolve_dates,
+    today_il,
 )
-
-
-def today_il(today: date | None = None) -> date:
-    if today is not None:
-        return today
-    return datetime.now(TZ_IL).date()
-
-
-def next_friday(today: date | None = None) -> date:
-    """Upcoming Friday; if today is Friday, the Friday one week later."""
-    today = today_il(today)
-    days_ahead = (4 - today.weekday()) % 7
-    if days_ahead == 0:
-        days_ahead = 7
-    return today + timedelta(days=days_ahead)
-
-
-def next_saturday(today: date | None = None) -> date:
-    fri = next_friday(today)
-    return fri + timedelta(days=1)
-
-
-def _parse_iso_day(value: Any) -> date | None:
-    if value is None:
-        return None
-    text = str(value).strip()[:10]
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        return None
+from source.agent.dates import _as_stay_range
+from source.agent.dates import _parse_iso_day
 
 
 _REVIEW_DATE_FORMATS = (
@@ -86,38 +54,6 @@ def claim_recency(
     if parsed is None:
         return None, None
     return parsed.isoformat(), (today_il(today) - parsed).days
-
-
-def _as_stay_range(start: date, end: date | None = None) -> dict[str, str]:
-    """Check-in / check-out ISO range. End is exclusive; always at least one night."""
-    if end is None or end <= start:
-        end = start + timedelta(days=1)
-    return {"start": start.isoformat(), "end": end.isoformat()}
-
-
-def resolve_relative_date_phrase(
-    phrase: str,
-    *,
-    today: date | None = None,
-) -> dict[str, str] | None:
-    """Map a relative date phrase to {start, end} check-in/check-out ISO dates."""
-    t = (phrase or "").strip().lower()
-    if not t:
-        return None
-    today = today_il(today)
-
-    if "weekend" in t or "סופ" in t:
-        start = next_friday(today)
-        # Fri night + Sat night → checkout Sunday
-        return _as_stay_range(start, start + timedelta(days=2))
-
-    if "friday" in t or "שישי" in t:
-        return _as_stay_range(next_friday(today))
-
-    if "saturday" in t or "שבת" in t:
-        return _as_stay_range(next_saturday(today))
-
-    return None
 
 
 def _normalize_semantic_item(item: Any) -> dict[str, Any] | None:
@@ -161,51 +97,46 @@ def _normalize_semantic_list(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _date_from_semantic_queries(
-    semantic: list[Any],
-    *,
-    today: date | None = None,
-) -> tuple[dict[str, str] | None, list[Any]]:
-    """Pull date intent out of semantic_constraints into a date range."""
-    kept: list[Any] = []
-    found: dict[str, str] | None = None
-    for item in semantic or []:
-        query = ""
-        if isinstance(item, dict):
-            query = str(item.get("query") or "")
-        elif isinstance(item, str):
-            query = item
-        match = _DATE_IN_QUERY_RE.search(query)
-        if match and found is None:
-            found = resolve_relative_date_phrase(match.group(1), today=today)
-            # Drop date-only semantic crumbs; keep if other content remains
-            rest = _DATE_IN_QUERY_RE.sub("", query).strip(" ,.-")
-            if rest and isinstance(item, dict):
-                kept.append({**item, "query": rest})
-            elif rest:
-                kept.append({"query": rest} if not isinstance(item, dict) else item)
-            continue
-        kept.append(item)
-    return found, kept
+def _intent_nonempty(intent: Any) -> bool:
+    if not isinstance(intent, dict):
+        return False
+    return any(v not in (None, "", [], {}) for v in intent.values())
+
+
+def _windows_from_date_field(raw: Any, *, today: date | None = None) -> list[dict[str, str]]:
+    if raw is None or raw == "" or raw == []:
+        return []
+    if isinstance(raw, list):
+        windows: list[dict[str, str]] = []
+        for item in raw:
+            if isinstance(item, dict) and (item.get("start") or item.get("kind")):
+                windows.extend(_windows_from_date_field(item, today=today))
+            else:
+                day = _parse_iso_day(item)
+                if day is not None:
+                    windows.append(_as_stay_range(day))
+        return windows
+    if isinstance(raw, dict):
+        if _intent_nonempty(
+            {k: raw.get(k) for k in ("kind", "weekday", "when", "weeks_from_now", "horizon_days", "on")}
+        ) and not raw.get("start"):
+            return list(resolve_dates(**raw, today=today).get("windows") or [])
+        one = _normalize_date_field(raw, today=today)
+        return [one] if one else []
+    one = _normalize_date_field(raw, today=today)
+    return [one] if one else []
 
 
 def _normalize_date_field(raw: Any, *, today: date | None = None) -> dict[str, str] | None:
     if raw is None or raw == "" or raw == []:
         return None
     if isinstance(raw, dict):
-        # Relative phrase in start/end or "query"
-        for key in ("query", "relative", "text"):
-            if key in raw and isinstance(raw[key], str):
-                resolved = resolve_relative_date_phrase(raw[key], today=today)
-                if resolved:
-                    return resolved
         start = _parse_iso_day(raw.get("start") or raw.get("from"))
         end = _parse_iso_day(raw.get("end") or raw.get("to") or raw.get("start") or raw.get("from"))
         if start and end:
             if end < start:
                 start, end = end, start
             return _as_stay_range(start, end)
-        # Single ISO under "date"
         single = _parse_iso_day(raw.get("date") or raw.get("day"))
         if single:
             return _as_stay_range(single)
@@ -214,18 +145,13 @@ def _normalize_date_field(raw: Any, *, today: date | None = None) -> dict[str, s
         days = [_parse_iso_day(x) for x in raw]
         days = [d for d in days if d is not None]
         if not days:
-            # list of relative phrases
-            for x in raw:
-                resolved = resolve_relative_date_phrase(str(x), today=today)
-                if resolved:
-                    return resolved
             return None
         return _as_stay_range(min(days), max(days))
     if isinstance(raw, str):
         iso = _parse_iso_day(raw)
         if iso:
             return _as_stay_range(iso)
-        return resolve_relative_date_phrase(raw, today=today)
+        return None
     return None
 
 
@@ -256,10 +182,13 @@ def normalize_constraints(
     *,
     today: date | None = None,
     user_text: str | None = None,
+    resolved: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Normalize extractor output to:
-      date: {start, end} | null
+      date: {start, end} | null  (first window)
+      date_windows: [{start, end}, ...]
+      date_truncated / date_notice
       numeric_constraints: [...]
       semantic_constraints: [{query: ...} | {op: or, values: [...]}, ...]
 
@@ -267,24 +196,36 @@ def normalize_constraints(
     """
     parsed = parse_constraints_dict(data)
     today = today_il(today)
+    _ = user_text
 
     semantic = _normalize_semantic_list(
         list(parsed.get("semantic_constraints") or [])
         + list(parsed.get("amenities") or [])
     )
     numeric = list(parsed.get("numeric_constraints") or [])
-
-    date_range = _normalize_date_field(parsed.get("date"), today=today)
-    from_semantic, semantic = _date_from_semantic_queries(semantic, today=today)
-    if date_range is None:
-        date_range = from_semantic
     semantic = _normalize_semantic_list(semantic)
 
-    # Prefer code for relative phrases in the user text (LLM ISO is often off by a day).
-    if user_text:
-        match = _DATE_IN_QUERY_RE.search(user_text)
-        if match:
-            date_range = resolve_relative_date_phrase(match.group(1), today=today) or date_range
+    intent = parsed.get("date_intent")
+    used_resolved = resolved if isinstance(resolved, dict) else None
+    if used_resolved is None and _intent_nonempty(intent):
+        used_resolved = resolve_dates(**intent, today=today)
+
+    if used_resolved is None or not used_resolved.get("windows"):
+        existing = parsed.get("date_windows")
+        if isinstance(existing, list) and existing:
+            used_resolved = {
+                "windows": _windows_from_date_field(existing, today=today),
+                "truncated": bool(parsed.get("date_truncated")),
+                "notice": parsed.get("date_notice"),
+            }
+        else:
+            iso_windows = _windows_from_date_field(parsed.get("date"), today=today)
+            if iso_windows:
+                used_resolved = {
+                    "windows": iso_windows,
+                    "truncated": False,
+                    "notice": None,
+                }
 
     # Strip date-like numeric junk (field containing date)
     cleaned_numeric: list[Any] = []
@@ -292,17 +233,24 @@ def normalize_constraints(
         if isinstance(item, dict):
             field = str(item.get("field") or "").lower()
             if "date" in field or field in {"start", "end", "night", "check_in"}:
-                if date_range is None:
+                if not (used_resolved and used_resolved.get("windows")):
                     val = item.get("value")
-                    date_range = _normalize_date_field(val, today=today) or date_range
+                    one = _normalize_date_field(val, today=today)
+                    if one:
+                        used_resolved = {
+                            "windows": [one],
+                            "truncated": False,
+                            "notice": None,
+                        }
                 continue
         cleaned_numeric.append(item)
 
-    return {
-        "date": date_range,
+    out = {
         "numeric_constraints": cleaned_numeric,
         "semantic_constraints": semantic,
     }
+    apply_resolved_dates(out, used_resolved)
+    return out
 
 
 def campsite_name_from_parsed(parsed: dict[str, Any] | None) -> str | None:
@@ -347,6 +295,9 @@ amenity_search_queries = semantic_search_queries
 
 EMPTY_CONSTRAINTS: dict[str, Any] = {
     "date": None,
+    "date_windows": [],
+    "date_truncated": False,
+    "date_notice": None,
     "numeric_constraints": [],
     "semantic_constraints": [],
 }

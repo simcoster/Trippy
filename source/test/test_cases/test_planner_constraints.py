@@ -11,11 +11,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from source.agent.constraints import (
     amenity_search_queries,
     claim_recency,
-    next_friday,
     normalize_constraints,
-    resolve_relative_date_phrase,
     semantic_search_queries,
 )
+from source.agent.dates import resolve_dates, today_il, weekday_next_iso_week
 
 load_dotenv()
 
@@ -87,14 +86,18 @@ def _norm_label(s: str) -> str:
 
 def test_resolve_next_friday_single_night():
     today = date(2026, 8, 27)  # Thursday
-    resolved = resolve_relative_date_phrase("next Friday", today=today)
-    assert resolved == {"start": "2026-08-28", "end": "2026-08-29"}
+    resolved = resolve_dates(
+        kind="weekday", weekday="friday", when="next", nights=1, today=today
+    )
+    assert resolved["windows"] == [{"start": "2026-09-04", "end": "2026-09-05"}]
 
 
 def test_resolve_this_friday_single_night():
     today = date(2026, 8, 27)  # Thursday
-    resolved = resolve_relative_date_phrase("this Friday", today=today)
-    assert resolved == {"start": "2026-08-28", "end": "2026-08-29"}
+    resolved = resolve_dates(
+        kind="weekday", weekday="friday", when="this", nights=1, today=today
+    )
+    assert resolved["windows"] == [{"start": "2026-08-28", "end": "2026-08-29"}]
 
 
 def test_normalize_same_day_bumps_end_to_one_night():
@@ -108,27 +111,39 @@ def test_normalize_same_day_bumps_end_to_one_night():
         today=today,
     )
     assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
-    assert set(out) == {"date", "numeric_constraints", "semantic_constraints"}
+    assert out["date_windows"] == [{"start": "2026-08-28", "end": "2026-08-29"}]
+    assert out["date_truncated"] is False
+    assert out["date_notice"] is None
+    assert set(out) == {
+        "date",
+        "date_windows",
+        "date_truncated",
+        "date_notice",
+        "numeric_constraints",
+        "semantic_constraints",
+    }
 
 
-def test_normalize_moves_date_out_of_semantic():
+def test_normalize_resolves_date_intent():
     today = date(2026, 8, 27)
     out = normalize_constraints(
         {
-            "semantic_constraints": [
-                {"query": "available next Friday"},
-                {"query": "quiet"},
-            ],
+            "date_intent": {
+                "kind": "weekday",
+                "weekday": "friday",
+                "when": "next",
+                "nights": 1,
+            },
+            "semantic_constraints": [{"query": "quiet"}],
             "numeric_constraints": [],
         },
         today=today,
     )
-    assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
+    assert out["date"] == {"start": "2026-09-04", "end": "2026-09-05"}
     assert "amenities" not in out
     queries = [
         (s.get("query") if isinstance(s, dict) else s) for s in out["semantic_constraints"]
     ]
-    assert not any(q and "friday" in str(q).lower() for q in queries)
     assert any(q and "quiet" in str(q).lower() for q in queries)
 
 
@@ -136,7 +151,12 @@ def test_normalize_folds_amenities_into_semantic():
     today = date(2026, 8, 27)
     out = normalize_constraints(
         {
-            "date": None,
+            "date_intent": {
+                "kind": "weekday",
+                "weekday": "friday",
+                "when": "next",
+                "nights": 1,
+            },
             "amenities": [
                 {
                     "op": "or",
@@ -147,9 +167,8 @@ def test_normalize_folds_amenities_into_semantic():
             "semantic_constraints": [{"query": "quiet"}],
         },
         today=today,
-        user_text=PROMPT_SEA_OR_WATER,
     )
-    assert out["date"] == {"start": "2026-08-28", "end": "2026-08-29"}
+    assert out["date"] == {"start": "2026-09-04", "end": "2026-09-05"}
     assert "amenities" not in out
     group = _find_or_group(out["semantic_constraints"])
     assert group is not None
@@ -208,7 +227,7 @@ def test_extractor_next_friday_running_water_constraint_schema():
 
     result = extractor_node({"messages": [HumanMessage(content=PROMPT_HE_RUNNING_WATER)]})
     constraints = _extractor_constraints_json(result["messages"])
-    friday = next_friday()
+    friday = weekday_next_iso_week(today_il(), 4)
 
     assert _date_covers_friday(constraints, friday), (
         f"expected next Friday {friday.isoformat()} in date={constraints.get('date')!r}"
@@ -237,7 +256,7 @@ def test_extractor_next_friday_sea_or_body_of_water():
 
     result = extractor_node({"messages": [HumanMessage(content=PROMPT_SEA_OR_WATER)]})
     constraints = _extractor_constraints_json(result["messages"])
-    friday = next_friday()
+    friday = weekday_next_iso_week(today_il(), 4)
     friday_iso = friday.isoformat()
 
     date_field = constraints.get("date")
