@@ -1,8 +1,8 @@
 """
 Scrape published rate cards from parks.org.il camping info pages.
 
-Creates accommodation_types from classified lodging rows and snapshots
-list_prices. Does not scrape newsflashes.
+Creates info_website_names from classified lodging rows and snapshots
+list_prices. Does not create accommodation_types or scrape newsflashes.
 
   uv run python source/scraper/info_site/scrape.py --prices
 """

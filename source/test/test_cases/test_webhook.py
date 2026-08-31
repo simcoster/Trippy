@@ -147,6 +147,7 @@ async def test_webhook_with_no_text(fake_request_factory):
 MODEL = ClaimsEmbeddingLLMClient.MODEL
 
 
+@pytest.mark.llm
 @pytest.mark.asyncio
 async def test_embedding_search_fit_for_kids():
     # Prepare

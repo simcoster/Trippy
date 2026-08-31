@@ -264,9 +264,10 @@ def _load_list_prices(type_ids: list[int]) -> dict[int, list[SimpleNamespace]]:
     if not db_url:
         return {}
     sql = """
-        SELECT accommodation_type_id, guest_type, rate_period, price
-        FROM list_prices
-        WHERE accommodation_type_id = ANY(%s)
+        SELECT at.id, lp.guest_type, lp.rate_period, lp.price
+        FROM accommodation_types at
+        JOIN list_prices lp ON lp.info_website_name_id = at.info_website_name_id
+        WHERE at.id = ANY(%s)
     """
     try:
         with psycopg.connect(db_url) as conn:

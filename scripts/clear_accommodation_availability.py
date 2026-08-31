@@ -1,4 +1,7 @@
-"""Clear accommodation_types and availability tables (TRUNCATE … CASCADE)."""
+"""Clear accommodation_types and availability tables (TRUNCATE … CASCADE).
+
+Does not delete info_website_names or list_prices.
+"""
 
 from __future__ import annotations
 
@@ -44,7 +47,8 @@ def main() -> None:
     _log(f"Connecting to Postgres at {host_part} ...")
     try:
         with psycopg.connect(url, connect_timeout=10) as conn:
-            _log("Connected. Truncating accommodation_types (CASCADE)...")
+            _log("Truncating accommodation_types (CASCADE to availability).")
+            _log("info_website_names and list_prices are left in place.")
             with conn.cursor() as cur:
                 cur.execute(
                     "TRUNCATE TABLE accommodation_types RESTART IDENTITY CASCADE"

@@ -17,16 +17,20 @@ scrape-prices:
 scrape-sites:
     uv run python source/scraper/discover_sites.py
 
-# INPA hotel ids → campsites.booking_hotel_id
-scrape-booking-ids:
-    uv run python source/scraper/populate_availability_id.py
-
 # INPA vacancies → availability (match existing types)
 scrape-availability:
     uv run python source/scraper/populate_availability.py
 
+# Truncate accommodation_types (CASCADE to availability); keep prices
+clear-data:
+    uv run python scripts/clear_accommodation_availability.py
+
+# Apply pending Alembic migrations
+update-tables:
+    uv run alembic upgrade head
+
 # sites, booking ids, prices, then availability
-scrape-all: scrape-sites scrape-booking-ids scrape-prices scrape-availability
+scrape-all: scrape-sites scrape-prices scrape-availability
 
 # Local Streamlit agent (Telegram remains production)
 streamlit:

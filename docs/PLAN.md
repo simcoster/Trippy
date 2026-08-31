@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-08-31)
+
+**Info-site names vs booking types**
+- `info_website_names` is the parks.org.il lodging product (`site_id` + classified name). Price scrape upserts those names and `list_prices` tariffs only — it no longer creates `accommodation_types`.
+- Availability scrape get-or-creates types from INPA booking names and sets `info_website_name_id`: exact name first, else Qwen 30B over that hotel’s info-site names. Contains/fuzzy matching is gone. Planner quotes join `accommodation_types.info_website_name_id = list_prices.info_website_name_id`.
+
 ### Done (2026-08-30, evening)
 
 **Two-stage planner (vacancies → amenity intersection)**
@@ -18,10 +24,10 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 **Info-site rate card (`source/scraper/info_site/`)**
 - New `list_prices` table (`011_list_prices`): published parks.org.il tariffs (guest type, weekday/weekend, regular class), not INPA date slots
-- Scraper reads `#table1` / `.tableMain[data-id=1]` (רגיל), classifies lodging rows with Qwen 30B, get-or-creates `accommodation_types` from those names
+- Scraper reads `#table1` / `.tableMain[data-id=1]` (רגיל), classifies lodging rows with Qwen 30B into `info_website_names`, then snapshots `list_prices`
 - Fee rows (`תוספת…`) are parsed and skipped; failing test left until persist lands
 - Newsflash helpers (`newsflashes.py`) + failing persist test exist but are **not** called from `scrape.py --prices`
-- Availability now searches **1 adult**; matches existing types only and **aborts** on unknown names
+- Availability searches **1 adult**; creates booking `accommodation_types` and links them to `info_website_names` (exact or 30B)
 
 ### Done (2026-08-30)
 
@@ -72,6 +78,7 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Relative dates resolved in Python (Asia/Jerusalem)
 - Named-place → type expansion is done by the **extract LLM** at ingest (not a place list / regex tool): e.g. Kineret also yields lake + body of water; Negev also yields desert. Same rule should apply when splitting review claims.
 - Planner stage 1 filters one-night availability for the stay; stage 2 intersects official accommodation amenities (`<#> ≤ −0.8`) with `why` on each fit
+- Booking types link to `info_website_names` (exact or 30B); quotes use `list_prices` via that id
 
 **Still open**
 - Site-level `campsites.amenities` jsonb + GIN
@@ -81,7 +88,6 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)
 - Scrape other `#tableN` tabs (מנוי, חייל, קבוצה, אזרח ותיק, …) and `ציוד להשכרה`
 - Listing-level **מה חדש** / site-wide ticker when `site_id` is unknown
-- Availability unknown-type: **log and continue** instead of aborting the scrape
 
 ### Later — second booking source + standardization
 

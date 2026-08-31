@@ -40,6 +40,9 @@ class Campsite(Base):
     )
     notices: Mapped[list[Notice]] = relationship(back_populates="campsite")
     list_prices: Mapped[list[ListPrice]] = relationship(back_populates="campsite")
+    info_website_names: Mapped[list[InfoWebsiteName]] = relationship(
+        back_populates="campsite"
+    )
 
 
 class Claim(Base):
@@ -153,6 +156,11 @@ class AccommodationType(Base):
     check_out_time: Mapped[time | None] = mapped_column(Time)
     # e.g. {"min_weekend_nights": 2, "min_holiday_nights": 2, "pets_allowed": false}
     policy_rules = mapped_column(JSONB)
+    info_website_name_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("info_website_names.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -164,8 +172,8 @@ class AccommodationType(Base):
     availability: Mapped[list[Availability]] = relationship(
         back_populates="accommodation_type"
     )
-    list_prices: Mapped[list[ListPrice]] = relationship(
-        back_populates="accommodation_type"
+    info_website_name: Mapped[InfoWebsiteName | None] = relationship(
+        back_populates="accommodation_types"
     )
 
 
@@ -212,14 +220,41 @@ class Availability(Base):
     )
 
 
+class InfoWebsiteName(Base):
+    """Parks.org.il rate-card lodging product (name only)."""
+
+    __tablename__ = "info_website_names"
+    __table_args__ = (
+        UniqueConstraint(
+            "site_id",
+            "name",
+            name="info_website_names_site_id_name_key",
+        ),
+        Index("info_website_names_site_idx", "site_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+
+    campsite: Mapped[Campsite] = relationship(back_populates="info_website_names")
+    list_prices: Mapped[list[ListPrice]] = relationship(
+        back_populates="info_website_name"
+    )
+    accommodation_types: Mapped[list[AccommodationType]] = relationship(
+        back_populates="info_website_name"
+    )
+
+
 class ListPrice(Base):
     """Published parks.org.il rate-card prices (not date-specific availability)."""
 
     __tablename__ = "list_prices"
     __table_args__ = (
         UniqueConstraint(
-            "site_id",
-            "accommodation_type_id",
+            "info_website_name_id",
             "guest_type",
             "rate_period",
             "rate_class",
@@ -232,9 +267,9 @@ class ListPrice(Base):
     site_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
     )
-    accommodation_type_id: Mapped[int] = mapped_column(
+    info_website_name_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("accommodation_types.id", ondelete="RESTRICT"),
+        ForeignKey("info_website_names.id", ondelete="RESTRICT"),
         nullable=False,
     )
     guest_type: Mapped[str] = mapped_column(Text, nullable=False)
@@ -255,6 +290,6 @@ class ListPrice(Base):
     )
 
     campsite: Mapped[Campsite] = relationship(back_populates="list_prices")
-    accommodation_type: Mapped[AccommodationType] = relationship(
+    info_website_name: Mapped[InfoWebsiteName] = relationship(
         back_populates="list_prices"
     )

@@ -17,6 +17,8 @@ sys.path.insert(0, str(_SCRAPER_DIR))
 
 from amenity_enrichment import ExtractorLLMClient  # noqa: E402
 
+pytestmark = pytest.mark.llm
+
 HUSHA_ACCESSIBLE_TOOLTIP = (
     "בכל חושה: 4 מיטות, מזרנים, תאורה, מיני מקרר, מאוורר. "
     "עד 4 לנים בחושה. יש להצטייד במצעים, מגבות, כריות ושמיכות. "

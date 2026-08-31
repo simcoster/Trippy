@@ -78,6 +78,7 @@ def classifier():
     return RateCardClassifier()
 
 
+@pytest.mark.llm
 def test_llm_classifies_bungalow_weekday(classifier):
     payload = classifier.classify_label("לינה בבונגלו עם מזגן אמצע שבוע")
     assert "בונגלו" in payload.accommodation_type

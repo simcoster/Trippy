@@ -2,8 +2,8 @@
 Fetch vacancies from the INPA booking engine for campsites in Postgres.
 
 Iterates the next N nights (default 14, one night each) and upserts into
-`availability`. Accommodation types must already exist (created by the
-info-site rate-card scraper); unknown INPA names abort the scrape.
+`availability`. Creates accommodation_types from INPA names and links each
+to an info_website_names row (exact name, else Qwen 30B).
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import ssl
 import sys
 import time
 from datetime import date, timedelta
-from difflib import SequenceMatcher
 from html import unescape
 from pathlib import Path
 from urllib.parse import urlencode
@@ -32,6 +31,7 @@ from amenity_enrichment import (
 )
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from info_site.match_listing import InfoWebsiteNameMatcher, match_info_website_name
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -42,8 +42,24 @@ SCRAPER_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRAPER_DIR / "config.json"
 RESULTS_PATH = "https://secure-hotels.net/INPA/BE_Results.aspx"
 
-LOAD_ACCOMMODATION_TYPES_SQL = """
-SELECT id, name FROM accommodation_types WHERE hotel_id = %(hotel_id)s
+LOAD_INFO_WEBSITE_NAMES_SQL = """
+SELECT id, name FROM info_website_names WHERE site_id = %(site_id)s
+ORDER BY id
+"""
+
+GET_OR_CREATE_ACCOMMODATION_TYPE_SQL = """
+INSERT INTO accommodation_types (hotel_id, name)
+VALUES (%(hotel_id)s, %(name)s)
+ON CONFLICT (hotel_id, name) DO UPDATE SET name = EXCLUDED.name
+RETURNING id, info_website_name_id;
+"""
+
+LINK_TYPE_TO_INFO_WEBSITE_NAME_SQL = """
+UPDATE accommodation_types
+SET info_website_name_id = %(info_website_name_id)s,
+    updated_at = now()
+WHERE id = %(id)s
+  AND info_website_name_id IS NULL
 """
 
 UPSERT_AVAILABILITY_SQL = """
@@ -100,6 +116,8 @@ def fetch_campsites(config: dict) -> list[dict]:
         SELECT id, name, booking_hotel_id
         FROM campsites
         WHERE booking_hotel_id IS NOT NULL
+        --remove later
+        and id = 2
         ORDER BY id
         LIMIT %s
     """
@@ -250,69 +268,78 @@ def aggregate_offerings(offerings: list[dict]) -> list[dict]:
 
 
 class UnknownAccommodationTypeError(RuntimeError):
-    """INPA listing name has no matching accommodation_types row for this hotel."""
+    """Booking name has no accommodation_types row for this hotel yet."""
 
 
-def load_accommodation_types(conn, hotel_id: int) -> list[tuple[int, str]]:
+def load_info_website_names(conn, site_id: int) -> list[tuple[int, str]]:
     with conn.cursor() as cur:
-        cur.execute(LOAD_ACCOMMODATION_TYPES_SQL, {"hotel_id": hotel_id})
+        cur.execute(LOAD_INFO_WEBSITE_NAMES_SQL, {"site_id": site_id})
         return [(int(row[0]), row[1]) for row in cur.fetchall()]
 
 
-def match_accommodation_type(
-    name: str,
-    catalog: list[tuple[int, str]],
-    *,
-    fuzzy_threshold: float = 0.82,
-) -> int | None:
-    """Match a normalized INPA name to an existing catalog type. None if unknown."""
-    needle = normalize_accommodation_name(name)
-    if not needle:
-        return None
-    exact = [
-        type_id
-        for type_id, catalog_name in catalog
-        if normalize_accommodation_name(catalog_name) == needle
-    ]
-    if exact:
-        return exact[0]
-
-    scored: list[tuple[float, int]] = []
-    for type_id, catalog_name in catalog:
-        other = normalize_accommodation_name(catalog_name)
-        if not other:
-            continue
-        scored.append((SequenceMatcher(None, needle, other).ratio(), type_id))
-    scored.sort(reverse=True)
-    if not scored or scored[0][0] < fuzzy_threshold:
-        return None
-    if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.05:
-        return None
-    return scored[0][1]
-
-
-def require_existing_accommodation_type(
-    name: str,
-    catalog: list[tuple[int, str]],
+def get_or_create_accommodation_type(
+    cur,
     *,
     hotel_id: int,
-) -> int:
-    type_id = match_accommodation_type(name, catalog)
-    if type_id is None:
+    name: str,
+) -> tuple[int, int | None]:
+    needle = normalize_accommodation_name(name)
+    if not needle:
         raise UnknownAccommodationTypeError(
-            f"Unknown accommodation type {name!r} for hotel_id={hotel_id}. "
-            "Run the info-site price scraper first so the catalog exists."
+            f"Empty accommodation type name for hotel_id={hotel_id}"
+        )
+    cur.execute(
+        GET_OR_CREATE_ACCOMMODATION_TYPE_SQL,
+        {"hotel_id": hotel_id, "name": needle},
+    )
+    row = cur.fetchone()
+    linked = int(row[1]) if row[1] is not None else None
+    return int(row[0]), linked
+
+
+def ensure_booking_accommodation_type(
+    cur,
+    *,
+    hotel_id: int,
+    name: str,
+    listings: list[tuple[int, str]],
+    matcher: InfoWebsiteNameMatcher | None = None,
+    usage: LlmUsage | None = None,
+) -> int:
+    """Create the booking type if needed and link it to an info-site name."""
+    type_id, linked = get_or_create_accommodation_type(
+        cur, hotel_id=hotel_id, name=name
+    )
+    if linked is not None:
+        return type_id
+    needle = normalize_accommodation_name(name)
+    listing_id = match_info_website_name(
+        needle, listings, matcher=matcher, usage=usage
+    )
+    if listing_id is not None:
+        cur.execute(
+            LINK_TYPE_TO_INFO_WEBSITE_NAME_SQL,
+            {"id": type_id, "info_website_name_id": listing_id},
         )
     return type_id
 
 
 def require_existing_type(cur, *, hotel_id: int, name: str) -> int:
     """Lookup-only callback for amenity enrichment (does not create types)."""
-    cur.execute(LOAD_ACCOMMODATION_TYPES_SQL, {"hotel_id": hotel_id})
-    catalog = [(int(row[0]), row[1]) for row in cur.fetchall()]
-    return require_existing_accommodation_type(
-        name, catalog, hotel_id=hotel_id
+    needle = normalize_accommodation_name(name)
+    cur.execute(
+        """
+        SELECT id FROM accommodation_types
+        WHERE hotel_id = %(hotel_id)s AND name = %(name)s
+        """,
+        {"hotel_id": hotel_id, "name": needle},
     )
+    row = cur.fetchone()
+    if row is None:
+        raise UnknownAccommodationTypeError(
+            f"Unknown accommodation type {name!r} for hotel_id={hotel_id}."
+        )
+    return int(row[0])
 
 
 def clear_availability_for_night(
@@ -345,7 +372,9 @@ def upsert_availability_rows(
     end: date,
     adults_no: int,
     offerings: list[dict],
-    catalog: list[tuple[int, str]] | None = None,
+    listings: list[tuple[int, str]] | None = None,
+    matcher: InfoWebsiteNameMatcher | None = None,
+    usage: LlmUsage | None = None,
 ) -> int:
     # Always replace this night's snapshot so removed room types don't linger.
     deleted = clear_availability_for_night(
@@ -356,12 +385,17 @@ def upsert_availability_rows(
         adults_no=adults_no,
     )
     aggregated = aggregate_offerings(offerings)
-    types = catalog if catalog is not None else load_accommodation_types(conn, site_id)
+    names = listings if listings is not None else load_info_website_names(conn, site_id)
     saved = 0
     with conn.cursor() as cur:
         for offer in aggregated:
-            accom_id = require_existing_accommodation_type(
-                offer["room_type"], types, hotel_id=site_id
+            accom_id = ensure_booking_accommodation_type(
+                cur,
+                hotel_id=site_id,
+                name=offer["room_type"],
+                listings=names,
+                matcher=matcher,
+                usage=usage,
             )
             cur.execute(
                 UPSERT_AVAILABILITY_SQL,
@@ -412,6 +446,8 @@ def main() -> None:
 
     extractor, embedder = amenity_llm_clients()
     amenity_llm_usage = LlmUsage()
+    listing_matcher = InfoWebsiteNameMatcher()
+    listing_llm_usage = LlmUsage()
 
     total_saved = 0
     with psycopg.connect(database_url(config)) as conn:
@@ -419,11 +455,11 @@ def main() -> None:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
 
-            catalog = load_accommodation_types(conn, site["id"])
+            listings = load_info_website_names(conn, site["id"])
             types_with_amenities = load_types_with_amenities(conn, site["id"])
             print(
-                f"  catalog types: {len(catalog)} "
-                f"({', '.join(name for _, name in catalog) or 'none'})"
+                f"  info-site names: {len(listings)} "
+                f"({', '.join(name for _, name in listings) or 'none'})"
             )
             print(
                 f"  accommodation types with amenities: "
@@ -468,15 +504,20 @@ def main() -> None:
                         print(f"    cleared {deleted} existing row(s)")
                 else:
                     aggregated = aggregate_offerings(offerings)
-                    for offer in aggregated:
-                        print(
-                            f"    {offer['room_type']}  ×{offer['room_count']}"
-                        )
-                        require_existing_accommodation_type(
-                            offer["room_type"],
-                            catalog,
-                            hotel_id=site["id"],
-                        )
+                    with conn.cursor() as cur:
+                        for offer in aggregated:
+                            print(
+                                f"    {offer['room_type']}  ×{offer['room_count']}"
+                            )
+                            ensure_booking_accommodation_type(
+                                cur,
+                                hotel_id=site["id"],
+                                name=offer["room_type"],
+                                listings=listings,
+                                matcher=listing_matcher,
+                                usage=listing_llm_usage,
+                            )
+                    conn.commit()
 
                     missing_amenity_types = [
                         offer["room_type"]
@@ -517,7 +558,9 @@ def main() -> None:
                         end=check_out,
                         adults_no=adults,
                         offerings=offerings,
-                        catalog=catalog,
+                        listings=listings,
+                        matcher=listing_matcher,
+                        usage=listing_llm_usage,
                     )
                     conn.commit()
                     total_saved += saved
@@ -528,6 +571,8 @@ def main() -> None:
 
     print("-" * 60)
     print(f"Done. Upserted {total_saved} availability row(s).")
+    if listing_llm_usage.chat_calls:
+        print(listing_llm_usage.summary(prefix="Info-site name match total: "))
     if amenity_llm_usage.chat_calls or amenity_llm_usage.embed_calls:
         print(amenity_llm_usage.summary(prefix="Amenity enrich total: "))
 
