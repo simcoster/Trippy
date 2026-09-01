@@ -4,14 +4,10 @@ Fetch vacancies from the INPA booking engine for campsites in Postgres.
 Iterates the next N nights (default 14, one night each) and upserts into
 `availability`. Creates accommodation_types from INPA names and links each
 to an info_website_names row (exact name, else Qwen 30B).
-
-Also refreshes Google reviews for sites with google_place_id: newest by
-default (weekly); pass --most-relevant to also pull Google's best-of 5.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
@@ -36,10 +32,6 @@ from amenity_enrichment import (
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from info_site.match_listing import InfoWebsiteNameMatcher, match_info_website_name
-
-from source.scraper.populate_reviews_and_claims import (
-    refresh_google_reviews_for_campsite,
-)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -121,7 +113,7 @@ def fetch_campsites(config: dict) -> list[dict]:
     """Load campsites that have a booking engine hotel id."""
     limit = int(config.get("availability", {}).get("limit_campsites", 2))
     sql = """
-        SELECT id, name, booking_hotel_id, google_place_id
+        SELECT id, name, booking_hotel_id
         FROM campsites
         WHERE booking_hotel_id IS NOT NULL
         --remove later
@@ -134,12 +126,7 @@ def fetch_campsites(config: dict) -> list[dict]:
             cur.execute(sql, (limit,))
             rows = cur.fetchall()
     return [
-        {
-            "id": row[0],
-            "name": row[1],
-            "booking_hotel_id": row[2],
-            "google_place_id": row[3],
-        }
+        {"id": row[0], "name": row[1], "booking_hotel_id": row[2]}
         for row in rows
     ]
 
@@ -436,51 +423,7 @@ def night_windows(nights: int, start_from: date | None = None) -> list[tuple[dat
     ]
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "INPA vacancies, then Google reviews (newest weekly; "
-            "--most-relevant for the seed set)."
-        )
-    )
-    parser.add_argument(
-        "--most-relevant",
-        action="store_true",
-        help=(
-            "Also fetch Google most_relevant reviews. Default is newest only "
-            "(those are the weekly refresh; most_relevant rarely changes)."
-        ),
-    )
-    return parser.parse_args(argv)
-
-
-def refresh_site_google_reviews(
-    conn,
-    site: dict,
-    *,
-    most_relevant: bool,
-    client: httpx.Client | None,
-    api_key: str | None,
-) -> None:
-    if not api_key or client is None:
-        print("  reviews: skip (GOOGLE_API_KEY not set)")
-        return
-    try:
-        refresh_google_reviews_for_campsite(
-            conn,
-            site,
-            most_relevant=most_relevant,
-            client=client,
-            api_key=api_key,
-        )
-        conn.commit()
-    except Exception as exc:
-        conn.rollback()
-        print(f"  reviews: error {exc}")
-
-
 def main() -> None:
-    args = parse_args()
     config = load_config()
     avail = config.get("availability", {})
 
@@ -500,151 +443,131 @@ def main() -> None:
     windows = night_windows(nights)
     print(f"Scanning {len(windows)} nights starting {windows[0][0]} for {adults} adults")
     print(f"Campsites: {len(campsites)}")
-    review_mode = (
-        "newest + most_relevant" if args.most_relevant else "newest only"
-    )
-    print(f"Google reviews: {review_mode}")
 
     extractor, embedder = amenity_llm_clients()
     amenity_llm_usage = LlmUsage()
     listing_matcher = InfoWebsiteNameMatcher()
     listing_llm_usage = LlmUsage()
-    google_key = os.environ.get("GOOGLE_API_KEY")
-    google_client = (
-        httpx.Client(verify=_ssl_context(), timeout=30.0) if google_key else None
-    )
 
     total_saved = 0
-    try:
-        with psycopg.connect(database_url(config)) as conn:
-            for site in campsites:
-                print("=" * 60)
-                print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
+    with psycopg.connect(database_url(config)) as conn:
+        for site in campsites:
+            print("=" * 60)
+            print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
 
-                listings = load_info_website_names(conn, site["id"])
-                types_with_amenities = load_types_with_amenities(conn, site["id"])
-                print(
-                    f"  info-site names: {len(listings)} "
-                    f"({', '.join(name for _, name in listings) or 'none'})"
+            listings = load_info_website_names(conn, site["id"])
+            types_with_amenities = load_types_with_amenities(conn, site["id"])
+            print(
+                f"  info-site names: {len(listings)} "
+                f"({', '.join(name for _, name in listings) or 'none'})"
+            )
+            print(
+                f"  accommodation types with amenities: "
+                f"{len(types_with_amenities)} "
+                f"({', '.join(sorted(types_with_amenities)) or 'none'})"
+            )
+
+            for check_in, check_out in windows:
+                url = search_url(
+                    site["booking_hotel_id"],
+                    check_in,
+                    check_out,
+                    rooms=rooms_count,
+                    adults=adults,
+                    children=children,
+                    infants=infants,
+                    lang=lang,
                 )
-                print(
-                    f"  accommodation types with amenities: "
-                    f"{len(types_with_amenities)} "
-                    f"({', '.join(sorted(types_with_amenities)) or 'none'})"
+                print(f"  {check_in} → {check_out}")
+                try:
+                    html = fetch_results_html(url)
+                except httpx.HTTPError as e:
+                    print(f"    HTTP error: {e}")
+                    continue
+
+                offerings = parse_rooms(html)
+                room_media = parse_room_categories(
+                    html, normalize_accommodation_name
                 )
 
-                for check_in, check_out in windows:
-                    url = search_url(
-                        site["booking_hotel_id"],
-                        check_in,
-                        check_out,
-                        rooms=rooms_count,
-                        adults=adults,
-                        children=children,
-                        infants=infants,
-                        lang=lang,
+                if not offerings:
+                    print("    No room types returned")
+                    deleted = clear_availability_for_night(
+                        conn,
+                        site_id=site["id"],
+                        start=check_in,
+                        end=check_out,
+                        adults_no=adults,
                     )
-                    print(f"  {check_in} → {check_out}")
-                    try:
-                        html = fetch_results_html(url)
-                    except httpx.HTTPError as e:
-                        print(f"    HTTP error: {e}")
-                        continue
-
-                    offerings = parse_rooms(html)
-                    room_media = parse_room_categories(
-                        html, normalize_accommodation_name
-                    )
-
-                    if not offerings:
-                        print("    No room types returned")
-                        deleted = clear_availability_for_night(
-                            conn,
-                            site_id=site["id"],
-                            start=check_in,
-                            end=check_out,
-                            adults_no=adults,
-                        )
-                        conn.commit()
-                        if deleted:
-                            print(f"    cleared {deleted} existing row(s)")
-                    else:
-                        aggregated = aggregate_offerings(offerings)
-                        with conn.cursor() as cur:
-                            for offer in aggregated:
-                                print(
-                                    f"    {offer['room_type']}  ×{offer['room_count']}"
-                                )
-                                ensure_booking_accommodation_type(
-                                    cur,
-                                    hotel_id=site["id"],
-                                    name=offer["room_type"],
-                                    listings=listings,
-                                    matcher=listing_matcher,
-                                    usage=listing_llm_usage,
-                                )
-                        conn.commit()
-
-                        missing_amenity_types = [
-                            offer["room_type"]
-                            for offer in aggregated
-                            if offer["room_type"] not in types_with_amenities
-                        ]
-                        if missing_amenity_types:
+                    conn.commit()
+                    if deleted:
+                        print(f"    cleared {deleted} existing row(s)")
+                else:
+                    aggregated = aggregate_offerings(offerings)
+                    with conn.cursor() as cur:
+                        for offer in aggregated:
                             print(
-                                f"    enriching amenities for "
-                                f"{len(missing_amenity_types)} type(s)"
+                                f"    {offer['room_type']}  ×{offer['room_count']}"
                             )
-                            newly = enrich_accommodation_types(
-                                conn,
-                                extractor,
-                                embedder,
+                            ensure_booking_accommodation_type(
+                                cur,
                                 hotel_id=site["id"],
-                                type_names=missing_amenity_types,
-                                room_media=room_media,
-                                get_or_create_type=require_existing_type,
-                                usage=amenity_llm_usage,
+                                name=offer["room_type"],
+                                listings=listings,
+                                matcher=listing_matcher,
+                                usage=listing_llm_usage,
                             )
-                            types_with_amenities.update(newly)
-                            conn.commit()
+                    conn.commit()
 
-                        filled = fill_missing_image_urls(
+                    missing_amenity_types = [
+                        offer["room_type"]
+                        for offer in aggregated
+                        if offer["room_type"] not in types_with_amenities
+                    ]
+                    if missing_amenity_types:
+                        print(
+                            f"    enriching amenities for "
+                            f"{len(missing_amenity_types)} type(s)"
+                        )
+                        newly = enrich_accommodation_types(
                             conn,
+                            extractor,
+                            embedder,
                             hotel_id=site["id"],
+                            type_names=missing_amenity_types,
                             room_media=room_media,
+                            get_or_create_type=require_existing_type,
+                            usage=amenity_llm_usage,
                         )
-                        if filled:
-                            conn.commit()
-                            print(f"    filled image_urls on {filled} type(s)")
-
-                        saved = upsert_availability_rows(
-                            conn,
-                            site_id=site["id"],
-                            start=check_in,
-                            end=check_out,
-                            adults_no=adults,
-                            offerings=offerings,
-                            listings=listings,
-                            matcher=listing_matcher,
-                            usage=listing_llm_usage,
-                        )
+                        types_with_amenities.update(newly)
                         conn.commit()
-                        total_saved += saved
-                        print(f"    upserted {saved} row(s)")
 
-                    if pause_s > 0:
-                        time.sleep(pause_s)
+                    filled = fill_missing_image_urls(
+                        conn,
+                        hotel_id=site["id"],
+                        room_media=room_media,
+                    )
+                    if filled:
+                        conn.commit()
+                        print(f"    filled image_urls on {filled} type(s)")
 
-                refresh_site_google_reviews(
-                    conn,
-                    site,
-                    most_relevant=args.most_relevant,
-                    client=google_client,
-                    api_key=google_key,
-                )
-    finally:
-        if google_client is not None:
-            google_client.close()
+                    saved = upsert_availability_rows(
+                        conn,
+                        site_id=site["id"],
+                        start=check_in,
+                        end=check_out,
+                        adults_no=adults,
+                        offerings=offerings,
+                        listings=listings,
+                        matcher=listing_matcher,
+                        usage=listing_llm_usage,
+                    )
+                    conn.commit()
+                    total_saved += saved
+                    print(f"    upserted {saved} row(s)")
+
+                if pause_s > 0:
+                    time.sleep(pause_s)
 
     print("-" * 60)
     print(f"Done. Upserted {total_saved} availability row(s).")
