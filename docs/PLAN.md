@@ -8,7 +8,7 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ### Done (2026-09-01)
 
-**Reviews + claims ingest.** Dropped the old `claims` table (author/date/stars on the claim, text `campsite_id`) and added `reviews` + FK’d `claims` (`014_reviews_and_claims`). Splitter is **one Google review per 235B call**, then one embed batch; drop `confidence < 0.5`; no aspect/locus yet. Claims store `claim` + `evidence_span` (`016`); dropped unused `claim_uid` (`017`); sentiment is `is_positive` bool, not a polarity string (`019`). Experiments and locked choices: `docs/claims.md`. Hurshat Tal gold split vs 235B is judged by 30B (`test_hurshat_tal_claim_split.py`).
+**Reviews + claims ingest.** Dropped the old `claims` table (author/date/stars on the claim, text `campsite_id`) and added `reviews` + FK’d `claims` (`014_reviews_and_claims`). Splitter is **one Google review per 235B call**, then one embed batch; drop `confidence < 0.5`; no aspect/locus yet. Claims store `claim` + `evidence_span` (`016`); dropped unused `claim_uid` (`017`); sentiment is `is_positive` bool, not a polarity string (`019`). **30B visit gate** before split: ads / brochure / history dumps stay on `reviews` with `skip_reason` / `skip_note` and get **no claims** (`020`). Experiments and locked choices: `docs/claims.md`. Hurshat Tal gold split vs 235B is judged by 30B (`test_hurshat_tal_claim_split.py`).
 
 **Places fetch (legacy) into ingest.** `campsites.google_place_id` (`018`) from Text Search on `campsites.name`, **first hit only**. Dedicated חניון לילה pin when it exists, else the enclosing park — phase one does not hunt sibling listings. `just populate-reviews` pulls Place Details (newest weekly; `-- --most-relevant` also seeds Google’s best-of 5). CLI does not read JSON; tests still pass a reviews dict into `populate_reviews_and_claims()`. Independent of the INPA availability scrape. Pin mixing (day-visit vs overnight on the same park pin) is unsolved. Splitter still sometimes glues comma-lists of amenities into one claim.
 
@@ -177,6 +177,7 @@ Campsite list → legacy Places Text Search (place_id)
   → later: scrape vendor for the rest of recent reviews
   → populate_reviews_and_claims(campsite_id, reviews_dict)
        → upsert `reviews` (full text, stars, author, published_at)
+       → 30B visit gate (drop ads / history dumps → skip_reason, no split)
        → split one review per 235B call
        → drop confidence < 0.5
        → embed kept `claim` (Qwen3-Embedding-8B, 1536)
@@ -189,6 +190,7 @@ Places fetch is landed: `populate_google_place_id.py` then `just populate-review
 
 Locked 2026-09-01 — details and probe tables in `docs/claims.md`.
 
+- **Visit gate:** Qwen3-30B before split. Not a visit account (ad, brochure, history lecture) → `reviews.skip_reason = not_personal`, `skip_note`, zero claims. Splitter prompt and `confidence < 0.5` unchanged.
 - **Model:** Qwen3-235B-A22B. Not 30B (over-splits incidents).
 - **Batch:** one review per chat call (missing facts on 5-in-1 mattered more than stream/pool glue).
 - **Filter:** omit generic overall judgments; drop any row with `confidence < 0.5`.

@@ -9,6 +9,20 @@ export PYTHONPATH := "source/scraper"
 default:
     @just --list
 
+# Slugify a title, check out that branch, push to origin
+branch name:
+    #!powershell
+    $ErrorActionPreference = 'Stop'
+    $raw = {{ quote(name) }}
+    $branch = ($raw.ToLowerInvariant() -replace '[^a-z0-9/_-]+', '-' -replace '-{2,}', '-').Trim('-').Trim('/')
+    if ([string]::IsNullOrWhiteSpace($branch)) {
+        throw "Could not make a git branch name from: $raw"
+    }
+    git check-ref-format --branch $branch
+    if ($LASTEXITCODE -ne 0) { throw "Invalid branch name: $branch" }
+    git checkout -b $branch
+    git push -u origin $branch
+
 # info-site rate cards → accommodation_types + list_prices
 scrape-prices:
     uv run python source/scraper/info_site/scrape.py --prices

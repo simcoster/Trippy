@@ -18,6 +18,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -53,7 +54,14 @@ class Review(Base):
     """Guest review (Google for now). Stars, author, and full text live here."""
 
     __tablename__ = "reviews"
-    __table_args__ = (Index("reviews_campsite_idx", "campsite_id"),)
+    __table_args__ = (
+        Index("reviews_campsite_idx", "campsite_id"),
+        Index(
+            "reviews_skip_reason_idx",
+            "skip_reason",
+            postgresql_where=text("skip_reason IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     campsite_id: Mapped[int] = mapped_column(
@@ -65,6 +73,8 @@ class Review(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_uid: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    skip_reason: Mapped[str | None] = mapped_column(Text)
+    skip_note: Mapped[str | None] = mapped_column(Text)
 
     campsite: Mapped[Campsite] = relationship(back_populates="reviews")
     claims: Mapped[list[Claim]] = relationship(back_populates="review")
