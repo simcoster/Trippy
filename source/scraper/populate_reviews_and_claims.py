@@ -1,7 +1,8 @@
 """Split Google reviews into claims and upsert into Postgres.
 
-One review per splitter call (Qwen3-235B). Drops claims with confidence < 0.5.
-Does not store aspect or locus.
+30B visit gate first: ads / history dumps are stored on `reviews` with
+skip_reason and are not split. One 235B splitter call per kept review.
+Drops claims with confidence < 0.5. Does not store aspect or locus.
 
 CLI fetches from legacy Place Details (newest weekly; --most-relevant to
 also seed Google's best-of 5). Tests pass a reviews dict into
@@ -27,6 +28,7 @@ from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 
 from source.scraper.amenity_enrichment.llm import (
+    QWEN_INSTRUCT_30B_MODEL,
     QWEN_INSTRUCT_MODEL,
     ClaimsEmbeddingLLMClient,
     LlmUsage,
@@ -44,6 +46,9 @@ CONFIG_PATH = SCRAPER_DIR / "config.json"
 
 MIN_CONFIDENCE = 0.5
 SPLIT_MAX_TOKENS = 2500
+VISIT_GATE_MAX_TOKENS = 256
+SKIP_NOTE_MAX_LEN = 500
+SKIP_REASON_NOT_PERSONAL = "not_personal"
 DEFAULT_SOURCE = "google"
 DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 DETAILS_FIELDS = (
@@ -60,6 +65,16 @@ WHERE google_place_id IS NOT NULL
   AND (%(campsite_id)s::bigint IS NULL OR id = %(campsite_id)s)
 ORDER BY id
 LIMIT %(limit)s
+"""
+
+VISIT_GATE_SYSTEM = """You decide whether a Google review of a campsite is a visitor's personal experience.
+
+Keep (personal_visit true) if the writer describes being at the site as a guest or visitor: a stay, a day visit, or a witnessed incident (showers, noise, staff, parking they used, and so on). A mixed review that also has history, brochure lines, or asides still counts as personal if there is a visit.
+
+Drop (personal_visit false) if this is not a visit account: ads, SEO or brochure dumps (Waze, fee tables, subscriber lists), encyclopedia or history lectures, press-release "don't miss it" copy, or someone else's research. Do not keep it only because it lists amenities.
+
+Output valid JSON only, no markdown:
+{"personal_visit": bool, "reason": str}
 """
 
 SPLIT_SYSTEM = """You split one campsite Google review into atomic claims for RAG.
@@ -151,6 +166,13 @@ SET author = EXCLUDED.author,
     text = EXCLUDED.text,
     published_at = EXCLUDED.published_at
 RETURNING id;
+"""
+
+UPDATE_REVIEW_SKIP_SQL = """
+UPDATE reviews
+SET skip_reason = %(skip_reason)s,
+    skip_note = %(skip_note)s
+WHERE id = %(review_id)s
 """
 
 DELETE_CLAIMS_FOR_REVIEW_SQL = """
@@ -321,6 +343,101 @@ def filter_claims(raw_claims: list[dict]) -> list[dict]:
     return kept
 
 
+def _clip_skip_note(note: str | None) -> str | None:
+    if not note:
+        return None
+    text = note.strip()
+    if not text:
+        return None
+    if len(text) > SKIP_NOTE_MAX_LEN:
+        return text[:SKIP_NOTE_MAX_LEN]
+    return text
+
+
+def visit_gate_from_payload(data: dict) -> tuple[bool, str | None]:
+    """Parse visit-gate JSON. Unreadable payload → keep (fail open)."""
+    if not isinstance(data, dict):
+        return True, None
+    raw = data.get("personal_visit")
+    if isinstance(raw, bool):
+        personal = raw
+    else:
+        token = str(raw or "").strip().lower()
+        if token in {"true", "yes"}:
+            personal = True
+        elif token in {"false", "no"}:
+            personal = False
+        else:
+            return True, None
+    note = _clip_skip_note(str(data.get("reason") or "") or None)
+    if personal:
+        return True, None
+    return False, note
+
+
+def judge_personal_visit(
+    client: Any,
+    review: dict,
+    *,
+    place: str,
+    model: str = QWEN_INSTRUCT_30B_MODEL,
+    usage: LlmUsage | None = None,
+) -> tuple[bool, str | None]:
+    """Return (is_personal, skip_note). Fail open on parse/LLM errors."""
+    text = (review.get("text") or "").strip()
+    if not text:
+        return True, None
+    user = json.dumps(
+        {
+            "place": place,
+            "review": {
+                "text": text,
+                "rating": review.get("rating"),
+            },
+        },
+        ensure_ascii=False,
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=VISIT_GATE_MAX_TOKENS,
+            messages=[
+                {"role": "system", "content": VISIT_GATE_SYSTEM},
+                {"role": "user", "content": user},
+            ],
+        )
+    except Exception as exc:
+        log(f"    visit gate call failed ({exc}); splitting anyway")
+        return True, None
+    if usage is not None:
+        usage.add_chat(response.usage)
+    content = (response.choices[0].message.content or "").strip()
+    try:
+        parsed = _parse_json_payload(content)
+    except (ValueError, json.JSONDecodeError) as exc:
+        log(f"    visit gate parse failed ({exc}); splitting anyway")
+        return True, None
+    return visit_gate_from_payload(parsed)
+
+
+def set_review_skip(
+    cur,
+    *,
+    review_id: int,
+    skip_reason: str | None,
+    skip_note: str | None,
+) -> None:
+    cur.execute(
+        UPDATE_REVIEW_SKIP_SQL,
+        {
+            "review_id": review_id,
+            "skip_reason": skip_reason,
+            "skip_note": skip_note,
+        },
+    )
+
+
 def split_one_review(
     client: Any,
     review: dict,
@@ -429,7 +546,12 @@ def populate_reviews_and_claims(
     embedder: ClaimsEmbeddingLLMClient | None = None,
     usage: LlmUsage | None = None,
 ) -> dict:
-    """Upsert reviews from `reviews` and split+embed claims. One review per LLM call."""
+    """Upsert reviews from `reviews` and split+embed claims.
+
+    Non-empty reviews go through a 30B personal-visit gate. Ads / dumps
+    are stored with skip_reason and are not split. Kept reviews: one 235B
+    splitter call each, then one embed batch.
+    """
     place_name = place or str(reviews.get("name") or reviews.get("place") or "")
     items = reviews_from_dict(reviews, source=source)
     own_conn = conn is None
@@ -454,6 +576,26 @@ def populate_reviews_and_claims(
                     log(f"  review {i}/{total} id={review_id}: empty text, stored only")
                     review_rows.append((review_id, review, []))
                     continue
+                personal, skip_note = judge_personal_visit(
+                    chat, review, place=place_name, usage=llm_usage
+                )
+                if not personal:
+                    set_review_skip(
+                        cur,
+                        review_id=review_id,
+                        skip_reason=SKIP_REASON_NOT_PERSONAL,
+                        skip_note=skip_note,
+                    )
+                    log(
+                        f"  review {i}/{total} id={review_id}: "
+                        f"skipped {SKIP_REASON_NOT_PERSONAL}"
+                        + (f" ({skip_note})" if skip_note else "")
+                    )
+                    review_rows.append((review_id, review, []))
+                    continue
+                set_review_skip(
+                    cur, review_id=review_id, skip_reason=None, skip_note=None
+                )
                 log(f"  splitting review {i}/{total} id={review_id}")
                 try:
                     claims = split_one_review(

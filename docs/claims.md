@@ -14,6 +14,7 @@ Probe tables (anonymized): `temp/split_reviews.md`, `temp/split_claims_table_235
 | Stars / author / full text | `reviews` table only — claims do not copy rating |
 | Claims columns | `review_id`, `campsite_id`, `claim` (standalone rewrite, usually EN), `evidence_span` (original language), `polarity`, `confidence`, `embedding` |
 | Recency | `reviews.published_at`; search joins reviews |
+| Visit gate | **30B** before split. Ads / brochure / history dumps → `reviews.skip_reason = not_personal`, `skip_note`, **no claims**. Splitter and `confidence < 0.5` unchanged. Empty text: store only, no gate. |
 
 Ingest: `source/scraper/populate_reviews_and_claims.py` → `populate_reviews_and_claims(campsite_id, reviews_dict)`. Places fetch is still a separate step.
 
@@ -22,6 +23,10 @@ Ingest: `source/scraper/populate_reviews_and_claims.py` → `populate_reviews_an
 Same 235B prompt, Hurshat Tal 5 reviews, ~20 claims either way. Single cost ~1.75× batch (system prompt repeated). Quality was not uniformly better, but **batch dropped bungalow rental and mattress rental** on review 4; single kept them. Batch split stream vs pools (good); single glued those once. We would rather pay for the extra call than miss a site fact.
 
 Review 3 (leashed-dog incident) stayed **one claim** in both modes with the v1 incident rule. 30B over-split that story; do not use 30B for split.
+
+## Why a visit gate (not claim-level extra filter)
+
+Yehiam-style ads and history lectures still emit high-confidence "site facts" (accessible parking, 1930s raids). `confidence < 0.5` does not catch them. **30B yes/no on the whole review** before 235B; keep the row, set `skip_reason`, insert no claims. Claim split rules stay as locked above. Revisit a claim keep/drop pass only if the splitter still leaks encyclopedia rows from reviews that passed the gate.
 
 ## Why drop confidence &lt; 0.5
 
@@ -45,7 +50,7 @@ Embeddings retrieve by topic; `text_en` is already a standalone sentence. Aspect
 ## Schema
 
 ```
-reviews  (campsite_id, source, author, rating, text, published_at, review_uid)
+reviews  (campsite_id, source, author, rating, text, published_at, review_uid, skip_reason, skip_note)
 claims   (review_id, campsite_id, …)  — no stars; date via join
 ```
 
