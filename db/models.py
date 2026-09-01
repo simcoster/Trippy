@@ -43,27 +43,59 @@ class Campsite(Base):
     info_website_names: Mapped[list[InfoWebsiteName]] = relationship(
         back_populates="campsite"
     )
+    reviews: Mapped[list[Review]] = relationship(back_populates="campsite")
+    claims: Mapped[list[Claim]] = relationship(back_populates="campsite")
+
+
+class Review(Base):
+    """Guest review (Google for now). Stars, author, and full text live here."""
+
+    __tablename__ = "reviews"
+    __table_args__ = (Index("reviews_campsite_idx", "campsite_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    campsite_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    author: Mapped[str | None] = mapped_column(Text)
+    rating: Mapped[int | None] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_uid: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+
+    campsite: Mapped[Campsite] = relationship(back_populates="reviews")
+    claims: Mapped[list[Claim]] = relationship(back_populates="review")
 
 
 class Claim(Base):
+    """Atomic site fact split from a review. No stars; join `reviews` for that.
+
+    Readable join for manual review: view claims_with_reviews.
+    """
+
     __tablename__ = "claims"
-    __table_args__ = (Index("claim_campsite_idx", "campsite_id"),)
+    __table_args__ = (
+        Index("claim_campsite_idx", "campsite_id"),
+        Index("claim_review_idx", "review_id"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    campsite_id: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(Text, nullable=False)
-    review_author: Mapped[str | None] = mapped_column(Text)
-    review_date: Mapped[str | None] = mapped_column(Text)
-    lang: Mapped[str | None] = mapped_column(Text)
-    claim_he: Mapped[str | None] = mapped_column(Text)
-    claim_en: Mapped[str | None] = mapped_column(Text)
+    review_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False
+    )
+    campsite_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    claim: Mapped[str | None] = mapped_column(Text)
     evidence_span: Mapped[str | None] = mapped_column(Text)
     polarity: Mapped[str | None] = mapped_column(Text)
-    severity: Mapped[int | None] = mapped_column(Integer)
     confidence: Mapped[float | None] = mapped_column(Float)
-    claim_uid: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
     embedding = mapped_column(Vector(1536), nullable=True)
+
+    review: Mapped[Review] = relationship(back_populates="claims")
+    campsite: Mapped[Campsite] = relationship(back_populates="claims")
 
 
 class Amenity(Base):

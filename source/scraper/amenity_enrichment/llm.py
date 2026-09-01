@@ -50,9 +50,9 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def make_nebius_openai_client() -> OpenAI:
-    api_key = os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY")
+    api_key = os.environ.get("NEBIUS_API_KEY")
     if not api_key:
-        raise RuntimeError("NEBIUS_API_KEY (or NEBULA_API_KEY) is required")
+        raise RuntimeError("NEBIUS_API_KEY is required")
     return OpenAI(
         base_url=NEBIUS_BASE_URL,
         api_key=api_key,
@@ -164,9 +164,9 @@ class AgentChatClient:
 
     def as_langchain(self) -> ChatOpenAI:
         """LangChain `ChatOpenAI` bound to Nebius + Qwen instruct."""
-        api_key = os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY")
+        api_key = os.environ.get("NEBIUS_API_KEY")
         if not api_key:
-            raise RuntimeError("NEBIUS_API_KEY (or NEBULA_API_KEY) is required")
+            raise RuntimeError("NEBIUS_API_KEY is required")
         return ChatOpenAI(
             model=self.model,
             api_key=api_key,

@@ -6,7 +6,18 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-01)
+
+**Reviews + claims ingest.** Dropped the old `claims` table (author/date/stars on the claim, text `campsite_id`) and added `reviews` + FK’d `claims` (`014_reviews_and_claims`). Splitter is **one Google review per 235B call**, then one embed batch; drop `confidence < 0.5`; no aspect/locus yet. `populate_reviews_and_claims(campsite_id, reviews_dict)` — Places fetch still separate. Hurshat Tal `most_relevant` 5 loaded. Experiments and locked choices: `docs/claims.md`.
+
 ### Done (2026-08-31)
+
+Landed `info_website_names` so INPA booking types link to parks.org.il rate cards (exact name, else Qwen 30B — no more fuzzy match), then reworked dates around `date_intent` (Saturday one-night stays; weekend is Friday night only), split search out of `graph.py`, and added Ruff. Spiked Google reviews on legacy Places: seed `most_relevant`, refresh `newest`; Places API (New) has no newest sort. **Up next:** finish reviews ingest (started today), then the recommender so request → recommendation is a complete path.
+
+**Google reviews spike (legacy Places)**
+- `GOOGLE_API_KEY` Text Search for `חורשת טל חניון לילה` → one pin, **חורשת טל** (`ChIJDUZZZ2-8HhURv7LbSjS_yG0`, 4.3 / 2096). Overnight camping is not a separate listing.
+- Places API (New) has no `reviewsSort=newest`. Legacy Place Details does: `reviews_sort=newest` vs `most_relevant` (hard cap 5; newest often star-only / empty text). Probe dumps in `temp/`.
+- Locked ingest path: see §1.
 
 **Info-site names vs booking types**
 - `info_website_names` is the parks.org.il lodging product (`site_id` + classified name). Price scrape upserts those names and `list_prices` tariffs only — it no longer creates `accommodation_types`.
@@ -71,7 +82,27 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 **Also in place (earlier)**
 - LangGraph agent + claims RAG skeleton, FastAPI, Docker Compose Postgres/pgvector
 
-### Next — notices, site amenities, rate-card leftovers
+### Next — sequenced (2026-08-31)
+
+**1. Google reviews ingest (in progress).** Splitter + `reviews`/`claims` store landed (`docs/claims.md`). Still to land: persist `place_id`, fetch from legacy Places into `populate_reviews_and_claims`, pin mixing (campground inside a nature reserve). Planner already treats review claims as extra evidence, not the vacancy filter.
+
+**2. Recommender node — close request → recommendation.** Extractor + planner `fits` exist; the recommender must pick from `fits` (with `why` / claims), never empty, so a Hebrew ask becomes a cited rec end-to-end. That is the first complete product path. Then other stuff.
+
+**3. Then other stuff** (not the current queue):
+- CI (GitHub Actions): unit tests on PRs into `main` (`-m "not llm"` / no secrets). Golden-eval / LLM-judge later (§6).
+- Extractor policy: “arrive Saturday afternoon” is a **policy / check-in** search — no extractor field or planner path yet. Weather + stargazing + Sat→Sun one-night are covered by `test_extractor_nice_weather_stars_saturday_afternoon_one_night`.
+- Site-level `campsites.amenities` jsonb + GIN
+- Wire Places fetch → `populate_reviews_and_claims` (Hurshat Tal seed is in; other sites still need pull)
+- Notice scraper (`info_site/newsflashes.py`; not wired into `scrape.py` yet)
+- Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
+- Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)
+- Scrape other `#tableN` tabs (מנוי, חייל, קבוצה, אזרח ותיק, …) and `ציוד להשכרה`
+- Listing-level **מה חדש** / site-wide ticker when `site_id` is unknown
+- **Google pin mixing:** campground inside a nature reserve (חורשת טל) — reviews mix day-visit vs overnight. Unsolved; see §1.
+
+**4. Conversation memory (after the rec path works).** One rolling **preferences list** vs keep the **entire transcript** for the LLM? Unsolved — see §4. Group trip: who wants what is **phase 2**, not MVP.
+
+**5. Cloud / production-ready (later).** “Cloudifying everything” is the goal; we don’t know what that means yet (host, jobs, secrets, Telegram webhook, scraping cadence). Spike when the local path is complete; see §7.
 
 **Extractor + planner (landed)**
 - Structured prefs: `date: {start, end}`, `amenities` (AND list + `{op:"or", values}`), plus numeric/semantic leftovers
@@ -79,17 +110,6 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Named-place → type expansion is done by the **extract LLM** at ingest (not a place list / regex tool): e.g. Kineret also yields lake + body of water; Negev also yields desert. Same rule should apply when splitting review claims.
 - Planner stage 1 filters one-night availability for the stay; stage 2 intersects official accommodation amenities (`<#> ≤ −0.8`) with `why` on each fit
 - Booking types link to `info_website_names` (exact or 30B); quotes use `list_prices` via that id
-
-**Still open**
-- CI (GitHub Actions): run unit tests on PRs into `main` so squash-merge isn’t untested. Keep live LLM tests out of the default job (`-m "not llm"` / no secrets). Wire later to the golden-eval / LLM-judge path in §6.
-- Extractor policy: “arrive Saturday afternoon” is a **policy / check-in** search (sites that allow Shabbat-afternoon arrival) — no extractor field or planner path yet. Weather + stargazing + Sat→Sun one-night date are covered by `test_extractor_nice_weather_stars_saturday_afternoon_one_night`.
-- Site-level `campsites.amenities` jsonb + GIN
-- Re-embed `claims` with Qwen after clearing OpenAI vectors
-- Notice scraper (helpers in `info_site/newsflashes.py`; not wired into `scrape.py` yet)
-- Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
-- Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)
-- Scrape other `#tableN` tabs (מנוי, חייל, קבוצה, אזרח ותיק, …) and `ציוד להשכרה`
-- Listing-level **מה חדש** / site-wide ticker when `site_id` is unknown
 
 ### Later — second booking source + standardization
 
@@ -119,7 +139,7 @@ Already in repo:
 - LangGraph agent (`source/agent/graph.py`) with claims RAG + campsite list tool; production channel = Telegram (`main.py`)
 - Local Streamlit harness (`scripts/streamlit_chat.py`) with node/LLM/tool traces
 - Nebius **Qwen3-235B-A22B-Instruct-2507** for amenity extract + agent light/recommender; **Qwen3-30B-A3B** for agent planner / query-constraint extract; Qwen embeddings for amenities + claims queries
-- Postgres + pgvector + Alembic (`campsites`, `claims`, `notices`, `amenities`, `accommodation_types`, `availability`, `list_prices`)
+- Postgres + pgvector + Alembic (`campsites`, `reviews`, `claims`, `notices`, `amenities`, `accommodation_types`, `availability`, `list_prices`)
 - Scrapers under `source/scraper/`: discovery, booking IDs, info-site rate cards, availability/prices, amenity enrichment
 
 This plan extends that into a full ingestion → retrieval → agent → eval → production stack.
@@ -129,43 +149,54 @@ This plan extends that into a full ingestion → retrieval → agent → eval �
 ## 1. Google reviews → claim RAG
 
 ### Goal
-Ingest **5 most recent** + **5 most relevant** Google reviews per campsite, split into atomic claims, embed, store in `claims`.
+Ingest Google reviews per campsite, split into atomic claims, embed, store in `claims`.
+
+### Locked — Places API (legacy) (2026-08-31)
+
+**Choice:** [Places API (legacy)](https://developers.google.com/maps/documentation/places/web-service/search-text) only — Text Search + Place Details. Env: `GOOGLE_API_KEY`.
+
+| Job | `reviews_sort` | Why |
+|-----|----------------|-----|
+| **Initial population** | `most_relevant` | Longer, more useful text; Google’s “best of” 5 |
+| **Periodic updates** | `newest` | Catch fresh signal; many of the 5 are star-only (empty `text`) |
+
+Hard cap is **5 reviews per Details call**. `newest` and `most_relevant` do not overlap (spike on חורשת טל).
+
+**If legacy is ever deprecated:** Places API (New) (`places.googleapis.com/v1`) can search and return reviews, but **has no newest sort** (`reviewsSort` is rejected). Switching would lose incremental recency unless we move the “all recent reviews” path onto a scrape vendor (below). Revisit then; do not migrate early.
+
+**AI review summary vs full reviews:** Google now ships a “what do people say about this place” / `reviewSummary` blurb. That is not enough for claim RAG (no dates, no atomic evidence, no overnight vs day-visit split). **Pulling recent reviews is still the right ingest.** Official API only gives 5; for **all** recent reviews use a **scraping service** (SerpAPI / Outscraper / similar) on a cadence, then the same splitter → embed → `claims` path. Prefer API 5+5 for the first pipeline; scrape-all is the completeness upgrade, not a replacement for splitting claims.
 
 ### Pipeline (cloud)
 
 ```
-Campsite list → Google Places / Reviews API
-  → raw reviews store
-  → claim splitter
-  → normalize (HE/EN), polarity, confidence
-  → embed (Qwen3-Embedding-8B via Nebius, 1536 dims — same as amenities / claims search)
-  → upsert claims (claim_uid)
+Campsite list → legacy Places Text Search (place_id)
+  → Place Details: most_relevant (seed) | newest (refresh)
+  → later: scrape vendor for the rest of recent reviews
+  → populate_reviews_and_claims(campsite_id, reviews_dict)
+       → upsert `reviews` (full text, stars, author, published_at)
+       → split one review per 235B call
+       → drop confidence < 0.5
+       → embed kept text_en (Qwen3-Embedding-8B, 1536)
+       → replace that review’s `claims`
 ```
 
+Places fetch into that dict is still TODO. Hurshat Tal seed used the spike JSON.
+
 ### Claim splitting
-Treat a review as a bag of claims, not one blob.
 
-| Rule | Example |
-|------|---------|
-| Sentence / period | `"האתר יפה. אבל רועש"` → 2 claims |
-| Newline | Multi-line reviews |
-| Contrast discourse | `but` / `however` / `אבל` / `עם זאת` / `אך` |
-| Soft separators | `;` , ` - ` when they mark independent judgments |
+Locked 2026-09-01 — details and probe tables in `docs/claims.md`.
 
-**Do not** over-split on every comma. Prefer: split on strong dividers, then LLM (or rules + LLM fallback) for borderline cases.
-
-Example:
-
-> "site is nice. but loud" →  
-> 1. `site is nice`  
-> 2. `loud` (negated amenity / noise)
-
-Store `evidence_span` (original substring), `polarity`, `confidence`, `source=google`, author/date when available.
+- **Model:** Qwen3-235B-A22B. Not 30B (over-splits incidents).
+- **Batch:** one review per chat call (missing facts on 5-in-1 mattered more than stream/pool glue).
+- **Filter:** omit generic overall judgments; drop any row with `confidence < 0.5`.
+- **Aspect / locus:** not stored. Add later if we need SQL topic filters or amenity-key alignment; `text_en` stays the retrieval string.
+- Stars, author, full text live on `reviews`. Claims have `review_id` + `campsite_id` only for those; recency is `reviews.published_at`.
 
 ### Open questions
-- Google Places API vs scraping (prefer official API; scraping is brittle/ToS risk)
 - Dedup: same claim from many reviews → keep multiplicity or collapse with frequency weight?
 - Refresh cadence: daily / weekly per campsite?
+- Campground-inside-reserve pins: how to weight / filter mixed day-visit vs overnight reviews (see Next)
+- Which scrape vendor for “all recent reviews” once the 5-cap is not enough
 
 ### Deliverables
 - Ingestion job (batch + incremental)
@@ -272,7 +303,11 @@ Do not put these in `claims` with `review_date = last_scraped`. `last_seen` is l
 ## 4. Conversation history
 
 ### Goal
-Persist Telegram (and Streamlit) sessions as structured state the agent can resume, not only raw message logs.
+Persist Telegram (and Streamlit) sessions so the agent can resume a trip plan across turns.
+
+**Open — what to keep.** One rolling **preferences list** (merge/overwrite structured state, discard chatter) vs the **entire conversation** as LLM context (plus optional compacted prefs). Prefs-only is cheaper and stabler for hard constraints (dates, party, budget) but loses “we already ruled out X” nuance unless we store exclusions. Full transcript is faithful but long, noisy, and PII-heavy. Likely hybrid: structured prefs + last N turns + `last_recommendations` / exclusions. Not decided; do this **after** the request→recommendation path works.
+
+**Phase 2 — group preferences.** A trip is often several people: one wants quiet, another wants a water park, someone else has a dog. Need per-person (or per-role) prefs, conflict surfacing (“Omri: quiet / Dana: kids water”), and whose constraint is hard vs soft. Out of MVP — single-user prefs first. Telegram groups make “who said what” a real identity problem (`from.id` vs chat id).
 
 ### Table: `conversations`
 
@@ -314,8 +349,9 @@ Persist Telegram (and Streamlit) sessions as structured state the agent can resu
 Update rules: merge on each user turn (LLM structured extract → merge with decay or explicit override). Hard constraints replace; soft prefs upsert by normalized query key.
 
 ### Open questions
-- Keep full message history vs state-only + last N turns for LLM context
+- Prefs list vs full transcript vs hybrid (above) — lock before building the table
 - PII / retention policy for Telegram
+- Group trips: per-person prefs + conflict UI (phase 2)
 
 ---
 
@@ -336,7 +372,7 @@ END
 
 Tools must be grounded: no invented prices or amenities. Chat + claim query embeddings on Nebius Qwen (not OpenAI).
 
-**Near-term:** wire `date` into availability search; accommodation amenity RAG (not only claims).
+**Next after reviews ingest:** make the **recommender** the end of a complete path — request → extract → vacancy `fits` → amenity (+ claims) evidence → cited recommendation. Date search and accommodation amenity RAG already landed in the planner; recommender still needs to consume `fits` properly and never reply empty.
 
 ### Streamlit (dev harness) — landed on `hook-agent-to-search-and-RAG`
 - Chat UI calling the same graph (no Telegram token)
@@ -376,7 +412,9 @@ Judge rubric (pass/fail + short reason):
 
 ---
 
-## 7. Productionize (Nebius)
+## 7. Productionize / cloudify (later; meaning TBD)
+
+“Cloudifying everything so it’s production ready” is the intent. We **don’t know what that means yet** — host (Nebius vs other), always-on vs jobs, secrets, Telegram webhook, scrape cadence, what “done” looks like. Spike after the local request→recommendation path works. Notes below are a starting sketch, not a decision.
 
 ### Deployment options (decide in spike)
 
@@ -429,25 +467,26 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 
 | Phase | Scope | Outcome |
 |-------|--------|---------|
-| **P0** | Campsite crawl + extended `campsites` + description chunks | Master data + site RAG |
-| **P1** | Google reviews ingest + claim splitter | Rich claims RAG |
-| **P2** | Availability/price scraper + buckets | Date/budget/party queries work |
-| **P3** | Conversation state table + merge logic | Multi-turn memory |
-| **P4** | Streamlit harness + tool wiring in LangGraph | Demoable agent — **Streamlit + Qwen on `main`** |
-| **P4b** | Planner vacancies + amenity intersection | **Landed:** one-night rows for the stay, official amenity `<#>` ≤ −0.8 |
+| **Now** | Google reviews ingest (splitter landed 2026-09-01) | Places fetch → `reviews`/`claims` for all sites; then scrape-all |
+| **Then** | Recommender node | Complete path: request → cited recommendation |
+| **Then** | Other leftovers | Notices, rate-card tabs, CI, site amenities, … |
+| **P0–P2, P4, P4b** | Crawl, availability, Streamlit, planner vacancies | **Landed** |
+| **P1** | Reviews ingest | Splitter + Hurshat Tal seed landed; Places fetch for all sites remains |
+| **P3** | Conversation memory | Prefs list vs full transcript — undecided |
+| **P3b** | Group preferences (who wants what) | **Phase 2**, not MVP |
 | **P5** | Golden eval + LLM judge + CI | Regression safety |
-| **P6** | Nebius deploy, Telegram, caching, Grafana | Production path |
+| **P6** | Cloud / production-ready | Meaning TBD; see §7 |
 | **P7** | Writeup | External narrative |
 
 ---
 
 ## Decisions to lock early
 
-1. Google reviews: official API only vs alternatives  
+1. **Google reviews — locked:** legacy Places API; seed `most_relevant`, refresh `newest`; scrape vendor later for full recency. Do not use Places API (New) until legacy dies (no newest). Do not substitute Google’s AI review summary for raw reviews. Splitter: 235B, one review/call, drop conf &lt; 0.5, no aspect/locus yet (`docs/claims.md`).  
 2. Vacancy source of truth on parks.org.il (and scrape legality)  
 3. Party-size / stay-type bucket validation on real pages  
-4. Conversation store: Postgres JSONB first vs Redis KV first  
-5. Nebius target shape: serverless vs small always-on + jobs  
+4. Conversation store: one prefs list vs entire transcript vs hybrid — undecided; group prefs are phase 2  
+5. Cloud / production-ready: meaning TBD (Nebius vs other, jobs vs always-on)  
 
 ### Locked — chat / extract model: Qwen3-235B-A22B (2026-08-30)
 

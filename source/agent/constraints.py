@@ -29,7 +29,7 @@ _REVIEW_DATE_FORMATS = (
 
 
 def parse_review_day(value: Any) -> date | None:
-    """Best-effort calendar day from claims.review_date (text)."""
+    """Best-effort calendar day from reviews.published_at (or legacy text)."""
     parsed = _parse_iso_day(value)
     if parsed is not None:
         return parsed

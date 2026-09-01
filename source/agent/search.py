@@ -454,11 +454,12 @@ def search_review_claims(
         return []
     vec_literal = embedding or _query_vec_literal(query)
     sql = """
-        SELECT campsite_id, claim_en, claim_he, review_date,
-               embedding <#> %s::vector AS distance
-        FROM claims
-        WHERE claim_en IS NOT NULL OR claim_he IS NOT NULL
-        ORDER BY embedding <#> %s::vector
+        SELECT c.campsite_id, c.claim, r.published_at,
+               c.embedding <#> %s::vector AS distance
+        FROM claims c
+        JOIN reviews r ON r.id = c.review_id
+        WHERE c.claim IS NOT NULL
+        ORDER BY c.embedding <#> %s::vector
         LIMIT %s
     """
     try:
@@ -469,12 +470,11 @@ def search_review_claims(
                 cur.execute(sql, (vec_literal, vec_literal, limit))
                 rows = cur.fetchall()
         hits: list[dict] = []
-        for campsite_id, claim_en, claim_he, review_date, distance in rows:
-            claim_text = claim_en or claim_he or "N/A"
-            day, days_ago = claim_recency(review_date, today=today)
+        for campsite_id, claim_text, published_at, distance in rows:
+            day, days_ago = claim_recency(published_at, today=today)
             hits.append(
                 {
-                    "claim": claim_text,
+                    "claim": claim_text or "N/A",
                     "campsite_id": campsite_id,
                     "date": day,
                     "days_ago": days_ago,
