@@ -7,6 +7,7 @@ from datetime import date, datetime, time
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     Float,
@@ -33,6 +34,7 @@ class Campsite(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     booking_hotel_id: Mapped[str | None] = mapped_column(Text, unique=True)
+    google_place_id: Mapped[str | None] = mapped_column(Text)
 
     availability: Mapped[list[Availability]] = relationship(back_populates="campsite")
     accommodation_types: Mapped[list[AccommodationType]] = relationship(
@@ -89,7 +91,7 @@ class Claim(Base):
     )
     claim: Mapped[str | None] = mapped_column(Text)
     evidence_span: Mapped[str | None] = mapped_column(Text)
-    polarity: Mapped[str | None] = mapped_column(Text)
+    is_positive: Mapped[bool | None] = mapped_column(Boolean)
     confidence: Mapped[float | None] = mapped_column(Float)
     # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
     embedding = mapped_column(Vector(1536), nullable=True)

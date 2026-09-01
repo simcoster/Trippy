@@ -8,7 +8,11 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ### Done (2026-09-01)
 
-**Reviews + claims ingest.** Dropped the old `claims` table (author/date/stars on the claim, text `campsite_id`) and added `reviews` + FK’d `claims` (`014_reviews_and_claims`). Splitter is **one Google review per 235B call**, then one embed batch; drop `confidence < 0.5`; no aspect/locus yet. `populate_reviews_and_claims(campsite_id, reviews_dict)` — Places fetch still separate. Hurshat Tal `most_relevant` 5 loaded. Experiments and locked choices: `docs/claims.md`.
+**Reviews + claims ingest.** Dropped the old `claims` table (author/date/stars on the claim, text `campsite_id`) and added `reviews` + FK’d `claims` (`014_reviews_and_claims`). Splitter is **one Google review per 235B call**, then one embed batch; drop `confidence < 0.5`; no aspect/locus yet. Claims store `claim` + `evidence_span` (`016`); dropped unused `claim_uid` (`017`); sentiment is `is_positive` bool, not a polarity string (`019`). Experiments and locked choices: `docs/claims.md`. Hurshat Tal gold split vs 235B is judged by 30B (`test_hurshat_tal_claim_split.py`).
+
+**Places fetch (legacy) into ingest.** `campsites.google_place_id` (`018`) from Text Search on `campsites.name`, **first hit only**. Dedicated חניון לילה pin when it exists, else the enclosing park — phase one does not hunt sibling listings. `just populate-reviews` pulls Place Details (newest weekly; `-- --most-relevant` also seeds Google’s best-of 5). CLI does not read JSON; tests still pass a reviews dict into `populate_reviews_and_claims()`. Availability scrape also refreshes newest after each site (`--most-relevant` opt-in). Pin mixing (day-visit vs overnight on the same park pin) is unsolved. Splitter still sometimes glues comma-lists of amenities into one claim.
+
+**Up next:** recommender node (request → cited rec). Then pin mixing / amenity-list split quality, not more ingest plumbing.
 
 ### Done (2026-08-31)
 
@@ -84,15 +88,14 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 
 ### Next — sequenced (2026-08-31)
 
-**1. Google reviews ingest (in progress).** Splitter + `reviews`/`claims` store landed (`docs/claims.md`). Still to land: persist `place_id`, fetch from legacy Places into `populate_reviews_and_claims`, pin mixing (campground inside a nature reserve). Planner already treats review claims as extra evidence, not the vacancy filter.
+**1. Recommender node — close request → recommendation.** Extractor + planner `fits` exist; the recommender must pick from `fits` (with `why` / claims), never empty, so a Hebrew ask becomes a cited rec end-to-end. That is the first complete product path. Then other stuff.
 
-**2. Recommender node — close request → recommendation.** Extractor + planner `fits` exist; the recommender must pick from `fits` (with `why` / claims), never empty, so a Hebrew ask becomes a cited rec end-to-end. That is the first complete product path. Then other stuff.
+**2. Google reviews leftovers** (ingest job itself has landed — `docs/claims.md` + §1). Pin mixing (campground inside a nature reserve); splitter sometimes under-splits amenity comma-lists. Planner already treats review claims as extra evidence, not the vacancy filter.
 
 **3. Then other stuff** (not the current queue):
 - CI (GitHub Actions): unit tests on PRs into `main` (`-m "not llm"` / no secrets). Golden-eval / LLM-judge later (§6).
 - Extractor policy: “arrive Saturday afternoon” is a **policy / check-in** search — no extractor field or planner path yet. Weather + stargazing + Sat→Sun one-night are covered by `test_extractor_nice_weather_stars_saturday_afternoon_one_night`.
 - Site-level `campsites.amenities` jsonb + GIN
-- Wire Places fetch → `populate_reviews_and_claims` (Hurshat Tal seed is in; other sites still need pull)
 - Notice scraper (`info_site/newsflashes.py`; not wired into `scrape.py` yet)
 - Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
 - Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)
@@ -176,11 +179,11 @@ Campsite list → legacy Places Text Search (place_id)
        → upsert `reviews` (full text, stars, author, published_at)
        → split one review per 235B call
        → drop confidence < 0.5
-       → embed kept text_en (Qwen3-Embedding-8B, 1536)
+       → embed kept `claim` (Qwen3-Embedding-8B, 1536)
        → replace that review’s `claims`
 ```
 
-Places fetch into that dict is still TODO. Hurshat Tal seed used the spike JSON.
+Places fetch is landed: `populate_google_place_id.py` then `just populate-reviews` (newest; `--most-relevant` for seed). Tests may still pass a reviews dict; production CLI does not read JSON.
 
 ### Claim splitting
 
@@ -190,13 +193,15 @@ Locked 2026-09-01 — details and probe tables in `docs/claims.md`.
 - **Batch:** one review per chat call (missing facts on 5-in-1 mattered more than stream/pool glue).
 - **Filter:** omit generic overall judgments; drop any row with `confidence < 0.5`.
 - **Aspect / locus:** not stored. Add later if we need SQL topic filters or amenity-key alignment; `text_en` stays the retrieval string.
-- Stars, author, full text live on `reviews`. Claims have `review_id` + `campsite_id` only for those; recency is `reviews.published_at`.
+- Stars, author, full text live on `reviews`. Claims have `review_id` + `campsite_id` only for those; recency is `reviews.published_at`. Sentiment is `is_positive` (nullable bool); splitter JSON still says `polarity: positive|negative`.
 
 ### Open questions
 - Dedup: same claim from many reviews → keep multiplicity or collapse with frequency weight?
-- Refresh cadence: daily / weekly per campsite?
-- Campground-inside-reserve pins: how to weight / filter mixed day-visit vs overnight reviews (see Next)
+- Campground-inside-reserve pins: how to weight / filter mixed day-visit vs overnight reviews (see Next). Phase one stores the first Text Search hit.
+- Splitter under-splits amenity comma-lists (lawns + faucets + fire pits as one row). Incident merge is locked; this is the remaining quality miss.
 - Which scrape vendor for “all recent reviews” once the 5-cap is not enough
+
+Weekly refresh is **newest** (`just populate-reviews`). Seed **most_relevant** is opt-in (`-- --most-relevant`).
 
 ### Deliverables
 - Ingestion job (batch + incremental)
@@ -467,11 +472,11 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 
 | Phase | Scope | Outcome |
 |-------|--------|---------|
-| **Now** | Google reviews ingest (splitter landed 2026-09-01) | Places fetch → `reviews`/`claims` for all sites; then scrape-all |
-| **Then** | Recommender node | Complete path: request → cited recommendation |
+| **Now** | Recommender node | Complete path: request → cited recommendation |
+| **Then** | Review leftovers | Pin mixing, amenity-list split quality, scrape-all vendor |
 | **Then** | Other leftovers | Notices, rate-card tabs, CI, site amenities, … |
 | **P0–P2, P4, P4b** | Crawl, availability, Streamlit, planner vacancies | **Landed** |
-| **P1** | Reviews ingest | Splitter + Hurshat Tal seed landed; Places fetch for all sites remains |
+| **P1** | Reviews ingest | **Landed** (place_id + Places fetch + splitter + `is_positive`) |
 | **P3** | Conversation memory | Prefs list vs full transcript — undecided |
 | **P3b** | Group preferences (who wants what) | **Phase 2**, not MVP |
 | **P5** | Golden eval + LLM judge + CI | Regression safety |
@@ -482,7 +487,7 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 
 ## Decisions to lock early
 
-1. **Google reviews — locked:** legacy Places API; seed `most_relevant`, refresh `newest`; scrape vendor later for full recency. Do not use Places API (New) until legacy dies (no newest). Do not substitute Google’s AI review summary for raw reviews. Splitter: 235B, one review/call, drop conf &lt; 0.5, no aspect/locus yet (`docs/claims.md`).  
+1. **Google reviews — locked:** legacy Places API; seed `most_relevant`, refresh `newest` weekly; scrape vendor later for full recency. First Text Search hit → `campsites.google_place_id` (no sibling-park merge). Do not use Places API (New) until legacy dies (no newest). Do not substitute Google’s AI review summary for raw reviews. Splitter: 235B, one review/call, drop conf &lt; 0.5, no aspect/locus yet; `is_positive` on `claims` (`docs/claims.md`).  
 2. Vacancy source of truth on parks.org.il (and scrape legality)  
 3. Party-size / stay-type bucket validation on real pages  
 4. Conversation store: one prefs list vs entire transcript vs hybrid — undecided; group prefs are phase 2  

@@ -1,8 +1,11 @@
 """Split Google reviews into claims and upsert into Postgres.
 
 One review per splitter call (Qwen3-235B). Drops claims with confidence < 0.5.
-Does not store aspect or locus. Method takes a dict of reviews; fetching from
-Places is a separate step.
+Does not store aspect or locus.
+
+CLI fetches from legacy Place Details (newest weekly; --most-relevant to
+also seed Google's best-of 5). Tests pass a reviews dict into
+populate_reviews_and_claims; the CLI does not read JSON files.
 """
 
 from __future__ import annotations
@@ -11,11 +14,14 @@ import argparse
 import hashlib
 import json
 import os
+import ssl
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 import psycopg
 from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
@@ -39,6 +45,22 @@ CONFIG_PATH = SCRAPER_DIR / "config.json"
 MIN_CONFIDENCE = 0.5
 SPLIT_MAX_TOKENS = 2500
 DEFAULT_SOURCE = "google"
+DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+DETAILS_FIELDS = (
+    "name,place_id,formatted_address,url,rating,user_ratings_total,reviews"
+)
+REVIEWS_SORT_NEWEST = "newest"
+REVIEWS_SORT_MOST_RELEVANT = "most_relevant"
+DEFAULT_PAUSE_SECONDS = 0.25
+
+SELECT_SITES_SQL = """
+SELECT id, name, google_place_id
+FROM campsites
+WHERE google_place_id IS NOT NULL
+  AND (%(campsite_id)s::bigint IS NULL OR id = %(campsite_id)s)
+ORDER BY id
+LIMIT %(limit)s
+"""
 
 SPLIT_SYSTEM = """You split one campsite Google review into atomic claims for RAG.
 
@@ -96,7 +118,8 @@ Rules:
   bungalow rental, mattress rental).
   "Excellent for camping" may stay if camping is the feature; bare "great" must not.
   Skip personal asides that are not about the site ("a dog is part of the family").
-- polarity: positive | negative | neutral
+- polarity: positive | negative (praise/amenity vs complaint/restriction).
+  Do not emit "neutral".
 - Opposite sentiments are separate claims (do not merge "hot showers" with "no hot water").
 - Skip empty reviews. Do not invent facts.
 - confidence: 0-1 how sure this row is an atomic site fact with a faithful translation.
@@ -107,7 +130,7 @@ Schema:
   "claims": [
     {
       "text_en": str,
-      "polarity": "positive" | "negative" | "neutral",
+      "polarity": "positive" | "negative",
       "evidence_span": str,
       "confidence": number
     }
@@ -137,10 +160,10 @@ DELETE FROM claims WHERE review_id = %(review_id)s
 INSERT_CLAIM_SQL = """
 INSERT INTO claims (
     review_id, campsite_id, claim, evidence_span,
-    polarity, confidence, embedding
+    is_positive, confidence, embedding
 ) VALUES (
     %(review_id)s, %(campsite_id)s, %(claim)s, %(evidence_span)s,
-    %(polarity)s, %(confidence)s, %(embedding)s
+    %(is_positive)s, %(confidence)s, %(embedding)s
 )
 """
 
@@ -152,6 +175,20 @@ def database_url(config: dict | None = None) -> str:
     if not url:
         url = "postgresql://trippy:trippy@localhost:5432/trippy"
     return url.replace("@db:", "@localhost:")
+
+
+def _ssl_context() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    if hasattr(ssl, "VERIFY_X509_STRICT"):
+        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    return ctx
+
+
+def google_api_key() -> str:
+    key = os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        raise SystemExit("GOOGLE_API_KEY is required")
+    return key
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
@@ -245,6 +282,18 @@ def _confidence(value: object) -> float | None:
         return None
 
 
+def is_positive_from_polarity(value: object) -> bool | None:
+    """Map splitter polarity to claims.is_positive. Unknown / neutral → None."""
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    if text in {"positive", "true", "yes"}:
+        return True
+    if text in {"negative", "false", "no"}:
+        return False
+    return None
+
+
 def filter_claims(raw_claims: list[dict]) -> list[dict]:
     kept: list[dict] = []
     for item in raw_claims:
@@ -264,6 +313,7 @@ def filter_claims(raw_claims: list[dict]) -> list[dict]:
             {
                 "text_en": text_en,
                 "polarity": polarity,
+                "is_positive": is_positive_from_polarity(polarity),
                 "evidence_span": evidence,
                 "confidence": conf,
             }
@@ -360,7 +410,7 @@ def replace_claims(
                 "campsite_id": campsite_id,
                 "claim": claim["text_en"],
                 "evidence_span": claim.get("evidence_span"),
-                "polarity": claim.get("polarity"),
+                "is_positive": claim.get("is_positive"),
                 "confidence": claim.get("confidence"),
                 "embedding": vector,
             },
@@ -458,6 +508,191 @@ def populate_reviews_and_claims(
     return result
 
 
+def reviews_sorts_to_fetch(*, most_relevant: bool = False) -> list[str]:
+    """Weekly default is newest only; most_relevant is an infrequent seed."""
+    sorts = [REVIEWS_SORT_NEWEST]
+    if most_relevant:
+        sorts.append(REVIEWS_SORT_MOST_RELEVANT)
+    return sorts
+
+
+def google_review_from_place_review(review: dict) -> dict:
+    ts = review.get("time")
+    published: str | None = None
+    if isinstance(ts, (int, float)):
+        published = datetime.fromtimestamp(float(ts), timezone.utc).isoformat()
+    elif review.get("published_utc"):
+        published = str(review["published_utc"])
+    return {
+        "author": review.get("author_name") or review.get("author"),
+        "rating": review.get("rating"),
+        "published_utc": published,
+        "text": review.get("text") or "",
+    }
+
+
+def reviews_payload_from_details(body: dict, *, reviews_sort: str) -> dict | None:
+    result = body.get("result")
+    if not isinstance(result, dict):
+        return None
+    raw = result.get("reviews") or []
+    reviews = [
+        google_review_from_place_review(item)
+        for item in raw
+        if isinstance(item, dict)
+    ]
+    return {
+        "name": result.get("name"),
+        "place_id": result.get("place_id"),
+        "reviews_sort": reviews_sort,
+        "reviews": reviews,
+    }
+
+
+def fetch_place_details(
+    client: httpx.Client,
+    place_id: str,
+    api_key: str,
+    *,
+    reviews_sort: str,
+) -> dict:
+    response = client.get(
+        DETAILS_URL,
+        params={
+            "place_id": place_id,
+            "fields": DETAILS_FIELDS,
+            "language": "he",
+            "reviews_sort": reviews_sort,
+            "key": api_key,
+        },
+    )
+    response.raise_for_status()
+    body = response.json()
+    if not isinstance(body, dict):
+        raise ValueError("Place Details response is not a JSON object")
+    return body
+
+
+def refresh_google_reviews_for_campsite(
+    conn,
+    site: dict,
+    *,
+    most_relevant: bool = False,
+    client: httpx.Client,
+    api_key: str,
+    populate_fn: Any | None = None,
+) -> dict[str, Any]:
+    """Fetch Place Details reviews and ingest. Default sort is newest."""
+    place_id = site.get("google_place_id")
+    campsite_id = int(site["id"])
+    name = str(site.get("name") or "")
+    if not place_id:
+        log(f"  reviews: skip id={campsite_id} (no google_place_id)")
+        return {"campsite_id": campsite_id, "sorts": [], "skipped": "no_place_id"}
+
+    ingest = populate_fn or populate_reviews_and_claims
+    sorts = reviews_sorts_to_fetch(most_relevant=most_relevant)
+    ingested: list[dict] = []
+    for sort in sorts:
+        log(f"  reviews: {name}  place_id={place_id}  sort={sort}")
+        body = fetch_place_details(
+            client, str(place_id), api_key, reviews_sort=sort
+        )
+        status = body.get("status")
+        payload = reviews_payload_from_details(body, reviews_sort=sort)
+        if payload is None:
+            log(f"    details status={status}  no result")
+            continue
+        n = len(payload["reviews"])
+        log(f"    {n} review(s)")
+        result = ingest(
+            campsite_id,
+            payload,
+            conn=conn,
+            place=name,
+        )
+        ingested.append({"reviews_sort": sort, **result})
+    return {"campsite_id": campsite_id, "sorts": ingested}
+
+
+def fetch_sites_for_reviews(
+    conn,
+    *,
+    campsite_id: int | None = None,
+    limit: int | None = None,
+) -> list[dict]:
+    cap = limit if limit is not None else 10_000
+    with conn.cursor() as cur:
+        cur.execute(
+            SELECT_SITES_SQL,
+            {"campsite_id": campsite_id, "limit": cap},
+        )
+        return [
+            {
+                "id": int(row[0]),
+                "name": str(row[1]),
+                "google_place_id": row[2],
+            }
+            for row in cur.fetchall()
+        ]
+
+
+def populate_google_reviews(
+    *,
+    conn=None,
+    client: httpx.Client | None = None,
+    api_key: str | None = None,
+    campsite_id: int | None = None,
+    most_relevant: bool = False,
+    limit: int | None = None,
+    pause_seconds: float = DEFAULT_PAUSE_SECONDS,
+    populate_fn: Any | None = None,
+) -> dict[str, Any]:
+    """Fetch Place Details for each campsite with google_place_id and ingest."""
+    own_conn = conn is None
+    own_client = client is None
+    if own_conn:
+        config = load_config() if CONFIG_PATH.exists() else {}
+        conn = psycopg.connect(database_url(config))
+    if own_client:
+        client = httpx.Client(verify=_ssl_context(), timeout=30.0)
+    key = api_key if api_key is not None else google_api_key()
+
+    results: list[dict] = []
+    try:
+        sites = fetch_sites_for_reviews(
+            conn, campsite_id=campsite_id, limit=limit
+        )
+        if not sites:
+            log("No campsites with google_place_id")
+            return {"sites": []}
+        mode = "newest + most_relevant" if most_relevant else "newest only"
+        log(f"Refreshing Google reviews ({mode}) for {len(sites)} campsite(s)")
+        for i, site in enumerate(sites):
+            if i and pause_seconds:
+                time.sleep(pause_seconds)
+            results.append(
+                refresh_google_reviews_for_campsite(
+                    conn,
+                    site,
+                    most_relevant=most_relevant,
+                    client=client,
+                    api_key=key,
+                    populate_fn=populate_fn,
+                )
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        if own_client:
+            client.close()
+        if own_conn:
+            conn.close()
+    return {"sites": results}
+
+
 def lookup_campsite_id(conn, name: str) -> tuple[int, str]:
     needle = f"%{name.strip()}%"
     with conn.cursor() as cur:
@@ -480,12 +715,11 @@ def lookup_campsite_id(conn, name: str) -> tuple[int, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Split a dict of reviews into claims and store them."
-    )
-    parser.add_argument(
-        "--reviews",
-        required=True,
-        help="JSON file: {name, reviews: [{author, rating, text, published_utc}, ...]}",
+        description=(
+            "Fetch Google reviews from legacy Place Details and store claims. "
+            "Default is newest (weekly). JSON files are for tests only, "
+            "via populate_reviews_and_claims()."
+        )
     )
     parser.add_argument("--campsite-id", type=int, default=None)
     parser.add_argument(
@@ -493,30 +727,28 @@ def main() -> None:
         default=None,
         help="Campsite name substring if --campsite-id is omitted",
     )
-    parser.add_argument("--source", default=DEFAULT_SOURCE)
+    parser.add_argument(
+        "--most-relevant",
+        action="store_true",
+        help=(
+            "Also fetch most_relevant reviews (seed). "
+            "Default weekly run is newest only."
+        ),
+    )
+    parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
-
-    payload = json.loads(Path(args.reviews).read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise SystemExit("reviews JSON must be an object")
 
     config = load_config() if CONFIG_PATH.exists() else {}
     with psycopg.connect(database_url(config)) as conn:
         campsite_id = args.campsite_id
-        place = str(payload.get("name") or payload.get("place") or "")
-        if campsite_id is None:
-            lookup = args.name or place
-            if not lookup:
-                raise SystemExit("Pass --campsite-id or --name (or name in the JSON)")
-            campsite_id, db_name = lookup_campsite_id(conn, lookup)
-            place = place or db_name
+        if campsite_id is None and args.name:
+            campsite_id, db_name = lookup_campsite_id(conn, args.name)
             log(f"Campsite {campsite_id}: {db_name}")
-        populate_reviews_and_claims(
-            campsite_id,
-            payload,
+        populate_google_reviews(
             conn=conn,
-            place=place,
-            source=args.source,
+            campsite_id=campsite_id,
+            most_relevant=args.most_relevant,
+            limit=args.limit,
         )
 
 
