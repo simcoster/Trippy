@@ -8,7 +8,9 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ### Done (2026-09-01)
 
-**Reviews + claims ingest.** Dropped the old `claims` table (author/date/stars on the claim, text `campsite_id`) and added `reviews` + FK’d `claims` (`014_reviews_and_claims`). Splitter is **one Google review per 235B call**, then one embed batch; drop `confidence < 0.5`; no aspect/locus yet. Claims store `claim` + `evidence_span` (`016`); dropped unused `claim_uid` (`017`); sentiment is `is_positive` bool, not a polarity string (`019`). **30B visit gate** before split: ads / brochure / history dumps stay on `reviews` with `skip_reason` / `skip_note` and get **no claims** (`020`). Experiments and locked choices: `docs/claims.md`. Hurshat Tal gold split vs 235B is judged by 30B (`test_hurshat_tal_claim_split.py`).
+**Reviews + claims ingest.** Dropped the old `claims` table (author/date/stars on the claim, text `campsite_id`) and added `reviews` + FK’d `claims` (`014_reviews_and_claims`). Splitter is **one Google review per 235B call**, then one embed batch; drop `confidence < 0.5`; no aspect/locus yet. Claims store `claim` + `evidence_span` (`016`); dropped unused `claim_uid` (`017`); sentiment is `is_positive` bool, not a polarity string (`019`). Experiments and locked choices: `docs/claims.md`. Hurshat Tal gold split vs 235B is judged by 30B (`test_hurshat_tal_claim_split.py`).
+
+**Visit gate (personal experience).** 30B yes/no **before** the 235B split (`020`). Ads, brochure dumps, and history lectures (Yehiam fortress post) stay on `reviews` with `skip_reason = not_personal` + `skip_note`; **no claims**, no 235B call. Guest reviews still split. Claim filtering is unchanged (splitter prompt + `confidence < 0.5`) — do not add a second claim pass until the splitter leaks encyclopedia rows from reviews that passed the gate. Gold: `visit_gate.json` (ad fail / two Hurshat guest reviews pass). `just branch "title"` slugifies, checks out, pushes.
 
 **Places fetch (legacy) into ingest.** `campsites.google_place_id` (`018`) from Text Search on `campsites.name`, **first hit only**. Dedicated חניון לילה pin when it exists, else the enclosing park — phase one does not hunt sibling listings. `just populate-reviews` pulls Place Details (newest weekly; `-- --most-relevant` also seeds Google’s best-of 5). CLI does not read JSON; tests still pass a reviews dict into `populate_reviews_and_claims()`. Independent of the INPA availability scrape. Pin mixing (day-visit vs overnight on the same park pin) is unsolved. Splitter still sometimes glues comma-lists of amenities into one claim.
 
@@ -478,7 +480,7 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 | **Then** | Review leftovers | Pin mixing, amenity-list split quality, scrape-all vendor |
 | **Then** | Other leftovers | Notices, rate-card tabs, CI, site amenities, … |
 | **P0–P2, P4, P4b** | Crawl, availability, Streamlit, planner vacancies | **Landed** |
-| **P1** | Reviews ingest | **Landed** (place_id + Places fetch + splitter + `is_positive`) |
+| **P1** | Reviews ingest | **Landed** (place_id + Places fetch + splitter + `is_positive` + visit gate) |
 | **P3** | Conversation memory | Prefs list vs full transcript — undecided |
 | **P3b** | Group preferences (who wants what) | **Phase 2**, not MVP |
 | **P5** | Golden eval + LLM judge + CI | Regression safety |
