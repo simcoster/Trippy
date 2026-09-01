@@ -21,6 +21,10 @@ scrape-sites:
 scrape-availability:
     uv run python source/scraper/populate_availability.py
 
+# Google Place Details → reviews + claims (newest). Seed: just populate-reviews -- --most-relevant
+populate-reviews *args:
+    uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
+
 # Truncate accommodation_types (CASCADE to availability); keep prices
 clear-data:
     uv run python scripts/clear_accommodation_availability.py

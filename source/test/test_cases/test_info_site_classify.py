@@ -73,8 +73,8 @@ def test_lodging_rows_to_persist_skips_fees():
 
 @pytest.fixture(scope="module")
 def classifier():
-    if not (os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY")):
-        pytest.skip("NEBIUS_API_KEY (or NEBULA_API_KEY) required")
+    if not os.environ.get("NEBIUS_API_KEY"):
+        pytest.skip("NEBIUS_API_KEY required")
     return RateCardClassifier()
 
 

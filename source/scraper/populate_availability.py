@@ -22,11 +22,11 @@ from urllib.parse import urlencode
 import httpx
 import psycopg
 from amenity_enrichment import (
+    LlmUsage,
     amenity_llm_clients,
     enrich_accommodation_types,
     fill_missing_image_urls,
     load_types_with_amenities,
-    LlmUsage,
     parse_room_categories,
 )
 from bs4 import BeautifulSoup

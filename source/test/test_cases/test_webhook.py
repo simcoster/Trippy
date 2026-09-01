@@ -154,9 +154,7 @@ async def test_embedding_search_fit_for_kids():
     prompt = "fit for stargazing"
     db_url = os.environ.get("DATABASE_URL")
     assert db_url, "DATABASE_URL is required"
-    assert os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY"), (
-        "NEBIUS_API_KEY (or NEBULA_API_KEY) is required"
-    )
+    assert os.environ.get("NEBIUS_API_KEY"), "NEBIUS_API_KEY is required"
 
     embedding = ClaimsEmbeddingLLMClient().embed([prompt])[0]
     vec_literal = "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
@@ -168,7 +166,7 @@ async def test_embedding_search_fit_for_kids():
             # Find the closest embedding (cosine distance via pgvector <#>)
             cur.execute(
                 f"""
-                SELECT campsite_id, claim_en, embedding <#> {vec_literal}::vector AS distance
+                SELECT campsite_id, claim, embedding <#> {vec_literal}::vector AS distance
                 FROM claims
                 ORDER BY embedding <#> {vec_literal}::vector
                 LIMIT 1

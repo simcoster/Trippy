@@ -102,8 +102,8 @@ def test_tent_child_weekend_rate_connects_to_northern_compound_booking():
 
 @pytest.mark.llm
 def test_llm_tent_booking_matches_classified_rate_card_name():
-    if not (os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY")):
-        pytest.skip("NEBIUS_API_KEY (or NEBULA_API_KEY) required")
+    if not os.environ.get("NEBIUS_API_KEY"):
+        pytest.skip("NEBIUS_API_KEY required")
     payload = RateCardClassifier().classify_label(TENT_CHILD_WEEKEND_LABEL)
     assert payload.kind == "lodging"
     assert payload.guest_type == "child"

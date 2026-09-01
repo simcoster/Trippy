@@ -1,0 +1,142 @@
+{
+  "name": "חורשת טל",
+  "place_id": "ChIJDUZZZ2-8HhURv7LbSjS_yG0",
+  "reviews_sort": "most_relevant",
+  "reviews": [
+    {
+      "author": "שלומי אינהורן",
+      "rating": 4,
+      "published_utc": "2026-08-06T18:25:58+00:00",
+      "text": "מקום מצוין מכל הבחינות חוץ מעניין השירותים והמקלחות. חלק מהסוגרים של דלתות השירותים שבורים ומים חמים אין בחלק מהתאים, מה שיוצר תורים ארוכים עוד יותר ממה שגם כך יש. התחזוקה השוטפת של ניקיון ונייר טואלט בתאי השירותים מתחת לכל נורמה. יש שם הרבה עובדי ניקיון אבל לא ממש אכפת להם...",
+      "gold_claims": [
+        {
+          "claim": "The bathroom stall door latches are broken.",
+          "polarity": "negative",
+          "evidence_span": "חלק מהסוגרים של דלתות השירותים שבורים"
+        },
+        {
+          "claim": "There is no hot water in some of the shower stalls.",
+          "polarity": "negative",
+          "evidence_span": "מים חמים אין בחלק מהתאים"
+        },
+        {
+          "claim": "Toilet paper in the bathroom stalls is below standard.",
+          "polarity": "negative",
+          "evidence_span": "התחזוקה השוטפת של ניקיון ונייר טואלט בתאי השירותים מתחת לכל נורמה"
+        }
+      ]
+    },
+    {
+      "author": "יו או",
+      "rating": 1,
+      "published_utc": "2026-07-30T09:18:45+00:00",
+      "text": "ממש לא תקין ששילמנו כסף מלא ו80% אחוזים מהתעלות במקום  והנחלים מוובשים וסגורים . ד\"א כבר מעל שנה נאמר שזה בשיפוץ תפסיקו לחסוך ותפתחו את כל הנחלים בשמורה למה רובם יבשים וכל הילדים והאנשים מצטופפים רק ב 2 נקודות ממש בושה  וחוצפה  !!!",
+      "gold_claims": [
+        {
+          "claim": "80 percent of the channels and streams at the site are dry and closed.",
+          "polarity": "negative",
+          "evidence_span": "80% אחוזים מהתעלות במקום  והנחלים מוובשים וסגורים"
+        },
+        {
+          "claim": "The streams have been closed for over a year and are said to be under renovation.",
+          "polarity": "negative",
+          "evidence_span": "כבר מעל שנה נאמר שזה בשיפוץ"
+        },
+        {
+          "claim": "Most streams in the reserve are dry and as a result children and people are crowded in only two points.",
+          "polarity": "negative",
+          "evidence_span": "למה רובם יבשים וכל הילדים והאנשים מצטופפים רק ב 2 נקודות"
+        }
+      ]
+    },
+    {
+      "author": "יפעת מעודה",
+      "rating": 1,
+      "published_utc": "2026-07-15T05:21:46+00:00",
+      "text": "הגענו עם כלב קטן ולא הסכימו שנכנס למרות שהוא קשור, בקשתי לקשור אותו לפני הכניסה למתחם וגם לא אושר לנו. 4 רכבים עשינו אחורה פנה. מבאס! כלב הוא חלק ממשפחה. אי אפשר לצאת בלעדיו מהבית. לא רואה סיבה למנוע כניסה למקום פתוח עם הבטחה שהוא קשור כל זמן השהות. חייבת לציין שלדברי הקופאית בכניסה מסתבר וזו הנחיה בכל הפארקים של הרט\"ג...",
+      "gold_claims": [
+        {
+          "claim": "They were not allowed to enter the campsite with a dog even though it was leashed.",
+          "polarity": "negative",
+          "evidence_span": "הגענו עם כלב קטן ולא הסכימו שנכנס למרות שהוא קשור, בקשתי לקשור אותו לפני הכניסה למתחם וגם לא אושר לנו."
+        }
+      ]
+    },
+    {
+      "author": "Felix Blyakher",
+      "rating": 5,
+      "published_utc": "2026-05-19T18:04:33+00:00",
+      "text": "פארק של רשות הטבע והגנים - מקום מצוין לקמפינג וסתם בילוי יומי.\nיש המון צל ומדשאות בכל מקום; מים זורמים שאפשר להשתכשך בהם ובריכות רדודות ועמוקות עם מציל.\nהצוות שומר על ניקיון מופתי במקלחות ושירותים, מרוקן פחים בתדירות גבוהה, נוכחות של הצוות מאוד מורגשת והם דואגים לשמור על סדר ושקט בכל השעות.\nאפשר להגיע לכאן בכל העונות, כשהמקום פתוח.\nנדרש לבצע הזמנה באתר.\nלמי שלא רוצה להקים אוהלים, ישנה אופציה של השכרת בונגלו; בנוסף, אפשר להשכיר מזרונים.\nלמקום אסורה כניסה של בעלי חיים; אפשר לעשות על האש.",
+      "gold_claims": [
+        {
+          "claim": "The site has abundant shade and lawns throughout.",
+          "polarity": "positive",
+          "evidence_span": "יש המון צל ומדשאות בכל מקום"
+        },
+        {
+          "claim": "There is flowing water available for cooling off.",
+          "polarity": "positive",
+          "evidence_span": "מים זורמים שאפשר להשתכשך בהם"
+        },
+        {
+          "claim": "There are shallow and deep pools with a lifeguard on duty.",
+          "polarity": "positive",
+          "evidence_span": "בריכות רדודות ועמוקות עם מציל"
+        },
+        {
+          "claim": "The staff maintains excellent cleanliness in the showers and toilets.",
+          "polarity": "positive",
+          "evidence_span": "הצוות שומר על ניקיון מופתי במקלחות ושירותים"
+        },
+        {
+          "claim": "Trash bins are emptied frequently.",
+          "polarity": "positive",
+          "evidence_span": "מרוקן פחים בתדירות גבוהה"
+        },
+        {
+          "claim": "Staff presence is highly noticeable and they maintain order and quiet at all hours.",
+          "polarity": "positive",
+          "evidence_span": "נוכחות של הצוות מאוד מורגשת והם דואגים לשמור על סדר ושקט בכל השעות"
+        },
+        {
+          "claim": "Visitors are required to make a reservation on the website.",
+          "polarity": "neutral",
+          "evidence_span": "נדרש לבצע הזמנה באתר"
+        },
+        {
+          "claim": "There is an option to rent a bungalow for those who do not want to set up tents.",
+          "polarity": "positive",
+          "evidence_span": "למי שלא רוצה להקים אוהלים, ישנה אופציה של השכרת בונגלו"
+        },
+        {
+          "claim": "Mattresses can be rented on site.",
+          "polarity": "positive",
+          "evidence_span": "בנוסף, אפשר להשכיר מזרונים"
+        },
+        {
+          "claim": "Pets are not allowed at the site.",
+          "polarity": "negative",
+          "evidence_span": "למקום אסורה כניסה של בעלי חיים"
+        },
+        {
+          "claim": "Open fires are permitted.",
+          "polarity": "positive",
+          "evidence_span": "אפשר לעשות על האש"
+        }
+      ]
+    },
+    {
+      "author": "Ram mishan",
+      "rating": 2,
+      "published_utc": "2026-07-27T06:04:41+00:00",
+      "text": "לא כמו פעם, השאירו בריכה אחת\nפעילה, בקיצור אכזבה, אלה שנכנסים ומשלמים כולל מנוי מטמון בהנחה, אם אני זוכר 70 ש\"ח לא יודעים יודעים שהם סתם משלמים.",
+      "gold_claims": [
+        {
+          "claim": "Only one pool is active at the site.",
+          "polarity": "negative",
+          "evidence_span": "השאירו בריכה אחת\nפעילה"
+        }
+      ]
+    }
+  ]
+}

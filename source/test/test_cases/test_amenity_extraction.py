@@ -35,8 +35,8 @@ DOUBLE_HUSHA_TOOLTIP = (
 
 @pytest.fixture(scope="module")
 def extractor():
-    if not (os.environ.get("NEBIUS_API_KEY") or os.environ.get("NEBULA_API_KEY")):
-        pytest.skip("NEBIUS_API_KEY (or NEBULA_API_KEY) required")
+    if not os.environ.get("NEBIUS_API_KEY"):
+        pytest.skip("NEBIUS_API_KEY required")
     return ExtractorLLMClient()
 
 
