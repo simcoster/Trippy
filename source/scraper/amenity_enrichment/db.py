@@ -105,7 +105,7 @@ def update_accommodation_type_details(
         UPDATE accommodation_types
         SET description = %(description)s,
             amenities = %(amenities)s::jsonb,
-            not_included = %(not_included)s::jsonb,
+            not_included_amenities = %(not_included_amenities)s::jsonb,
             max_occupancy = %(max_occupancy)s,
             total_beds = %(total_beds)s,
             bed_configuration = %(bed_configuration)s::jsonb,
@@ -121,7 +121,7 @@ def update_accommodation_type_details(
             "id": accommodation_type_id,
             "description": description,
             "amenities": json.dumps(amenity_ids),
-            "not_included": json.dumps(not_included_ids),
+            "not_included_amenities": json.dumps(not_included_ids),
             "max_occupancy": details.get("max_people"),
             "total_beds": total_beds if total_beds > 0 else None,
             "bed_configuration": json.dumps(bed_configuration),

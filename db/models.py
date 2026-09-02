@@ -40,6 +40,8 @@ class Campsite(Base):
     # features (a shared fridge block, showers, a lake nearby), not per-unit.
     # Readable join of ids → names: view campsites_with_amenity_names
     amenities = mapped_column(JSONB)
+    # JSONB array of amenities.id values the site explicitly does not provide
+    not_included_amenities = mapped_column(JSONB)
 
     availability: Mapped[list[Availability]] = relationship(back_populates="campsite")
     accommodation_types: Mapped[list[AccommodationType]] = relationship(
@@ -190,7 +192,7 @@ class AccommodationType(Base):
     # JSONB array of amenities.id values, e.g. [1, 5, 12]
     amenities = mapped_column(JSONB)
     # JSONB array of amenities.id values that are explicitly not included
-    not_included = mapped_column(JSONB)
+    not_included_amenities = mapped_column(JSONB)
     # Readable join of amenity ids → names: view accommodation_types_with_amenity_names
     max_occupancy: Mapped[int | None] = mapped_column(Integer)
     total_beds: Mapped[int | None] = mapped_column(Integer)
