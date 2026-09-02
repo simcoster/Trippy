@@ -23,6 +23,10 @@ branch name:
     git checkout -b $branch
     git push -u origin $branch
 
+# Push the current branch, open a PR into main, then switch back to main
+pr *title:
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/open_pr.ps1 {{ if title == "" { "" } else { "-Title " + quote(title) } }}
+
 # info-site rate cards → accommodation_types + list_prices
 scrape-prices:
     uv run python source/scraper/info_site/scrape.py --prices
