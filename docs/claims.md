@@ -14,7 +14,7 @@ Probe tables (anonymized): `temp/split_reviews.md`, `temp/split_claims_table_235
 | Stars / author / full text | `reviews` table only — claims do not copy rating |
 | Claims columns | `review_id`, `campsite_id`, `claim` (standalone rewrite, usually EN), `evidence_span` (original language), `polarity`, `confidence`, `embedding` |
 | Recency | `reviews.published_at`; search joins reviews |
-| Visit gate | **30B** before split. Ads / brochure / history dumps → `reviews.skip_reason = not_personal`, `skip_note`, **no claims**. Splitter and `confidence < 0.5` unchanged. Empty text: store only, no gate. |
+| Visit gate | **30B** before split. Ads / brochure / history dumps **and hiking-trail writeups** → `reviews.skip_reason = not_personal`, `skip_note`, **no claims**. Guest reports of site conditions (streams dry, crowding, paid entry) **keep**, even if they rant. Mixed stay+trail still keep. Splitter and `confidence < 0.5` unchanged. Empty text: store only, no gate. Gold: `visit_gate.json`. |
 
 Ingest: `source/scraper/populate_reviews_and_claims.py` → `populate_reviews_and_claims(campsite_id, reviews_dict)`. Places fetch is still a separate step.
 

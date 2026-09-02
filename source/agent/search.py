@@ -459,6 +459,7 @@ def search_review_claims(
         FROM claims c
         JOIN reviews r ON r.id = c.review_id
         WHERE c.claim IS NOT NULL
+          AND r.skip_reason IS NULL
         ORDER BY c.embedding <#> %s::vector
         LIMIT %s
     """

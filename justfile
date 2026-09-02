@@ -43,6 +43,10 @@ populate-reviews *args:
 clear-data:
     uv run python scripts/clear_accommodation_availability.py
 
+# Truncate reviews and claims; keep campsites
+clear-reviews:
+    uv run python scripts/clear_reviews_and_claims.py
+
 # Apply pending Alembic migrations
 update-tables:
     uv run alembic upgrade head
