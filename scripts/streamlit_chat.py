@@ -326,6 +326,7 @@ def _install_tool_hooks() -> None:
                 if name in (
                     "search_claims",
                     "search_review_claims",
+                    "search_site_amenities",
                     "search_stated_amenities",
                 ):
                     params = {
@@ -336,6 +337,8 @@ def _install_tool_hooks() -> None:
                         params["accommodation_type_ids"] = kwargs.get(
                             "accommodation_type_ids"
                         )
+                    elif name in ("search_site_amenities", "search_review_claims"):
+                        params["campsite_ids"] = kwargs.get("campsite_ids")
                 elif name == "lookup_campsite_by_name":
                     params = {"name": args[0] if args else kwargs.get("name")}
                 elif name == "search_open_slots":
@@ -384,6 +387,9 @@ def _install_tool_hooks() -> None:
     agent_search.search_stated_amenities = _wrap(
         "search_stated_amenities", agent_search.search_stated_amenities
     )
+    agent_search.search_site_amenities = _wrap(
+        "search_site_amenities", agent_search.search_site_amenities
+    )
     agent_search.lookup_campsite_by_name = _wrap(
         "lookup_campsite_by_name", agent_search.lookup_campsite_by_name
     )
@@ -399,6 +405,7 @@ def _install_tool_hooks() -> None:
     agent_graph.search_claims = agent_search.search_claims
     agent_graph.search_review_claims = agent_search.search_review_claims
     agent_graph.search_stated_amenities = agent_search.search_stated_amenities
+    agent_graph.search_site_amenities = agent_search.search_site_amenities
     agent_graph.lookup_campsite_by_name = agent_search.lookup_campsite_by_name
     agent_graph.search_open_slots = agent_search.search_open_slots
     agent_graph.search_availability = agent_search.search_availability

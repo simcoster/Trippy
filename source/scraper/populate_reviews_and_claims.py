@@ -67,11 +67,19 @@ ORDER BY id
 LIMIT %(limit)s
 """
 
-VISIT_GATE_SYSTEM = """You decide whether a Google review of a campsite is a visitor's personal experience.
+VISIT_GATE_SYSTEM = """You decide whether a Google review of a campsite is a visitor's personal experience of the site.
 
-Keep (personal_visit true) if the writer describes being at the site as a guest or visitor: a stay, a day visit, or a witnessed incident (showers, noise, staff, parking they used, and so on). A mixed review that also has history, brochure lines, or asides still counts as personal if there is a visit.
+Keep (personal_visit true) if the writer was there as a guest or visitor and reports what they found: a stay, a day visit, paying to enter, showers, toilets, noise, staff, the gate, parking, streams / channels / pools, crowding, or any witnessed site condition. A rant or "they should fix it" still counts if they describe what they saw. A mixed review that also has history, brochure lines, a nearby trail, or asides still counts if there is a visit.
 
-Drop (personal_visit false) if this is not a visit account: ads, SEO or brochure dumps (Waze, fee tables, subscriber lists), encyclopedia or history lectures, press-release "don't miss it" copy, or someone else's research. Do not keep it only because it lists amenities.
+Drop (personal_visit false) if this is not a visit account:
+- ads, SEO or brochure dumps (Waze, fee tables, subscriber lists)
+- encyclopedia or history lectures, press-release "don't miss it" copy, or someone else's research
+- hiking-trail / walking-route writeups (מסלול from A to B, trail difficulty, shade on the path, lookouts, seasonal notes on the route) even if first-person. Those are trail guides, not a visit.
+Do not keep it only because it lists amenities.
+
+Contrast:
+Keep: "we paid full price and 80% of the channels and streams are dry; people crowd at two points" (they were at the site).
+Drop: "trail from the lake parking to Ein Alon and back, easy-medium, half shaded, dry in summer" (route card).
 
 Output valid JSON only, no markdown:
 {"personal_visit": bool, "reason": str}
@@ -165,7 +173,7 @@ SET author = EXCLUDED.author,
     rating = EXCLUDED.rating,
     text = EXCLUDED.text,
     published_at = EXCLUDED.published_at
-RETURNING id;
+RETURNING id, skip_reason;
 """
 
 UPDATE_REVIEW_SKIP_SQL = """
@@ -486,7 +494,7 @@ def split_one_review(
     return filter_claims(claims if isinstance(claims, list) else [])
 
 
-def upsert_review(cur, *, campsite_id: int, review: dict) -> int:
+def upsert_review(cur, *, campsite_id: int, review: dict) -> tuple[int, str | None]:
     uid = review_uid(
         campsite_id,
         review["source"],
@@ -507,7 +515,11 @@ def upsert_review(cur, *, campsite_id: int, review: dict) -> int:
         },
     )
     row = cur.fetchone()
-    return int(row[0])
+    review_id = int(row[0])
+    existing_skip = row[1] if len(row) > 1 else None
+    if existing_skip is not None:
+        existing_skip = str(existing_skip)
+    return review_id, existing_skip
 
 
 def replace_claims(
@@ -549,8 +561,9 @@ def populate_reviews_and_claims(
     """Upsert reviews from `reviews` and split+embed claims.
 
     Non-empty reviews go through a 30B personal-visit gate. Ads / dumps
-    are stored with skip_reason and are not split. Kept reviews: one 235B
-    splitter call each, then one embed batch.
+    are stored with skip_reason and are not split or embedded. A review
+    that already has skip_reason is left skipped (no gate, no 235B).
+    Kept reviews: one 235B splitter call each, then one embed batch.
     """
     place_name = place or str(reviews.get("name") or reviews.get("place") or "")
     items = reviews_from_dict(reviews, source=source)
@@ -568,13 +581,22 @@ def populate_reviews_and_claims(
     try:
         with conn.cursor() as cur:
             for i, review in enumerate(items, 1):
-                review_id = upsert_review(
+                review_id, existing_skip = upsert_review(
                     cur, campsite_id=campsite_id, review=review
                 )
                 text = (review.get("text") or "").strip()
                 if not text:
                     log(f"  review {i}/{total} id={review_id}: empty text, stored only")
                     review_rows.append((review_id, review, []))
+                    continue
+                if existing_skip:
+                    cur.execute(
+                        DELETE_CLAIMS_FOR_REVIEW_SQL, {"review_id": review_id}
+                    )
+                    log(
+                        f"  review {i}/{total} id={review_id}: "
+                        f"already skipped {existing_skip}, not split"
+                    )
                     continue
                 personal, skip_note = judge_personal_visit(
                     chat, review, place=place_name, usage=llm_usage
@@ -586,12 +608,14 @@ def populate_reviews_and_claims(
                         skip_reason=SKIP_REASON_NOT_PERSONAL,
                         skip_note=skip_note,
                     )
+                    cur.execute(
+                        DELETE_CLAIMS_FOR_REVIEW_SQL, {"review_id": review_id}
+                    )
                     log(
                         f"  review {i}/{total} id={review_id}: "
                         f"skipped {SKIP_REASON_NOT_PERSONAL}"
                         + (f" ({skip_note})" if skip_note else "")
                     )
-                    review_rows.append((review_id, review, []))
                     continue
                 set_review_skip(
                     cur, review_id=review_id, skip_reason=None, skip_note=None

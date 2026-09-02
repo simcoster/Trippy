@@ -99,9 +99,9 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
         {{"field": "party_size", "operator": ">=", "value": 3}}
       ],
       "semantic_constraints": [
-        {{"query": "hot showers"}},
-        {{"query": "quiet"}},
-        {{"op": "or", "values": ["near the sea", "near a body of water"]}}
+        {{"query": "hot showers", "locus": "site"}},
+        {{"query": "fridge", "locus": "room"}},
+        {{"op": "or", "values": ["near the sea", "near a body of water"], "locus": "site"}}
       ]
     }}
 
@@ -155,6 +155,16 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        Do not emit an "amenities" key.
        Do not put check-in time / "arrive Saturday afternoon" / arrival
        policy in semantic_constraints (omit those until a policy field exists).
+       Every item carries a "locus":
+       - "room" when the feature must be inside the booked unit / private:
+         "מקרר בחדר", "fridge in the room", "private shower", "מקלחת פרטית",
+         "in-unit air conditioning", "מזגן בחדר".
+       - "site" for anything the campsite as a whole can provide: "מקום עם
+         מקררים" ("a place with fridges"), communal showers, "near the sea",
+         "quiet", "good for kids", "stargazing".
+       A feature named with no room/private wording is "site" — that is the
+       wider match, so use it when in doubt. An OR group carries one "locus"
+       for all of its values.
     6. Preserve negation in wording when stated.
     7. Do not invent constraints the user did not imply.
 
@@ -166,7 +176,7 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
       "campsite": null,
       "numeric_constraints": [],
       "semantic_constraints": [
-        {{"op": "or", "values": ["near the sea", "near a body of water"]}}
+        {{"op": "or", "values": ["near the sea", "near a body of water"], "locus": "site"}}
       ]
     }}
 
@@ -178,8 +188,8 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
       "campsite": null,
       "numeric_constraints": [],
       "semantic_constraints": [
-        {{"query": "nice summer weather"}},
-        {{"query": "stargazing"}}
+        {{"query": "nice summer weather", "locus": "site"}},
+        {{"query": "stargazing", "locus": "site"}}
       ]
     }}
 
@@ -203,7 +213,31 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
         {{"field": "party_size", "operator": ">=", "value": 3}}
       ],
       "semantic_constraints": [
-        {{"query": "air conditioning"}}
+        {{"query": "air conditioning", "locus": "site"}}
+      ]
+    }}
+
+    Example:
+    Input: "מקום עם מקררים"
+    Output:
+    {{
+      "date_intent": null,
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": [
+        {{"query": "fridge", "locus": "site"}}
+      ]
+    }}
+
+    Example:
+    Input: "יש מקרר בחדר"
+    Output:
+    {{
+      "date_intent": null,
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": [
+        {{"query": "fridge", "locus": "room"}}
       ]
     }}
 
@@ -228,11 +262,17 @@ RECOMMENDER_SYSTEM_PROMPT = (
     "Recommend only from the planner JSON field `fits`. "
     "Each fit is an available stay that already matches dates, party size, "
     "and price when those were given. "
-    "Use `why` as official-listing evidence for requested features "
-    "(stated amenity names). "
-    "`review_claims` are guest reviews — lived quality, with date and "
-    "days_ago. Weigh recent reviews more. When official amenities and "
-    "reviews conflict, still consider the site but mention the caveat. "
+    "`fits` is already ordered best-first by recency-weighted guest "
+    "sentiment (`score`). Keep that order; never quote the score itself. "
+    "`why` says how each request was met: a `stated_amenity` is the unit's "
+    "official listing, a `site_amenity` is the campsite's, and an entry with "
+    "`locus: room` means the user wanted it inside the unit. A `why` entry "
+    "carrying `claim` is supported only by a guest review — say 'guests "
+    "report', never present it as a listed feature. "
+    "`review_claims` are up to five guest claims for that site, positive and "
+    "negative (`is_positive`), with date and days_ago. Weigh recent reviews "
+    "more. Mention relevant negatives as honest caveats — do not hide them, "
+    "and do not let one complaint disqualify a site that lists the amenity. "
     "Do not invent campsites, prices, or amenities that are not in `fits`. "
     "`rejected` is a short sample of open stays that failed a feature "
     "check; use `why` there only to explain misses, never to recommend. "

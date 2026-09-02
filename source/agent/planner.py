@@ -5,10 +5,19 @@ from __future__ import annotations
 from typing import Any
 
 from source.agent import search
-from source.agent.constraints import party_size_from_numeric, semantic_search_queries
+from source.agent.constraints import (
+    ROOM_LOCUS,
+    party_size_from_numeric,
+    semantic_locus_groups,
+)
 from source.agent.dates import DATE_TRUNCATED_NOTICE, MAX_DATE_WINDOWS
 
 AMENITY_MATCH_MAX_DISTANCE = -0.8
+# Claims are whole sentences, so they sit further from a short query than a
+# curated amenity label does — a looser gate than the amenity lane.
+CLAIM_MATCH_MAX_DISTANCE = -0.7
+CLAIM_RECENCY_HALF_LIFE_DAYS = 365
+CLAIM_EVIDENCE_LIMIT = 5
 REJECTED_SAMPLE_LIMIT = 5
 
 
@@ -66,92 +75,215 @@ def _amenity_hit_matches(hit: dict) -> bool:
     return float(dist) <= AMENITY_MATCH_MAX_DISTANCE
 
 
-def _semantic_why_by_type(
-    type_ids: list[int],
-    semantic_constraints: list,
-) -> tuple[dict[int, list[dict[str, Any]]], dict[int, list[dict[str, Any]]]]:
-    """AND-groups of amenity queries → (matched why, rejected why) by type id."""
-    unique_ids = list(dict.fromkeys(int(x) for x in type_ids))
-    if not unique_ids:
-        return {}, {}
-    groups = semantic_search_queries(semantic_constraints)
-    if not groups:
-        return {tid: [] for tid in unique_ids}, {}
+def _site_amenity_hit_matches(hit: dict) -> bool:
+    if hit.get("error") or hit.get("campsite_id") is None:
+        return False
+    dist = hit.get("distance")
+    if dist is None:
+        return True
+    return float(dist) <= AMENITY_MATCH_MAX_DISTANCE
 
-    why_by_type: dict[int, list[dict[str, Any]]] = {tid: [] for tid in unique_ids}
-    missing_by_type: dict[int, list[dict[str, Any]]] = {tid: [] for tid in unique_ids}
-    matching = set(unique_ids)
-    for queries in groups:
-        group_hits: dict[int, dict[str, Any]] = {}
-        for query in queries:
+
+def _claim_hit_within_threshold(hit: dict) -> bool:
+    if hit.get("error") or hit.get("campsite_id") is None:
+        return False
+    dist = hit.get("distance")
+    if dist is None:
+        return True
+    return float(dist) <= CLAIM_MATCH_MAX_DISTANCE
+
+
+def _claim_hit_satisfies(hit: dict) -> bool:
+    """Only a positive claim can satisfy a constraint — negatives never veto."""
+    return hit.get("is_positive") is True and _claim_hit_within_threshold(hit)
+
+
+def _claim_weight(days_ago: Any) -> float:
+    """Recency weight; an undated claim counts as exactly one half-life old."""
+    try:
+        days = float(days_ago)
+    except (TypeError, ValueError):
+        return 0.5
+    return 0.5 ** (max(days, 0.0) / CLAIM_RECENCY_HALF_LIFE_DAYS)
+
+
+def _claim_score(hits: list[dict[str, Any]]) -> float:
+    """Positive claims lift, negative claims sink, both decayed by age."""
+    score = 0.0
+    for hit in hits:
+        polarity = hit.get("is_positive")
+        if polarity is None or not _claim_hit_within_threshold(hit):
+            continue
+        score += (1.0 if polarity else -1.0) * _claim_weight(hit.get("days_ago"))
+    return score
+
+
+def _claim_evidence(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Closest claims, capped, with both polarities represented when they exist."""
+    ranked = sorted(
+        hits,
+        key=lambda h: (
+            float(h["distance"]) if h.get("distance") is not None else 0.0
+        ),
+    )
+    chosen = ranked[:CLAIM_EVIDENCE_LIMIT]
+    rest = ranked[CLAIM_EVIDENCE_LIMIT:]
+    polarities = {h.get("is_positive") for h in chosen if h.get("is_positive") is not None}
+    if len(polarities) == 1 and chosen:
+        missing = not polarities.pop()
+        swap = next((h for h in rest if h.get("is_positive") is missing), None)
+        if swap is not None:
+            chosen = chosen[:-1] + [swap]
+    return [
+        {
+            "query": hit.get("query"),
+            "claim": hit.get("claim"),
+            "date": hit.get("date"),
+            "days_ago": hit.get("days_ago"),
+            "is_positive": hit.get("is_positive"),
+        }
+        for hit in chosen
+    ]
+
+
+def _semantic_why_by_slot(
+    slots: list[dict],
+    semantic_constraints: list,
+) -> tuple[
+    dict[tuple[str, int], list[dict[str, Any]]],
+    dict[tuple[str, int], list[dict[str, Any]]],
+    dict[str, list[dict[str, Any]]],
+]:
+    """AND-groups → (matched why, rejected why) per slot, plus claims by site.
+
+    A group is satisfied for a slot when any lane hits: the unit's stated
+    amenities, the campsite's site-wide amenities (site locus only), or a
+    positive review claim about that campsite.
+    """
+    keys = list(
+        dict.fromkeys(
+            (str(s["campsite_id"]), int(s["accommodation_type_id"])) for s in slots
+        )
+    )
+    type_ids = list(dict.fromkeys(int(s["accommodation_type_id"]) for s in slots))
+    site_ids = list(dict.fromkeys(int(s["campsite_id"]) for s in slots))
+    claims_by_site: dict[str, list[dict[str, Any]]] = {
+        str(sid): [] for sid in site_ids
+    }
+    if not keys:
+        return {}, {}, claims_by_site
+    groups = semantic_locus_groups(semantic_constraints)
+    if not groups:
+        return {key: [] for key in keys}, {}, claims_by_site
+
+    why: dict[tuple[str, int], list[dict[str, Any]]] = {key: [] for key in keys}
+    missing: dict[tuple[str, int], list[dict[str, Any]]] = {key: [] for key in keys}
+    matching = set(keys)
+    seen_claims: set[tuple] = set()
+
+    for group in groups:
+        is_room = group["locus"] == ROOM_LOCUS
+        by_type: dict[int, dict[str, Any]] = {}
+        by_site: dict[str, dict[str, Any]] = {}
+        by_claim: dict[str, dict[str, Any]] = {}
+        for query in group["queries"]:
             vec = search._query_vec_literal(query)
-            hits = search.search_stated_amenities(
+            for hit in search.search_stated_amenities(
                 query,
-                limit=max(len(unique_ids), 1),
+                limit=max(len(type_ids), 1),
                 embedding=vec,
-                accommodation_type_ids=unique_ids,
-            )
-            for hit in hits:
+                accommodation_type_ids=type_ids,
+            ):
                 if not _amenity_hit_matches(hit):
                     continue
                 tid = int(hit["accommodation_type_id"])
-                if tid not in group_hits:
-                    group_hits[tid] = {
+                by_type.setdefault(
+                    tid,
+                    {
                         "query": query,
                         "stated_amenity": hit.get("amenity"),
                         "distance": hit.get("distance"),
-                    }
-        matching &= set(group_hits)
-        label = queries[0] if len(queries) == 1 else list(queries)
-        for tid in unique_ids:
-            if tid in group_hits:
-                why_by_type[tid].append(group_hits[tid])
-            else:
-                missing_by_type[tid].append(
-                    {
-                        "reason": "missing_stated_amenity",
-                        "query": label,
-                    }
+                    },
                 )
-    return (
-        {tid: why_by_type[tid] for tid in matching},
-        {tid: missing_by_type[tid] for tid in unique_ids if tid not in matching},
-    )
-
-
-def _review_claims_for_sites(
-    site_ids: set[str],
-    semantic_constraints: list,
-    *,
-    per_query_limit: int = 5,
-) -> dict[str, list[dict[str, Any]]]:
-    if not site_ids:
-        return {}
-    by_site: dict[str, list[dict[str, Any]]] = {sid: [] for sid in site_ids}
-    seen: set[tuple] = set()
-    for queries in semantic_search_queries(semantic_constraints):
-        for query in queries:
-            vec = search._query_vec_literal(query)
             for hit in search.search_review_claims(
-                query, limit=per_query_limit, embedding=vec
+                query,
+                limit=CLAIM_EVIDENCE_LIMIT,
+                embedding=vec,
+                campsite_ids=site_ids,
             ):
                 if hit.get("error"):
                     continue
                 cid = str(hit.get("campsite_id") or "")
-                if cid not in by_site:
+                if cid not in claims_by_site:
                     continue
-                rec = {
-                    "query": query,
-                    "claim": hit.get("claim"),
-                    "date": hit.get("date"),
-                    "days_ago": hit.get("days_ago"),
+                key = (cid, hit.get("claim"), hit.get("date"))
+                if key not in seen_claims:
+                    seen_claims.add(key)
+                    claims_by_site[cid].append({**hit, "query": query})
+                if _claim_hit_satisfies(hit):
+                    by_claim.setdefault(
+                        cid,
+                        {
+                            "query": query,
+                            "claim": hit.get("claim"),
+                            "date": hit.get("date"),
+                            "days_ago": hit.get("days_ago"),
+                            "distance": hit.get("distance"),
+                            "is_positive": True,
+                        },
+                    )
+            if is_room:
+                continue
+            # Site lane last, and only for sites the other two lanes missed —
+            # campsites.amenities is unpopulated today, so this is usually a
+            # query we can skip entirely.
+            pending = [
+                sid
+                for sid in site_ids
+                if str(sid) not in by_site
+                and str(sid) not in by_claim
+                # at least one unit at this site is still unmatched
+                and any(tid not in by_type for cid, tid in keys if cid == str(sid))
+            ]
+            if not pending:
+                continue
+            for hit in search.search_site_amenities(
+                query,
+                limit=max(len(pending), 1),
+                embedding=vec,
+                campsite_ids=pending,
+            ):
+                if not _site_amenity_hit_matches(hit):
+                    continue
+                by_site.setdefault(
+                    str(hit["campsite_id"]),
+                    {
+                        "query": query,
+                        "site_amenity": hit.get("amenity"),
+                        "distance": hit.get("distance"),
+                    },
+                )
+        for cid, tid in keys:
+            # Official evidence first, guest reviews last.
+            hit = by_type.get(tid) or by_site.get(cid) or by_claim.get(cid)
+            if hit is not None:
+                why[(cid, tid)].append({**hit, "locus": "room"} if is_room else hit)
+            else:
+                miss: dict[str, Any] = {
+                    "reason": (
+                        "missing_room_amenity" if is_room else "missing_stated_amenity"
+                    ),
+                    "query": group["label"],
                 }
-                key = (cid, rec["claim"], rec["date"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                by_site[cid].append(rec)
-    return by_site
+                if is_room:
+                    miss["locus"] = "room"
+                missing[(cid, tid)].append(miss)
+                matching.discard((cid, tid))
+    return (
+        {key: why[key] for key in keys if key in matching},
+        {key: missing[key] for key in keys if key not in matching},
+        claims_by_site,
+    )
 
 
 def _named_site_ids(name: str) -> tuple[list[int], dict[str, Any] | None]:
@@ -239,8 +371,9 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         query_records[0] if len(query_records) == 1 else query_records
     )
 
-    type_ids = [int(s["accommodation_type_id"]) for s in slots]
-    why_by_type, reject_why_by_type = _semantic_why_by_type(type_ids, semantic)
+    why_by_slot, reject_why_by_slot, claims_by_site = _semantic_why_by_slot(
+        slots, semantic
+    )
     fits: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
@@ -260,25 +393,27 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         }
 
     for slot in slots:
-        tid = int(slot["accommodation_type_id"])
-        if tid in why_by_type:
-            fits.append(_slot_row(slot, why_by_type[tid]))
+        key = (str(slot["campsite_id"]), int(slot["accommodation_type_id"]))
+        if key in why_by_slot:
+            fits.append(_slot_row(slot, why_by_slot[key]))
         else:
             rejected.append(
                 _slot_row(
                     slot,
-                    reject_why_by_type.get(tid)
+                    reject_why_by_slot.get(key)
                     or [{"reason": "semantic_mismatch"}],
                 )
             )
 
-    if fits and semantic:
-        site_keys = {str(f["campsite_id"]) for f in fits}
-        claims = _review_claims_for_sites(site_keys, semantic)
-        for fit in fits:
-            extra = claims.get(str(fit["campsite_id"])) or []
-            if extra:
-                fit["review_claims"] = extra
+    # Claims rank the survivors and supply evidence; they never veto a fit.
+    for fit in fits:
+        hits = claims_by_site.get(str(fit["campsite_id"])) or []
+        fit["score"] = _claim_score(hits)
+        evidence = _claim_evidence(hits)
+        if evidence:
+            fit["review_claims"] = evidence
+    # Stable, so equal scores keep the vacancy SQL's start_date / type ordering.
+    fits.sort(key=lambda f: f["score"], reverse=True)
 
     payload["fits"] = fits
     payload["rejected"] = rejected[:REJECTED_SAMPLE_LIMIT]

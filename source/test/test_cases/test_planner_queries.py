@@ -143,7 +143,7 @@ def test_planner_semantic_query_restricted_to_slot_types(
         accommodation_type_ids=[11],
     )
     db_searches.claims.assert_called_once_with(
-        "air conditioning", limit=5, embedding=FAKE_VEC
+        "air conditioning", limit=5, embedding=FAKE_VEC, campsite_ids=[3]
     )
     db_searches.campsites.assert_not_called()
 
@@ -155,6 +155,7 @@ def test_planner_semantic_query_restricted_to_slot_types(
             "claim": "the AC was loud",
             "date": "2026-05-01",
             "days_ago": 121,
+            "is_positive": None,
         }
     ]
 

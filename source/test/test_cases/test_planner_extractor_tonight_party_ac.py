@@ -121,10 +121,9 @@ def test_planner_output_for_extractor_tonight_party_ac(two_stage: SimpleNamespac
         payload["constraints"]["numeric_constraints"]
         == EXTRACTOR_JSON["numeric_constraints"]
     )
-    assert (
-        payload["constraints"]["semantic_constraints"]
-        == EXTRACTOR_JSON["semantic_constraints"]
-    )
+    assert payload["constraints"]["semantic_constraints"] == [
+        {"query": "air conditioning", "locus": "site"}
+    ], "a locus-less extractor item defaults to site"
     assert "campsite" not in payload["constraints"]
     assert payload["rejected_count"] == 1
     assert [fit["accommodation_type_id"] for fit in payload["fits"]] == [11]
