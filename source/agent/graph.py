@@ -54,6 +54,7 @@ from source.agent.search import (
     search_claims,
     search_open_slots,
     search_review_claims,
+    search_site_amenities,
     search_stated_amenities,
 )
 from source.scraper.amenity_enrichment.llm import (
@@ -78,6 +79,7 @@ __all__ = [
     "search_claims",
     "search_open_slots",
     "search_review_claims",
+    "search_site_amenities",
     "search_stated_amenities",
 ]
 

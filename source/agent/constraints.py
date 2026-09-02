@@ -56,14 +56,44 @@ def claim_recency(
     return parsed.isoformat(), (today_il(today) - parsed).days
 
 
+SITE_LOCUS = "site"
+ROOM_LOCUS = "room"
+
+# Anything the user pins to the booked unit. Everything else — including a
+# missing locus — is "site", the wider lane (site OR unit OR positive claim).
+_ROOM_LOCUS_WORDS = frozenset(
+    {
+        "room",
+        "unit",
+        "in room",
+        "in the room",
+        "in unit",
+        "private",
+        "accommodation",
+        "accommodation type",
+    }
+)
+
+
+def normalize_locus(value: Any) -> str:
+    """Coerce an extractor locus to "room" or "site"; unknown/missing → "site"."""
+    text = " ".join(str(value or "").lower().replace("_", " ").replace("-", " ").split())
+    return ROOM_LOCUS if text in _ROOM_LOCUS_WORDS else SITE_LOCUS
+
+
 def _normalize_semantic_item(item: Any) -> dict[str, Any] | None:
-    """Normalize one semantic / leftover amenity item to {query} or {op: or, values}."""
+    """Normalize one semantic / leftover amenity item to {query} or {op: or, values}.
+
+    Every item carries a `locus`: "room" when the feature must be inside the
+    booked unit, "site" for anything the campsite as a whole can provide.
+    """
     if item is None:
         return None
     if isinstance(item, str):
         text = item.strip()
-        return {"query": text} if text else None
+        return {"query": text, "locus": SITE_LOCUS} if text else None
     if isinstance(item, dict):
+        locus = normalize_locus(item.get("locus"))
         op = str(item.get("op") or "").strip().lower()
         values = item.get("values")
         if isinstance(values, list):
@@ -71,12 +101,12 @@ def _normalize_semantic_item(item: Any) -> dict[str, Any] | None:
             if not cleaned:
                 return None
             if op == "or" or (not op and len(cleaned) > 1):
-                return {"op": "or", "values": cleaned}
-            return {"query": cleaned[0]}
+                return {"op": "or", "values": cleaned, "locus": locus}
+            return {"query": cleaned[0], "locus": locus}
         q = str(item.get("query") or item.get("text") or "").strip()
-        return {"query": q} if q else None
+        return {"query": q, "locus": locus} if q else None
     text = str(item).strip()
-    return {"query": text} if text else None
+    return {"query": text, "locus": SITE_LOCUS} if text else None
 
 
 def _normalize_semantic_list(raw: Any) -> list[dict[str, Any]]:
@@ -378,6 +408,47 @@ def semantic_search_queries(constraints: list[Any]) -> list[list[str]]:
 
 # Back-compat alias: amenities were folded into semantic_constraints.
 amenity_search_queries = semantic_search_queries
+
+
+def semantic_locus_groups(constraints: list[Any]) -> list[dict[str, Any]]:
+    """AND groups with their locus: {queries, locus, label}.
+
+    Same fan-out as semantic_search_queries, but keeps the room/site locus the
+    planner needs to pick which amenity lanes may satisfy the group. `label` is
+    what lands in `why` / rejection reasons.
+    """
+    groups: list[dict[str, Any]] = []
+
+    def _add(queries: list[str], locus: str) -> None:
+        if not queries:
+            return
+        groups.append(
+            {
+                "queries": queries,
+                "locus": locus,
+                "label": queries[0] if len(queries) == 1 else list(queries),
+            }
+        )
+
+    for item in constraints or []:
+        if isinstance(item, str):
+            text = item.strip()
+            _add([text] if text else [], SITE_LOCUS)
+        elif isinstance(item, dict):
+            locus = normalize_locus(item.get("locus"))
+            if str(item.get("op", "")).lower() == "or":
+                _add(
+                    [
+                        str(v).strip()
+                        for v in (item.get("values") or [])
+                        if str(v).strip()
+                    ],
+                    locus,
+                )
+            elif item.get("query"):
+                text = str(item["query"]).strip()
+                _add([text] if text else [], locus)
+    return groups
 
 
 EMPTY_CONSTRAINTS: dict[str, Any] = {

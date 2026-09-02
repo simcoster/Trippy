@@ -445,16 +445,62 @@ def search_stated_amenities(
         return [{"error": f"Error searching stated amenities: {e}"}]
 
 
-def search_review_claims(
-    query: str, limit: int = 5, *, embedding: str | None = None
+def search_site_amenities(
+    query: str,
+    limit: int = 5,
+    *,
+    embedding: str | None = None,
+    campsite_ids: list[int] | None = None,
 ) -> list[dict]:
-    """Search review claims by vector similarity. Returns structured hits."""
+    """Rank campsites by closest site-wide (communal) amenity embedding."""
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         return []
+    if campsite_ids is not None and not campsite_ids:
+        return []
     vec_literal = embedding or _query_vec_literal(query)
-    sql = """
-        SELECT c.campsite_id, c.claim, r.published_at,
+    clauses = ["a.embedding IS NOT NULL", "c.amenities IS NOT NULL"]
+    params: list[Any] = [vec_literal, vec_literal]
+    if campsite_ids is not None:
+        clauses.append("c.id = ANY(%s)")
+        params.append([int(x) for x in campsite_ids])
+    params.append(limit)
+    sql = f"""
+        SELECT c.id,
+               c.name,
+               MIN(a.embedding <#> %s::vector) AS distance,
+               (array_agg(a.name ORDER BY a.embedding <#> %s::vector))[1]
+                   AS matched_amenity
+        FROM campsites c
+        CROSS JOIN LATERAL jsonb_array_elements(c.amenities) AS elem(val)
+        JOIN amenities a ON a.id = (elem.val)::int
+        WHERE {' AND '.join(clauses)}
+        GROUP BY c.id, c.name
+        ORDER BY distance
+        LIMIT %s
+    """
+    try:
+        with psycopg.connect(db_url) as conn:
+            register_vector(conn)
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+        return [
+            {
+                "amenity": row[3],
+                "campsite_id": int(row[0]),
+                "campsite": row[1],
+                "distance": float(row[2]),
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        return [{"error": f"Error searching site amenities: {e}"}]
+
+
+# Global top-K over every claim. Used when no campsite scope is given.
+_CLAIMS_GLOBAL_SQL = """
+        SELECT c.campsite_id, c.claim, c.is_positive, r.published_at,
                c.embedding <#> %s::vector AS distance
         FROM claims c
         JOIN reviews r ON r.id = c.review_id
@@ -462,21 +508,75 @@ def search_review_claims(
           AND r.skip_reason IS NULL
         ORDER BY c.embedding <#> %s::vector
         LIMIT %s
+"""
+
+# Top-`limit` per campsite. A global top-K crowds out a candidate site's best
+# claim with another site's, so drive one scan per site instead of trimming
+# after. LATERAL (not a window over the whole table) so each sub-select rides
+# claim_campsite_idx.
+_CLAIMS_BY_SITE_SQL = """
+        SELECT s.campsite_id, x.claim, x.is_positive, x.published_at, x.distance
+        FROM unnest(%s::bigint[]) AS s(campsite_id)
+        CROSS JOIN LATERAL (
+            SELECT c.claim, c.is_positive, r.published_at,
+                   c.embedding <#> %s::vector AS distance
+            FROM claims c
+            JOIN reviews r ON r.id = c.review_id
+            WHERE c.campsite_id = s.campsite_id
+              AND c.claim IS NOT NULL
+              AND c.embedding IS NOT NULL
+              AND r.skip_reason IS NULL
+            ORDER BY c.embedding <#> %s::vector
+            LIMIT %s
+        ) AS x
+        ORDER BY x.distance
+"""
+
+
+def search_review_claims(
+    query: str,
+    limit: int = 5,
+    *,
+    embedding: str | None = None,
+    campsite_ids: list[int] | None = None,
+) -> list[dict]:
+    """Search review claims by vector similarity. Returns structured hits.
+
+    With `campsite_ids`, returns the closest `limit` claims *per campsite*;
+    without it, the global closest `limit` overall.
     """
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return []
+    if campsite_ids is not None and not campsite_ids:
+        return []
+    vec_literal = embedding or _query_vec_literal(query)
+    if campsite_ids is None:
+        sql = _CLAIMS_GLOBAL_SQL
+        params: tuple = (vec_literal, vec_literal, limit)
+    else:
+        sql = _CLAIMS_BY_SITE_SQL
+        params = (
+            [int(x) for x in campsite_ids],
+            vec_literal,
+            vec_literal,
+            limit,
+        )
     try:
         today = today_il()
         with psycopg.connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
-                cur.execute(sql, (vec_literal, vec_literal, limit))
+                cur.execute(sql, params)
                 rows = cur.fetchall()
         hits: list[dict] = []
-        for campsite_id, claim_text, published_at, distance in rows:
+        for campsite_id, claim_text, is_positive, published_at, distance in rows:
             day, days_ago = claim_recency(published_at, today=today)
             hits.append(
                 {
                     "claim": claim_text or "N/A",
                     "campsite_id": campsite_id,
+                    "is_positive": is_positive,
                     "date": day,
                     "days_ago": days_ago,
                     "distance": float(distance),

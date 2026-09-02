@@ -55,3 +55,21 @@ claims   (review_id, campsite_id, …)  — no stars; date via join
 ```
 
 Migration `014_reviews_and_claims` drops the old `claims` table (text `campsite_id`, author/date/source on the claim) and recreates it with FKs.
+
+## Open: negative claims presuppose the feature (2026-09-02)
+
+The splitter emits *"the AC was loud"* as one negative row, but that sentence
+carries two facts: the unit **has** AC, and the AC was bad. Polarity alone
+cannot separate that from *"there was no AC"* — both are `is_positive = false`.
+
+The planner therefore lets **only positive** claims satisfy a constraint
+(`CLAIM_MATCH_MAX_DISTANCE`, `source/agent/planner.py`); a negative claim ranks
+a site lower and shows as a caveat, but never vetoes a stated amenity and never
+counts as evidence the feature exists. That is safe but lossy: a site whose only
+mention of a fridge is *"the fridge was noisy"* will not match "fridge".
+
+Fix belongs at ingest, not in the planner: when a complaint presupposes the
+feature, emit the presupposition as its own positive row (*"The unit has air
+conditioning."*) next to the complaint. Do **not** widen the planner to accept
+either polarity — *"no AC in the room"* would then satisfy a request for AC in
+the room.

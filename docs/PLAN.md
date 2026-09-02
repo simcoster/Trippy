@@ -97,9 +97,9 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 **3. Then other stuff** (not the current queue):
 - CI (GitHub Actions): unit tests on PRs into `main` (`-m "not llm"` / no secrets). Golden-eval / LLM-judge later (§6).
 - Extractor policy: “arrive Saturday afternoon” is a **policy / check-in** search — no extractor field or planner path yet. Weather + stargazing + Sat→Sun one-night are covered by `test_extractor_nice_weather_stars_saturday_afternoon_one_night`.
-- **Amenity count + in-unit locus.** “next weekend, 2 showers in the room” — weekend is Friday night of next ISO week; two **in-room** showers (private / in-unit), not communal camp showers and not `party_size=2`. Count + locus are not in the extractor schema; stage-2 RAG is boolean. Failing: `test_extractor_next_weekend_two_showers.py`.
+- **Amenity count + in-unit locus.** “next weekend, 2 showers in the room” — weekend is Friday night of next ISO week; two **in-room** showers (private / in-unit), not communal camp showers and not `party_size=2`. **Locus landed** (`semantic_constraints[].locus` = room|site, three-lane planner match); **count did not** — `min_count` is still not in the extractor schema and stage-2 RAG is boolean. Failing: `test_extractor_next_weekend_two_showers.py`.
 - **Multi-room vacancy search.** Party that does not fit in one unit: compose N rooms of the same type (`ceil(party / max_occupancy) ≤ availability.room_count`) or mix types at one site so occupancies sum. Stage 1 today requires `max_occupancy >= party_size` on a single type. `room_count` on a slot is inventory; `units` is how many to book. Failing: `test_planner_multi_room.py`.
-- Site-level `campsites.amenities` jsonb + GIN
+- **Populate** `campsites.amenities` — the column, GIN index and planner site lane landed (`021`), but nothing writes it, so the lane is inert in production. `ensure_amenities` (`source/scraper/amenity_enrichment/db.py`) is the name→id+embedding helper to reuse.
 - Notice scraper (`info_site/newsflashes.py`; not wired into `scrape.py` yet)
 - Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
 - Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)

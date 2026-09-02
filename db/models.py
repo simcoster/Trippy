@@ -36,6 +36,10 @@ class Campsite(Base):
     url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     booking_hotel_id: Mapped[str | None] = mapped_column(Text, unique=True)
     google_place_id: Mapped[str | None] = mapped_column(Text)
+    # JSONB array of amenities.id values, e.g. [1, 5, 12] — site-wide / communal
+    # features (a shared fridge block, showers, a lake nearby), not per-unit.
+    # Readable join of ids → names: view campsites_with_amenity_names
+    amenities = mapped_column(JSONB)
 
     availability: Mapped[list[Availability]] = relationship(back_populates="campsite")
     accommodation_types: Mapped[list[AccommodationType]] = relationship(
