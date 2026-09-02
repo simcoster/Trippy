@@ -419,7 +419,7 @@ def search_stated_amenities(
                    AS matched_amenity
         FROM accommodation_types at
         CROSS JOIN LATERAL jsonb_array_elements(at.amenities) AS elem(val)
-        JOIN amenities a ON a.id = (elem.val)::int
+        JOIN subject_vectors a ON a.id = (elem.val)::int
         WHERE {' AND '.join(clauses)}
         GROUP BY at.id, at.name, at.hotel_id
         ORDER BY distance
@@ -473,7 +473,7 @@ def search_site_amenities(
                    AS matched_amenity
         FROM campsites c
         CROSS JOIN LATERAL jsonb_array_elements(c.amenities) AS elem(val)
-        JOIN amenities a ON a.id = (elem.val)::int
+        JOIN subject_vectors a ON a.id = (elem.val)::int
         WHERE {' AND '.join(clauses)}
         GROUP BY c.id, c.name
         ORDER BY distance

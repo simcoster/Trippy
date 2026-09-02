@@ -43,6 +43,10 @@ scrape-availability:
 populate-reviews *args:
     uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
 
+# info-site static pages -> campsite_rules (site-level rules + amenities)
+ingest-rules *args:
+    uv run python -m source.scraper.rules_ingest.ingest {{ trim_start_match(args, "-- ") }}
+
 # Truncate accommodation_types (CASCADE to availability); keep prices
 clear-data:
     uv run python scripts/clear_accommodation_availability.py

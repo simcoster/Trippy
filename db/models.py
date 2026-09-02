@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from decimal import Decimal
+from enum import IntEnum
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    ARRAY,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
+    SmallInteger,
     Text,
     Time,
     UniqueConstraint,
@@ -28,6 +34,27 @@ class Base(DeclarativeBase):
     pass
 
 
+class SubjectCategory(IntEnum):
+    """subject_vectors.category — numeric so the column stays narrow."""
+
+    AMENITY = 1
+    RULE = 2
+
+
+class QualifierUnit(IntEnum):
+    """campsite_rules.qualifier_unit — what the numeric qualifier counts."""
+
+    NONE = 0
+    COUNT = 1
+    HOUR_OF_DAY = 2  # 20.5 == 20:30
+    NIGHTS = 3
+    DAYS = 4
+    YEARS = 5  # ages
+    ILS = 6
+    METERS = 7
+    PERCENT = 8
+
+
 class Campsite(Base):
     __tablename__ = "campsites"
 
@@ -36,11 +63,13 @@ class Campsite(Base):
     url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     booking_hotel_id: Mapped[str | None] = mapped_column(Text, unique=True)
     google_place_id: Mapped[str | None] = mapped_column(Text)
-    # JSONB array of amenities.id values, e.g. [1, 5, 12] — site-wide / communal
-    # features (a shared fridge block, showers, a lake nearby), not per-unit.
+    # JSONB array of subject_vectors.id values, e.g. [1, 5, 12] — site-wide /
+    # communal features (a shared fridge block, showers, a lake nearby), not
+    # per-unit. Mirrored from site-level campsite_rules by
+    # `source.scraper.rules_ingest.db.sync_campsite_amenity_ids`.
     # Readable join of ids → names: view campsites_with_amenity_names
     amenities = mapped_column(JSONB)
-    # JSONB array of amenities.id values the site explicitly does not provide
+    # JSONB array of subject_vectors.id values the site explicitly does not provide
     not_included_amenities = mapped_column(JSONB)
 
     availability: Mapped[list[Availability]] = relationship(back_populates="campsite")
@@ -54,6 +83,7 @@ class Campsite(Base):
     )
     reviews: Mapped[list[Review]] = relationship(back_populates="campsite")
     claims: Mapped[list[Claim]] = relationship(back_populates="campsite")
+    rules: Mapped[list[CampsiteRule]] = relationship(back_populates="campsite")
 
 
 class Review(Base):
@@ -116,13 +146,106 @@ class Claim(Base):
     campsite: Mapped[Campsite] = relationship(back_populates="claims")
 
 
-class Amenity(Base):
-    __tablename__ = "amenities"
+class SubjectVector(Base):
+    """Canonical vocabulary of things a campsite can provide or rule on.
+
+    One row per subject; `name` is the canonical snake_case English label and
+    `aliases[1]` always repeats it (Postgres arrays are 1-indexed). Surface
+    forms seen in the wild are appended to `aliases` by
+    `source.scraper.subjects.resolve.resolve_subject`, so `air_conditioner`
+    and `air_conditioning` collapse onto one vector instead of forking.
+
+    Names are phrased positively — `dogs_allowed`, never `dogs_not_allowed`.
+    Direction goes in the name (`min_weekend_nights`); negation goes in
+    `campsite_rules.polarity`.
+    """
+
+    __tablename__ = "subject_vectors"
+    __table_args__ = (
+        CheckConstraint("category IN (1, 2)", name="subject_vectors_category_check"),
+        CheckConstraint("aliases[1] = name", name="subject_vectors_canonical_alias"),
+        Index("subject_vectors_aliases_gin_idx", "aliases", postgresql_using="gin"),
+    )
+    # HNSW indexes (one shared, one partial per category) live in migrations
+    # 023/025 — SQLAlchemy has no pgvector index type, so autogenerate cannot
+    # see them.
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    category: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=SubjectCategory.AMENITY
+    )
+    # Surface forms that resolve to this subject; aliases[1] == name.
+    aliases: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list
+    )
     # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
+    # Embeds `name`, not the aliases, so the vector is stable as aliases accrue.
     embedding = mapped_column(Vector(1536), nullable=True)
+
+
+class CampsiteRule(Base):
+    """One extracted statement: this subject, at this campsite (or unit).
+
+    `polarity` True = allowed / provided, False = forbidden / not provided,
+    NULL = a pure quantity. `qualifier` + `qualifier_unit` carry the number:
+    `last_dogs_entry_time` 18 HOUR_OF_DAY, `pool_min_age` 6 YEARS.
+
+    `accommodation_type_id` NULL means site-wide. The info-site ingest only
+    ever writes site-wide rows — per-unit data comes from the availability
+    scrape. See docs/design.md.
+    """
+
+    __tablename__ = "campsite_rules"
+    __table_args__ = (
+        UniqueConstraint(
+            "campsite_id",
+            "accommodation_type_id",
+            "subject_id",
+            name="campsite_rules_scope_subject_key",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("campsite_rules_subject_qualifier_idx", "subject_id", "qualifier"),
+        Index(
+            "campsite_rules_accom_idx",
+            "accommodation_type_id",
+            postgresql_where=text("accommodation_type_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    campsite_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    # NULL = the rule applies to the whole site.
+    accommodation_type_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("accommodation_types.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    subject_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("subject_vectors.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    polarity: Mapped[bool | None] = mapped_column(Boolean)
+    qualifier: Mapped[Decimal | None] = mapped_column(Numeric)
+    qualifier_unit: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=QualifierUnit.NONE
+    )
+    # The source sentence the statement was read from (Hebrew, verbatim).
+    evidence_span: Mapped[str | None] = mapped_column(Text)
+    source_url: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    campsite: Mapped[Campsite] = relationship(back_populates="rules")
+    subject: Mapped[SubjectVector] = relationship()
 
 
 class Notice(Base):
@@ -189,9 +312,9 @@ class AccommodationType(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     # Raw Hebrew tooltip text sent to the extraction LLM.
     description: Mapped[str | None] = mapped_column(Text)
-    # JSONB array of amenities.id values, e.g. [1, 5, 12]
+    # JSONB array of subject_vectors.id values, e.g. [1, 5, 12]
     amenities = mapped_column(JSONB)
-    # JSONB array of amenities.id values that are explicitly not included
+    # JSONB array of subject_vectors.id values that are explicitly not included
     not_included_amenities = mapped_column(JSONB)
     # Readable join of amenity ids → names: view accommodation_types_with_amenity_names
     max_occupancy: Mapped[int | None] = mapped_column(Integer)

@@ -1,0 +1,216 @@
+"""Small-LLM clients for subject resolution: adjudicate, then classify.
+
+Both are Qwen 30B at temperature 0 with the JSON schema in the system prompt,
+following `source.scraper.info_site.classify.RateCardClassifier`. They only run
+on a cache-and-alias miss, so the cost is bounded by vocabulary growth rather
+than by ingest volume.
+"""
+
+from __future__ import annotations
+
+from openai import OpenAI
+
+from source.scraper.amenity_enrichment.llm import (
+    QWEN_INSTRUCT_30B_MODEL,
+    LlmUsage,
+    _parse_json_payload,
+    make_nebius_openai_client,
+)
+from source.scraper.subjects.schemas import AdjudicationPayload, ClassificationPayload
+
+ADJUDICATE_SYSTEM_PROMPT = """You decide whether a new term names the SAME subject as one of the existing subjects.
+
+Subjects are snake_case English labels for things a campsite provides or rules on.
+
+Rules:
+- Output valid JSON only, without markdown wrappers.
+- Answer with the exact candidate string, copied character for character, or null.
+- Match only true synonyms or spelling/pluralisation variants of the SAME subject.
+- Do NOT match two different facts about the same noun. They are separate subjects.
+- Do NOT match a broader subject to a narrower one. If one name is the other plus
+  a qualifying word, they are different subjects — the qualifier is usually the
+  thing a guest is searching for, and the two often have opposite polarities.
+  The extra word can sit anywhere in the name:
+  - "accessible_toilets" vs "toilets"                          -> null
+  - "gas_in_field_kitchen" vs "field_kitchen"                  -> null
+  - "early_arrival_parking_allowed" vs "early_arrival_allowed" -> null
+  - "late_check_out_saturday_allowed" vs "late_check_out_allowed" -> null
+  Only a provision word (included / provided / available) may be ignored.
+- A trailing included / provided / available says only that an amenity is on offer,
+  which is recorded separately. It names no new subject, so treat "X_included" and
+  "X" as the SAME subject when X is identical:
+  - "towels_included" and "towels"                  -> match
+  - "electric_hookup_included" and "electric_hookup" -> match
+  BUT the noun still has to be the same:
+  - "barbecue_equipment_included" and "barbecue"    -> null (equipment is not the
+    activity; one asks what is supplied, the other names the thing itself)
+- Word order does not make a new subject. "child_min_age" and "min_child_age" are
+  one subject; so are "for_rent_mattress" and "mattress_for_rent". Match them.
+- When unsure, answer null. A wrong merge is worse than a duplicate.
+- Context lines quote the sentence each subject was first read from. Use them:
+  two subjects whose names look alike but whose contexts describe different
+  things (a communal block vs something inside a room) are NOT the same subject.
+
+Examples:
+- term "air_conoditioning", candidates ["air_conditioner", ...] -> {"match": "air_conditioner"}
+- term "wifi", candidates ["wireless_internet", ...] -> {"match": "wireless_internet"}
+- term "showers", candidates ["shower", ...] -> {"match": "shower"}
+- term "last_dogs_entry_time", candidates ["dogs_allowed", ...] -> {"match": null}
+  (one is a permission, the other is a deadline — different subjects)
+- term "min_weekend_nights", candidates ["min_nights", ...] -> {"match": null}
+  (the weekend qualifier makes it a different rule)
+- term "hot_water_shower", candidates ["shower", ...] -> {"match": null}
+- term "toilets" (context: "שירותים (15 תאי שירותי נשים ו- 15 תאי שירותי גברים)"),
+  candidate "bathroom" (context: "בכל חדר: ... שירותים, מקלחת מים חמים")
+  -> {"match": null}  (a shared block on the site is not a room's own bathroom)
+- term "accessible_toilets", candidates ["toilets", ...] -> {"match": null}
+  (accessibility is what someone is searching for; merging it hides that)
+- term "mattresses_for_rent", candidates ["mattress", ...] -> {"match": null}
+- term "water_hookup_included", candidates ["water_hookup", ...] -> {"match": "water_hookup"}
+- term "min_child_age", candidates ["child_min_age", ...] -> {"match": "child_min_age"}
+- term "barbecue_allowed", candidates ["barbecue", ...] -> {"match": null}
+  (one asks whether grilling is permitted, the other names the equipment)
+- term "late_check_out_fee", candidates ["late_check_out_available", ...] -> {"match": null}
+
+Schema:
+{"match": "<one of the candidate strings>" | null}
+"""
+
+CLASSIFY_SYSTEM_PROMPT = """You name a new campsite subject and say what kind it is.
+
+Given a raw term, and the sentence it was read from when available, return its
+canonical label and category.
+
+Rules:
+- Output valid JSON only, without markdown wrappers.
+- category is 1 for an amenity (something the site provides or does not provide:
+  shower, refrigerator, electric_hookup, towels) and 2 for a rule (something a
+  guest may, must, or must not do, or a limit on a stay: dogs_allowed,
+  quiet_hours_start, min_weekend_nights, check_out_time).
+- canonical_name is lower snake_case English, and states the predicate.
+- ALWAYS phrase the name POSITIVELY. Negation is recorded separately, not in the
+  name. Never emit not_/no_/cant_/cannot_/without_/_forbidden/_banned names.
+  - "no dogs allowed"          -> canonical_name "dogs_allowed"
+  - "bring your own towels"    -> canonical_name "towels_included"
+  - "dogs cannot be unmuzzled" -> canonical_name "dogs_must_wear_a_muzzle"
+- Direction belongs in the name, not in a separate field:
+  min_weekend_nights, max_occupancy, check_out_time, latest_arrival_time,
+  pool_min_age, last_dogs_entry_time.
+- Name amenities in context: a caravan pitch has electric_hookup, not electricity.
+- PREFER THE TERM YOU WERE GIVEN. If it is already lower snake_case, positively
+  phrased and states a predicate, return it UNCHANGED. Only rewrite to fix a real
+  problem: a misspelling, a plural, a negation, or a name that states no predicate.
+  Do not reorder words, do not add words, do not drop words:
+  - "child_max_age"                  -> "child_max_age"       (already fine)
+  - "suitable_for_shabbat_observers" -> "suitable_for_shabbat_observers"
+  - "picnic_tables_and_benches"      -> "picnic_tables"       (dropping "and_benches"
+    is a real simplification; adding a suffix would not be)
+  A term that comes back renamed for no reason forks the vocabulary: the same word
+  must produce the same canonical name on every run, or the next campsite creates a
+  duplicate subject instead of an alias.
+- A trailing included / provided / available marks an AMENITY, never a rule — it
+  says the site supplies something, and whether it does is recorded separately:
+  - "towels_included", "electric_hookup_included" -> category 1
+  Never append _included to a bare noun; "picnic_tables" is already the amenity.
+- A bare noun naming a physical thing the site has is an amenity and stays a bare
+  noun: refrigerator, cooler, shower, picnic_table. Do not append _allowed to it.
+- Keep separate facts about one noun separate. barbecue_allowed (may I grill?) and
+  barbecue_equipment_included (is a grill provided?) are two subjects, not one, and
+  so are late_check_out_available and late_check_out_fee.
+
+Schema:
+{"category": 1 | 2, "canonical_name": "<snake_case>"}
+"""
+
+
+class SubjectAdjudicatorLLMClient:
+    """Is this term one of the nearest existing subjects, or a new one?"""
+
+    MODEL = QWEN_INSTRUCT_30B_MODEL
+    TEMPERATURE = 0
+
+    def __init__(
+        self,
+        client: OpenAI | None = None,
+        *,
+        model: str | None = None,
+    ) -> None:
+        self._client = client
+        self.model = model or self.MODEL
+
+    @property
+    def client(self) -> OpenAI:
+        if self._client is None:
+            self._client = make_nebius_openai_client()
+        return self._client
+
+    def pick_match(
+        self,
+        term: str,
+        candidates: list[str],
+        *,
+        term_context: str | None = None,
+        candidate_contexts: dict[str, str | None] | None = None,
+        usage: LlmUsage | None = None,
+    ) -> str | None:
+        """Return a candidate name, or None. Never returns a name not offered.
+
+        `term_context` and `candidate_contexts` are the sentences the subjects
+        were read from. Names alone cannot separate a communal toilet block from
+        a room's own bathroom; the contexts can.
+        """
+        if not candidates:
+            return None
+        contexts = candidate_contexts or {}
+        listed = "\n".join(
+            f"- {name}"
+            + (f"\n    context: {contexts[name]}" if contexts.get(name) else "")
+            for name in candidates
+        )
+        asked = f"Term: {term}"
+        if term_context:
+            asked += f"\n    context: {term_context}"
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": ADJUDICATE_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"{asked}\n\nExisting subjects:\n{listed}",
+                },
+            ],
+            temperature=self.TEMPERATURE,
+        )
+        if usage is not None:
+            usage.add_chat(response.usage)
+        data = _parse_json_payload(response.choices[0].message.content or "")
+        match = AdjudicationPayload.model_validate(data).match
+        # Same guard as InfoWebsiteNameMatcher.pick_name: a name the model
+        # invented is not a match, however confident it sounds.
+        if match is None or match not in candidates:
+            return None
+        return match
+
+    def classify(
+        self,
+        term: str,
+        *,
+        context: str | None = None,
+        usage: LlmUsage | None = None,
+    ) -> ClassificationPayload:
+        """Canonical name + category for a term with no existing subject."""
+        asked = f"Term: {term}"
+        if context:
+            asked += f"\nContext: {context}"
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
+                {"role": "user", "content": asked},
+            ],
+            temperature=self.TEMPERATURE,
+        )
+        if usage is not None:
+            usage.add_chat(response.usage)
+        data = _parse_json_payload(response.choices[0].message.content or "")
+        return ClassificationPayload.model_validate(data)

@@ -2,20 +2,32 @@
 
 from db.models import (
     AccommodationType,
-    Amenity,
     Availability,
     Base,
     Campsite,
+    CampsiteRule,
     Claim,
+    InfoWebsiteName,
+    ListPrice,
+    Notice,
+    QualifierUnit,
     Review,
+    SubjectCategory,
+    SubjectVector,
 )
 
 __all__ = [
     "Base",
     "Campsite",
+    "CampsiteRule",
     "Claim",
     "Review",
-    "Amenity",
+    "Notice",
+    "InfoWebsiteName",
+    "ListPrice",
+    "SubjectVector",
+    "SubjectCategory",
+    "QualifierUnit",
     "AccommodationType",
     "Availability",
 ]

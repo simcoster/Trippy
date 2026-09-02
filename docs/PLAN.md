@@ -99,7 +99,7 @@ Then switched to `hook-agent-to-search-and-RAG` so we can poke the LangGraph wit
 - Extractor policy: “arrive Saturday afternoon” is a **policy / check-in** search — no extractor field or planner path yet. Weather + stargazing + Sat→Sun one-night are covered by `test_extractor_nice_weather_stars_saturday_afternoon_one_night`.
 - **Amenity count + in-unit locus.** “next weekend, 2 showers in the room” — weekend is Friday night of next ISO week; two **in-room** showers (private / in-unit), not communal camp showers and not `party_size=2`. **Locus landed** (`semantic_constraints[].locus` = room|site, three-lane planner match); **count did not** — `min_count` is still not in the extractor schema and stage-2 RAG is boolean. Failing: `test_extractor_next_weekend_two_showers.py`.
 - **Multi-room vacancy search.** Party that does not fit in one unit: compose N rooms of the same type (`ceil(party / max_occupancy) ≤ availability.room_count`) or mix types at one site so occupancies sum. Stage 1 today requires `max_occupancy >= party_size` on a single type. `room_count` on a slot is inventory; `units` is how many to book. Failing: `test_planner_multi_room.py`.
-- **Populate** `campsites.amenities` — the column, GIN index and planner site lane landed (`021`), but nothing writes it, so the lane is inert in production. `ensure_amenities` (`source/scraper/amenity_enrichment/db.py`) is the name→id+embedding helper to reuse.
+- ~~**Populate** `campsites.amenities`~~ — **done** (`just ingest-rules`). `source/scraper/rules_ingest` reads the static info page for site-level rules and amenities into the new `campsite_rules` table, and mirrors the amenity ids into `campsites.amenities`, so the planner site lane is live. Follow-up: point `search_site_amenities` / `search_stated_amenities` at `campsite_rules` and drop the JSONB columns — see `docs/design.md`.
 - Notice scraper (`info_site/newsflashes.py`; not wired into `scrape.py` yet)
 - Planner third RAG: `operator_notices` next to `stated_amenities` / `review_claims`
 - Persist fee rows from the rate card (`תוספת יציאה מאוחרת`, extra caravan adult/child)
@@ -147,8 +147,8 @@ Already in repo:
 - LangGraph agent (`source/agent/graph.py`) with claims RAG + campsite list tool; production channel = Telegram (`main.py`)
 - Local Streamlit harness (`scripts/streamlit_chat.py`) with node/LLM/tool traces
 - Nebius **Qwen3-235B-A22B-Instruct-2507** for amenity extract + agent light/recommender; **Qwen3-30B-A3B** for agent planner / query-constraint extract; Qwen embeddings for amenities + claims queries
-- Postgres + pgvector + Alembic (`campsites`, `reviews`, `claims`, `notices`, `amenities`, `accommodation_types`, `availability`, `list_prices`)
-- Scrapers under `source/scraper/`: discovery, booking IDs, info-site rate cards, availability/prices, amenity enrichment
+- Postgres + pgvector + Alembic (`campsites`, `reviews`, `claims`, `notices`, `subject_vectors`, `campsite_rules`, `accommodation_types`, `availability`, `list_prices`)
+- Scrapers under `source/scraper/`: discovery, booking IDs, info-site rate cards, availability/prices, amenity enrichment, site-level rules (`rules_ingest`)
 
 This plan extends that into a full ingestion → retrieval → agent → eval → production stack.
 

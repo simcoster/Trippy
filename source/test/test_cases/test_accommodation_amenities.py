@@ -59,7 +59,7 @@ def test_first_site_accommodation_has_amenities_with_embeddings(conn):
         cur.execute(
             """
             SELECT id, name, embedding IS NOT NULL AS has_embedding
-            FROM amenities
+            FROM subject_vectors
             WHERE id = ANY(%s)
             ORDER BY id
             """,

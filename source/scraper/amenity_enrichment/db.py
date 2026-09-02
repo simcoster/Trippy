@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pgvector.psycopg import register_vector
 
+from db.models import SubjectCategory
+
 from .html_parse import MAX_IMAGE_URLS
 from .llm import EmbeddingLLMClient, LlmUsage
+
+if TYPE_CHECKING:
+    from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
+    from source.scraper.subjects.resolve import SubjectRef
 
 
 def load_types_with_amenities(conn, hotel_id: int) -> set[str]:
@@ -35,9 +41,18 @@ def ensure_amenities(
     embedder: EmbeddingLLMClient,
     names: list[str],
     *,
+    adjudicator: SubjectAdjudicatorLLMClient | None = None,
+    cache: dict[str, SubjectRef] | None = None,
     usage: LlmUsage | None = None,
 ) -> dict[str, int]:
-    """Return amenity name → id; insert + embed any missing names in one batch."""
+    """Return amenity name → subject_vectors id.
+
+    Exact names are resolved in one batched query; anything missing goes
+    through `resolve_subject`, so a new surface form attaches as an alias to an
+    existing subject rather than forking a second row with its own vector.
+    Names that cannot be phrased positively are dropped and simply absent from
+    the returned mapping.
+    """
     unique: list[str] = []
     seen: set[str] = set()
     for name in names:
@@ -52,7 +67,7 @@ def ensure_amenities(
     register_vector(conn)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, name FROM amenities WHERE name = ANY(%s)",
+            "SELECT id, name FROM subject_vectors WHERE name = ANY(%s)",
             (unique,),
         )
         mapping = {row[1]: int(row[0]) for row in cur.fetchall()}
@@ -61,23 +76,29 @@ def ensure_amenities(
     if not missing:
         return mapping
 
-    print(f"    embedding {len(missing)} new amenity name(s) via {embedder.MODEL}")
-    vectors = embedder.embed(missing, usage=usage)
+    # Imported here, not at module scope: source.scraper.subjects.llm reaches
+    # back into this package's llm module, and a top-level import would make
+    # that a cycle.
+    from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
+    from source.scraper.subjects.resolve import resolve_subject
 
-    with conn.cursor() as cur:
-        for name, emb in zip(missing, vectors, strict=True):
-            cur.execute(
-                """
-                INSERT INTO amenities (name, embedding)
-                VALUES (%(name)s, %(embedding)s)
-                ON CONFLICT (name) DO UPDATE
-                SET embedding = COALESCE(amenities.embedding, EXCLUDED.embedding)
-                RETURNING id, name
-                """,
-                {"name": name, "embedding": emb},
-            )
-            row = cur.fetchone()
-            mapping[row[1]] = int(row[0])
+    print(f"    resolving {len(missing)} unseen amenity name(s)")
+    resolver = adjudicator or SubjectAdjudicatorLLMClient()
+    shared_cache = cache if cache is not None else {}
+    for name in missing:
+        ref = resolve_subject(
+            conn,
+            name,
+            embedder=embedder,
+            adjudicator=resolver,
+            # This path only ever handles amenities, so a rule can never be a
+            # candidate however close its vector sits.
+            category=int(SubjectCategory.AMENITY),
+            cache=shared_cache,
+            usage=usage,
+        )
+        if ref is not None:
+            mapping[name] = ref.id
     return mapping
 
 
