@@ -194,3 +194,50 @@ def subcamp_sections(
         if text:
             out.append(Section(section.title, text, section.source_url))
     return out
+
+
+def unit_owner(unit_name: str, campsite_id: int, subcamps: list[Subcamp]) -> int:
+    """Which campsite row owns a booking unit of this name.
+
+    The booking engine returns one flat list of unit types for the whole site —
+    it has one hotel id, and knows nothing about subcamps. Akhziv's two tent
+    pitches name theirs (`לינת שטח באוהלים פרטיים - חניון צפוני`); its four
+    `חושה` types name none at all, so `default_units` places them. The northern
+    subcamp has only tents, which is why "everything unnamed is southern" is a
+    complete rule here and not a guess.
+
+    FIXME(subcamp-routing): substring-matching a booking unit name is the weak
+    link in the whole subcamp design. It works because Akhziv's operator happens
+    to put the subcamp in the unit name, and it will not survive them renaming a
+    unit, nor a second split site whose units are distinguished some other way —
+    and it fails silently, by quietly routing everything to the default. Worth
+    replacing with something that reconciles booking units against the info
+    page's per-subcamp lodging panel (which does state the split) rather than
+    against a configured string. Config keeps it honest meanwhile: the strings
+    live in `campsites.subcamp`, seeded from `config.json`, not in code.
+    """
+    if not subcamps:
+        return campsite_id
+    for subcamp in subcamps:
+        if any(needle in unit_name for needle in subcamp.unit_name_contains):
+            return subcamp.campsite_id
+    for subcamp in subcamps:
+        if subcamp.default_units:
+            return subcamp.campsite_id
+    # No default configured: the parent keeps the unit rather than dropping it.
+    return campsite_id
+
+
+def owned_site_ids(campsite_id: int, subcamps: list[Subcamp]) -> list[int]:
+    """The parent and every subcamp, for queries that must span a split site."""
+    return [campsite_id, *(s.campsite_id for s in subcamps)]
+
+
+def group_by_owner(
+    unit_names, campsite_id: int, subcamps: list[Subcamp]
+) -> dict[int, list[str]]:
+    """Unit names bucketed by owning campsite, parent-first, order preserved."""
+    grouped: dict[int, list[str]] = {}
+    for name in unit_names:
+        grouped.setdefault(unit_owner(name, campsite_id, subcamps), []).append(name)
+    return grouped

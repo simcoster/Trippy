@@ -210,7 +210,8 @@ uv run python -m temp.split_campsites_testbed --reset --guards --ingest --report
 the part doing the work. While the testbeds lived in `public` under a `test_*`
 prefix, the separation was a naming convention, and it had already failed twice:
 one testbed table held a real FK to `accommodation_types`, which put it inside
-production's cascade paths, so `just clear-data` emptied it; and every "what is
+production's cascade paths, so `just clear-data` emptied it (it is now
+`just clear-availability`, which does not); and every "what is
 in this database?" query returned testbed tables mixed in with real ones.
 Whatever production table a testbed needs is **copied** into the schema instead —
 `campsites` and `accommodation_types` are there for that reason, with their own
@@ -456,6 +457,25 @@ their subcamp; its four `חושה` types name none, and no prompt can place them
 because their booking data never mentions one. The info page's accessibility line
 does — `אכזיב דרום: … שתי חושות …` — so they default south. That is a judgement
 recorded as data, which is the point of it living here.
+
+`unit_owner` (`rules_ingest/subcamps.py`) applies it: a booking unit whose name
+contains one of a subcamp's `unit_name_contains` strings belongs to that subcamp,
+anything else to the `default_units` one, and on an unsplit site to the site
+itself. Everything downstream of that follows the owner rather than the site —
+the `accommodation_types` row, its `campsite_rules`, its image urls, the
+`availability` row, and the delete that replaces a night's snapshot, which now
+spans the parent and every child (`site_ids`, not `site_id`).
+
+**Flagged as provisional.** Substring-matching a booking unit name is the weakest
+part of the subcamp design: it works because Akhziv's operator happens to put the
+subcamp in two unit names, it will not survive a rename, it does not generalise to
+a second split site distinguished some other way, and it fails *silently* — a
+config that stops matching routes everything to the default and looks fine. The
+replacement worth building is a reconciliation against the info page's per-subcamp
+lodging panel, which states the split in its own right; until then the strings at
+least live in `campsites.subcamp` (seeded from `config.json`) rather than in code,
+and `test_subcamp_unit_routing.py` pins the split at two units north, four south.
+There is a `FIXME(subcamp-routing)` on the function.
 
 It also produced the first truncation: ~30 amenities with Hebrew evidence spans
 overran `MAX_TOKENS = 2500`, and the cut-off JSON surfaced as a parse error, so

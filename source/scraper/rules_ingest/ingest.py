@@ -62,15 +62,25 @@ def database_url(config: dict) -> str:
     return url.replace("@db:", "@localhost:")
 
 
-def fetch_campsites(config: dict, *, limit: int) -> list[dict]:
+def fetch_campsites(
+    config: dict, *, limit: int, site: int | None = None
+) -> list[dict]:
+    """Campsites with a page of their own, or just the one named by `site`.
+
+    A subcamp has no page — it is ingested as part of its parent's page, once
+    per subcamp. Skipping children here is the whole cost of the split to this
+    loop, and `WHERE url IS NOT NULL` is what does it.
+    """
+    where = "url IS NOT NULL"
+    params: list = []
+    if site is not None:
+        where += " AND id = %s"
+        params.append(site)
+    params.append(limit)
     with psycopg.connect(database_url(config)) as conn, conn.cursor() as cur:
-        # A subcamp has no page of its own — it is ingested as part of its
-        # parent's page, once per subcamp. Skipping children here is the whole
-        # cost of the split to this loop.
         cur.execute(
-            "SELECT id, name, url FROM campsites "
-            "WHERE url IS NOT NULL ORDER BY id LIMIT %s",
-            (limit,),
+            f"SELECT id, name, url FROM campsites WHERE {where} ORDER BY id LIMIT %s",
+            params,
         )
         rows = cur.fetchall()
     return [{"id": r[0], "name": r[1], "url": r[2]} for r in rows]
@@ -248,8 +258,8 @@ def _ingest_scope(
     return written
 
 
-def run(config: dict, *, limit: int) -> int:
-    campsites = fetch_campsites(config, limit=limit)
+def run(config: dict, *, limit: int, site: int | None = None) -> int:
+    campsites = fetch_campsites(config, limit=limit, site=site)
     if not campsites:
         print("No campsites found")
         return 0
@@ -306,12 +316,18 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="How many campsites to process (default: info_site.limit_campsites)",
     )
+    parser.add_argument(
+        "--site",
+        type=int,
+        default=None,
+        help="Ingest one campsite by id (a parent id for a split site)",
+    )
     args = parser.parse_args(argv)
     config = load_config()
     limit = args.limit
     if limit is None:
         limit = int(config.get("info_site", {}).get("limit_campsites", DEFAULT_LIMIT))
-    run(config, limit=limit)
+    run(config, limit=limit, site=args.site)
 
 
 if __name__ == "__main__":

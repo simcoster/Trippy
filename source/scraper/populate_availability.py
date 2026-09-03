@@ -8,6 +8,7 @@ to an info_website_names row (exact name, else Qwen 30B).
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -32,6 +33,14 @@ from amenity_enrichment import (
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from info_site.match_listing import InfoWebsiteNameMatcher, match_info_website_name
+
+from source.scraper.rules_ingest.subcamps import (
+    Subcamp,
+    group_by_owner,
+    load_subcamps,
+    owned_site_ids,
+    unit_owner,
+)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -77,9 +86,11 @@ SET room_count = EXCLUDED.room_count,
 RETURNING id;
 """
 
+# `site_ids`, not `site_id`: a split site's units are owned by its subcamp rows,
+# so re-scraping a night has to clear the parent and every child together.
 DELETE_AVAILABILITY_FOR_NIGHT_SQL = """
 DELETE FROM availability
-WHERE site_id = %(site_id)s
+WHERE site_id = ANY(%(site_ids)s)
   AND start_date = %(start_date)s
   AND end_date = %(end_date)s
   AND adults_no = %(adults_no)s
@@ -109,21 +120,30 @@ def database_url(config: dict) -> str:
     return url.replace("@db:", "@localhost:")
 
 
-def fetch_campsites(config: dict) -> list[dict]:
-    """Load campsites that have a booking engine hotel id."""
+def fetch_campsites(config: dict, *, site: int | None = None) -> list[dict]:
+    """Campsites with a booking engine hotel id, or just the one named by `site`.
+
+    Subcamps carry no `booking_hotel_id` — a split site has one booking id and
+    one flat unit list, which `unit_owner` divides afterwards — so they never
+    appear here and are never scraped on their own.
+    """
     limit = int(config.get("availability", {}).get("limit_campsites", 2))
-    sql = """
+    where = "booking_hotel_id IS NOT NULL"
+    params: list = []
+    if site is not None:
+        where += " AND id = %s"
+        params.append(site)
+    params.append(limit)
+    sql = f"""
         SELECT id, name, booking_hotel_id
         FROM campsites
-        WHERE booking_hotel_id IS NOT NULL
-        --remove later
-        and id = 2
+        WHERE {where}
         ORDER BY id
         LIMIT %s
     """
     with psycopg.connect(database_url(config)) as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (limit,))
+            cur.execute(sql, params)
             rows = cur.fetchall()
     return [
         {"id": row[0], "name": row[1], "booking_hotel_id": row[2]}
@@ -345,7 +365,7 @@ def require_existing_type(cur, *, hotel_id: int, name: str) -> int:
 def clear_availability_for_night(
     conn,
     *,
-    site_id: int,
+    site_ids: list[int],
     start: date,
     end: date,
     adults_no: int,
@@ -355,7 +375,7 @@ def clear_availability_for_night(
         cur.execute(
             DELETE_AVAILABILITY_FOR_NIGHT_SQL,
             {
-                "site_id": site_id,
+                "site_ids": list(site_ids),
                 "start_date": start,
                 "end_date": end,
                 "adults_no": adults_no,
@@ -375,11 +395,20 @@ def upsert_availability_rows(
     listings: list[tuple[int, str]] | None = None,
     matcher: InfoWebsiteNameMatcher | None = None,
     usage: LlmUsage | None = None,
+    subcamps: list[Subcamp] | None = None,
 ) -> int:
+    """Replace one night's snapshot for a site, routing units to their subcamp.
+
+    The booking engine has one hotel id for a split site, so every row it
+    returns arrives under the parent. `unit_owner` decides which campsite row
+    each unit type actually belongs to; for an ordinary site that is always the
+    parent, and this reads exactly as it did before.
+    """
+    subcamps = list(subcamps or ())
     # Always replace this night's snapshot so removed room types don't linger.
     deleted = clear_availability_for_night(
         conn,
-        site_id=site_id,
+        site_ids=owned_site_ids(site_id, subcamps),
         start=start,
         end=end,
         adults_no=adults_no,
@@ -389,9 +418,10 @@ def upsert_availability_rows(
     saved = 0
     with conn.cursor() as cur:
         for offer in aggregated:
+            owner = unit_owner(offer["room_type"], site_id, subcamps)
             accom_id = ensure_booking_accommodation_type(
                 cur,
-                hotel_id=site_id,
+                hotel_id=owner,
                 name=offer["room_type"],
                 listings=names,
                 matcher=matcher,
@@ -400,7 +430,7 @@ def upsert_availability_rows(
             cur.execute(
                 UPSERT_AVAILABILITY_SQL,
                 {
-                    "site_id": site_id,
+                    "site_id": owner,
                     "start_date": start,
                     "end_date": end,
                     "accommodation_type_id": accom_id,
@@ -423,7 +453,16 @@ def night_windows(nights: int, start_from: date | None = None) -> list[tuple[dat
     ]
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="INPA availability scraper")
+    parser.add_argument(
+        "--site",
+        type=int,
+        default=None,
+        help="Scrape one campsite by id (a parent id for a split site)",
+    )
+    args = parser.parse_args(argv)
+
     config = load_config()
     avail = config.get("availability", {})
 
@@ -435,7 +474,7 @@ def main() -> None:
     lang = avail.get("lang", "heb")
     pause_s = float(avail.get("request_pause_seconds", 0.5))
 
-    campsites = fetch_campsites(config)
+    campsites = fetch_campsites(config, site=args.site)
     if not campsites:
         print("No campsites with booking_hotel_id found")
         return
@@ -456,7 +495,18 @@ def main() -> None:
             print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
 
             listings = load_info_website_names(conn, site["id"])
-            types_with_amenities = load_types_with_amenities(conn, site["id"])
+            # Subcamps own the booking units; the info-site names above stay on
+            # the parent, because one page lists the whole site.
+            subcamps = load_subcamps(conn, site["id"])
+            site_ids = owned_site_ids(site["id"], subcamps)
+            types_with_amenities: set[str] = set()
+            for owner in site_ids:
+                types_with_amenities |= load_types_with_amenities(conn, owner)
+            if subcamps:
+                print(
+                    f"  subcamps: {len(subcamps)} "
+                    f"({', '.join(sub.heading for sub in subcamps)})"
+                )
             print(
                 f"  info-site names: {len(listings)} "
                 f"({', '.join(name for _, name in listings) or 'none'})"
@@ -494,7 +544,7 @@ def main() -> None:
                     print("    No room types returned")
                     deleted = clear_availability_for_night(
                         conn,
-                        site_id=site["id"],
+                        site_ids=site_ids,
                         start=check_in,
                         end=check_out,
                         adults_no=adults,
@@ -506,12 +556,17 @@ def main() -> None:
                     aggregated = aggregate_offerings(offerings)
                     with conn.cursor() as cur:
                         for offer in aggregated:
+                            owner = unit_owner(
+                                offer["room_type"], site["id"], subcamps
+                            )
+                            tail = f"  → {owner}" if owner != site["id"] else ""
                             print(
-                                f"    {offer['room_type']}  ×{offer['room_count']}"
+                                f"    {offer['room_type']}  "
+                                f"×{offer['room_count']}{tail}"
                             )
                             ensure_booking_accommodation_type(
                                 cur,
-                                hotel_id=site["id"],
+                                hotel_id=owner,
                                 name=offer["room_type"],
                                 listings=listings,
                                 matcher=listing_matcher,
@@ -529,24 +584,33 @@ def main() -> None:
                             f"    enriching amenities for "
                             f"{len(missing_amenity_types)} type(s)"
                         )
-                        newly = enrich_accommodation_types(
-                            conn,
-                            extractor,
-                            embedder,
-                            hotel_id=site["id"],
-                            type_names=missing_amenity_types,
-                            room_media=room_media,
-                            get_or_create_type=require_existing_type,
-                            usage=amenity_llm_usage,
-                        )
-                        types_with_amenities.update(newly)
+                        # Enrichment looks its types up by hotel_id, so it runs
+                        # once per owning campsite, not once per site.
+                        for owner, owned in group_by_owner(
+                            missing_amenity_types, site["id"], subcamps
+                        ).items():
+                            newly = enrich_accommodation_types(
+                                conn,
+                                extractor,
+                                embedder,
+                                hotel_id=owner,
+                                type_names=owned,
+                                room_media=room_media,
+                                get_or_create_type=require_existing_type,
+                                usage=amenity_llm_usage,
+                            )
+                            types_with_amenities.update(newly)
                         conn.commit()
 
-                    filled = fill_missing_image_urls(
-                        conn,
-                        hotel_id=site["id"],
-                        room_media=room_media,
-                    )
+                    filled = 0
+                    for owner, owned in group_by_owner(
+                        room_media, site["id"], subcamps
+                    ).items():
+                        filled += fill_missing_image_urls(
+                            conn,
+                            hotel_id=owner,
+                            room_media={name: room_media[name] for name in owned},
+                        )
                     if filled:
                         conn.commit()
                         print(f"    filled image_urls on {filled} type(s)")
@@ -561,6 +625,7 @@ def main() -> None:
                         listings=listings,
                         matcher=listing_matcher,
                         usage=listing_llm_usage,
+                        subcamps=subcamps,
                     )
                     conn.commit()
                     total_saved += saved

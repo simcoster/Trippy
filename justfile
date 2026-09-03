@@ -43,21 +43,21 @@ scrape-prices:
 scrape-sites:
     uv run python source/scraper/discover_sites.py
 
-# INPA vacancies → availability (match existing types)
-scrape-availability:
-    uv run python source/scraper/populate_availability.py
+# INPA vacancies → availability (match existing types). One site: -- --site 2
+scrape-availability *args:
+    uv run python source/scraper/populate_availability.py {{ trim_start_match(args, "-- ") }}
 
 # Google Place Details → reviews + claims (newest). Seed: just populate-reviews -- --most-relevant
 populate-reviews *args:
     uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
 
-# info-site static pages -> campsite_rules (site-level rules + amenities)
+# info-site static pages -> campsite_rules (site-level rules + amenities; --site N)
 ingest-rules *args:
     uv run python -m source.scraper.rules_ingest.ingest {{ trim_start_match(args, "-- ") }}
 
-# Truncate accommodation_types (CASCADE to availability); keep prices
-clear-data:
-    uv run python scripts/clear_accommodation_availability.py
+# Delete availability rows; keeps types, rules and prices (--types, --site N)
+clear-availability *args:
+    uv run python scripts/clear_availability.py {{ trim_start_match(args, "-- ") }}
 
 # Truncate reviews and claims; keep campsites
 clear-reviews:

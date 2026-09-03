@@ -7,10 +7,11 @@ rebuilt by re-running it, so they are kept unless you ask for them.
 
 Scoped `DELETE`, never `TRUNCATE ... CASCADE`. That distinction is the reason
 this script exists: TRUNCATE CASCADE is **table-level**, not row-level, so
-`TRUNCATE accommodation_types CASCADE` — what `just clear-data` runs — empties
-the whole of `campsite_rules`, site-level rules included, even though those rows
-have no accommodation type at all. Losing every rule for all 18 campsites while
-clearing availability is not something you should have to predict.
+`TRUNCATE accommodation_types CASCADE` — what `just clear-data` used to run —
+empties the whole of `campsite_rules`, site-level rules included, even though
+those rows have no accommodation type at all. Losing every rule for all 18
+campsites while clearing availability is not something you should have to
+predict; `just clear-availability` no longer does.
 
 But TRUNCATE on the *right* table is worth having, because DELETE does not free
 anything: it marks entries dead, and VACUUM reclaims that space for reuse inside
