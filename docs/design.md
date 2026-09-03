@@ -205,9 +205,15 @@ to both small LLMs:
   `toilets` and `bathroom` alone give it nothing to work with;
 - the **classifier** sees it when naming a brand-new subject.
 
-It lives only on the test table for now (production `subject_vectors` has no such
-column, and the resolver omits it unless `store.has_context`). Promote it with a
-migration once the testbed shows it earns its place.
+Promoted to production in migration `026_subject_context` after the testbed
+showed it working: `toilets` stayed a separate subject from `bathroom` at −0.868
+with four candidates offered, where it had merged before. `DEFAULT_STORE` now
+carries `has_context=True`; a store built with `has_context=False` still resolves
+and simply drops the context. Rows created before `026` have NULL — then the judge
+decides on the names alone, as it did before.
+
+`ensure_amenities(contexts=...)` carries the room tooltip down the accommodation
+path, so a room's own `bathroom` arrives with the sentence that distinguishes it.
 
 ### The classifier renames, but only to fix a real problem
 
@@ -240,6 +246,32 @@ an **amenity**, and that it must never append `_included` to a bare noun.
 
 `test_subject_adjudication_llm.py` pins both directions, and asserts the property
 that actually matters: classifying the same term twice gives the same name.
+
+### Antonyms are decided in code, never asked about
+
+The first production run with the section split merged all four mattress-window
+bounds into `mattress_pickup_start_time` and `child_max_age` into
+`child_min_age`. The judge sees `child_min_age` and `child_max_age` — near
+identical strings, same predicate, same category, both plausibly one subject —
+and says yes. It is wrong every time, so `naming.opposed` decides it:
+
+```
+min/max   minimum/maximum   start/end   first/last   early/late
+earliest/latest   in/out   entry/exit   pickup/return
+arrival/departure   open/close   before/after
+```
+
+Two names taking opposite sides of any pair are never offered to the judge. False
+positives only over-split, which is the safe direction.
+
+That failure was caught by the CONFLICTING message on the upsert, not by a test —
+a repeat statement whose polarity or qualifier disagrees with the row already
+written is logged loudly precisely because a silent skip hides an over-merge:
+
+```
+dropping CONFLICTING statement for subject 291
+    (kept polarity=None qualifier=15, dropped polarity=None qualifier=20)
+```
 
 ### A suffix means different things on a rule and on an amenity
 
@@ -293,6 +325,35 @@ service_center_regular_hours  rule     false     its hours are "as needed"
 
 The drop is printed, so a fact the schema cannot hold is visible rather than
 silently stored as an empty row.
+
+### `שעות כניסה ויציאה` is cut in half before extraction
+
+Handed the whole 674-character paragraph the model summarises it: 7 facts, and it
+skips the early-arrival sentence entirely in 4 runs out of 5. Cut between arrival
+and departure it returns 11 facts *every* run, with every number attached.
+Measured over 5 interleaved runs per strategy:
+
+| strategy | statements/run | facts in all 5 | numbers/run |
+|---|---|---|---|
+| whole, 674 chars | 7, 10, 7, 7, 7 | 4 | 5 |
+| **arrival \| departure**, 178+495 | **11 ×5** | **8** | **6** |
+| char midpoint, 325+348 | 10 ×5 | 8 | 3 + a duplicate |
+
+The midpoint cut is the cautionary one: it scores *higher* on a naive stability
+metric while losing the 50% late fee and the 17:00 cut-off, because it falls
+between "vacate by 12:00" and the sentence that qualifies staying past it. **Where
+you cut decides what survives**, so `_split_topics` finds the boundary by topic —
+the first line mentioning יציאה / עזיבה / לפנות / להישאר — not by length.
+
+The apparent 47% instability of the winning split is entirely naming: group the
+subject names by the fact they describe and every group is 5/5. That is the alias
+layer's job, not the chunker's.
+
+Two caveats worth keeping: the same section measured 22%, 88%, 33% and 29% stable
+across four probes on identical input, so trust the ordering and not the absolute
+figures; and the first comparison ran the strategies sequentially and pointed the
+*wrong* way — between-session drift exceeds the effect, so the strategies must be
+interleaved round-robin. `temp/section_split_probe.py` does that.
 
 ### Sources not yet ingested
 

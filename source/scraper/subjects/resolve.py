@@ -18,6 +18,7 @@ each exists because the adjudicator merged something it should not have:
 
   distance   too far to be worth asking about
   category   a rule is never an amenity — `barbecue_allowed` vs `barbecue`
+  opposed    antonyms are opposite facts — `child_min_age` vs `child_max_age`
   predicate  different trailing predicate, different fact — `barbecue_allowed`
              vs `barbecue_equipment_included`
 
@@ -38,6 +39,7 @@ from source.scraper.amenity_enrichment.llm import EmbeddingLLMClient, LlmUsage
 from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
 from source.scraper.subjects.naming import (
     normalize_alias,
+    opposed,
     same_predicate,
     to_positive_subject,
 )
@@ -51,6 +53,7 @@ MATCH_MAX_DISTANCE = -0.75
 REJECT_FAR = "far"
 REJECT_CATEGORY = "category"
 REJECT_PREDICATE = "predicate"
+REJECT_OPPOSED = "opposed"
 
 _IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
@@ -80,7 +83,7 @@ class SubjectStore:
     """
 
     table: str = "subject_vectors"
-    has_context: bool = False
+    has_context: bool = True
 
     def __post_init__(self) -> None:
         ensure_table_name(self.table)
@@ -326,6 +329,9 @@ def _judge_candidate(
         # Belt and braces: the SQL already filtered, so this only fires when the
         # caller passed no category to the query.
         reason = REJECT_CATEGORY
+    elif opposed(key, name):
+        # min vs max, start vs end: opposite facts wearing near-identical names.
+        reason = REJECT_OPPOSED
     elif not same_predicate(key, name, category=category or row_category):
         reason = REJECT_PREDICATE
     else:

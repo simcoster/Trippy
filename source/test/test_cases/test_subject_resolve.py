@@ -6,8 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from source.scraper.subjects.resolve import (
+    DEFAULT_STORE,
     MATCH_MAX_DISTANCE,
     REJECT_FAR,
+    REJECT_OPPOSED,
     REJECT_PREDICATE,
     Candidate,
     ResolutionTrace,
@@ -314,18 +316,19 @@ def test_a_candidate_with_a_different_predicate_is_never_offered():
 
 
 def test_candidates_sharing_the_predicate_still_reach_the_adjudicator():
-    cursor = FakeCursor(nearest=[(7, "check_out_time", 2, CLOSE)])
+    """Same predicate, different noun, no antonym — the judge decides."""
+    cursor = FakeCursor(nearest=[(7, "child_min_age", 2, CLOSE)])
     adjudicator = make_adjudicator(match=None)
 
     resolve_subject(
         make_conn(cursor),
-        "check_in_time",
+        "adult_min_age",
         embedder=make_embedder(),
         adjudicator=adjudicator,
         verbose=False,
     )
 
-    assert adjudicator.pick_match.call_args.args[1] == ["check_out_time"]
+    assert adjudicator.pick_match.call_args.args[1] == ["child_min_age"]
 
 
 # --- category: the extractor knows which side of the line a term falls on -----
@@ -567,7 +570,10 @@ def test_every_statement_targets_the_injected_table():
         assert "INTO subject_vectors" not in sql
 
 
-def test_the_default_store_is_the_production_table():
+def test_the_default_store_is_the_production_table_and_keeps_context():
+    """Promoted to production in migration 026."""
+    assert DEFAULT_STORE.table == "subject_vectors"
+    assert DEFAULT_STORE.has_context is True
     cursor = FakeCursor(alias_hit=(1, "shower", 1))
     resolve_subject(
         make_conn(cursor),
@@ -612,7 +618,7 @@ def test_context_is_stored_with_a_new_subject_when_the_table_holds_it():
 
 
 def test_context_is_left_out_when_the_table_has_no_such_column():
-    """Production keeps its schema; only the test table carries context."""
+    """A store without the column still resolves; the context is just dropped."""
     cursor = FakeCursor(nearest=[], inserted=(5, "toilets", 1))
 
     resolve_subject(
@@ -621,6 +627,7 @@ def test_context_is_left_out_when_the_table_has_no_such_column():
         embedder=make_embedder(),
         adjudicator=make_adjudicator(match=None, category=1, canonical_name="toilets"),
         context="שירותים (15 תאים)",
+        store=SubjectStore(has_context=False),
         verbose=False,
     )
 
@@ -669,3 +676,29 @@ def test_the_classifier_is_shown_the_context_too():
     )
 
     assert adjudicator.classify.call_args.kwargs["context"] == "מֵקַרים (קולרים) (4)"
+
+
+def test_an_antonym_candidate_is_never_offered():
+    """A production run merged all four mattress-window bounds into one subject."""
+    cursor = FakeCursor(
+        nearest=[(7, "mattress_pickup_start_time", 2, -0.95)],
+        inserted=(70, "mattress_pickup_end_time", 2),
+    )
+    adjudicator = make_adjudicator(
+        match=None, category=2, canonical_name="mattress_pickup_end_time"
+    )
+    sink: list[ResolutionTrace] = []
+
+    resolve_subject(
+        make_conn(cursor),
+        "mattress_pickup_end_time",
+        embedder=make_embedder(),
+        adjudicator=adjudicator,
+        category=2,
+        trace_sink=sink,
+        verbose=False,
+    )
+
+    adjudicator.pick_match.assert_not_called()
+    assert sink[0].candidates[0].rejected_for == REJECT_OPPOSED
+    assert cursor.sql_matching("INSERT")

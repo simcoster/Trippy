@@ -4,6 +4,7 @@ import pytest
 
 from source.scraper.subjects.naming import (
     normalize_alias,
+    opposed,
     predicate_suffix,
     same_predicate,
     to_positive_subject,
@@ -204,3 +205,40 @@ def test_available_is_read_differently_by_category():
     """The whole reason the comparison needs to know what it is looking at."""
     assert same_predicate("x_available", "x", category=AMENITY)
     assert not same_predicate("x_available", "x", category=RULE)
+
+
+# --- antonyms: opposite facts wearing near-identical names ---------------------
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        # Every one of these was merged by the judge on a live production run.
+        ("child_min_age", "child_max_age"),
+        ("mattress_pickup_start_time", "mattress_pickup_end_time"),
+        ("mattress_pickup_start_time", "mattress_return_start_time"),
+        ("mattress_pickup_end_time", "mattress_return_end_time"),
+        ("check_in_time", "check_out_time"),
+        ("early_arrival_allowed", "late_check_out_available"),
+        ("min_weekend_nights", "max_weekend_nights"),
+        ("first_entry_time", "last_entry_time"),
+    ],
+)
+def test_antonyms_are_never_the_same_subject(left, right):
+    assert opposed(left, right)
+    assert opposed(right, left)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("late_check_out_available", "late_check_out_fee"),
+        ("towels_included", "towels"),
+        ("refrigerators", "refrigerator"),
+        ("air_conditioner", "air_conditioning"),
+        ("latest_arrival_time", "check_in_time"),
+        ("dogs_allowed", "pets_allowed"),
+    ],
+)
+def test_ordinary_pairs_are_not_treated_as_opposites(left, right):
+    assert not opposed(left, right)

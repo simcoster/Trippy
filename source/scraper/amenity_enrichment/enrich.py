@@ -60,13 +60,21 @@ def enrich_accommodation_types(
         return set()
 
     amenity_names: list[str] = []
-    for details in extractions.values():
-        amenity_names.extend(details.get("amenities") or [])
-        # Same canonical names table + embeddings: e.g. "shower" may appear in both lists.
-        amenity_names.extend(details.get("not_included") or [])
+    # The tooltip a name came from, so the sameness judge can tell this room's
+    # `bathroom` from the site's communal `toilets`. First tooltip wins: a name
+    # seen in two rooms is the same subject either way.
+    contexts: dict[str, str] = {}
+    for name, details in extractions.items():
+        tooltip = f"{name}: {descriptions[name]}"[:400]
+        for key in ("amenities", "not_included"):
+            # Same canonical names table + embeddings: e.g. "shower" may appear
+            # in both lists.
+            for amenity in details.get(key) or []:
+                amenity_names.append(amenity)
+                contexts.setdefault(amenity, tooltip)
 
     name_to_id = ensure_amenities(
-        conn, embedder, amenity_names, usage=batch_usage
+        conn, embedder, amenity_names, contexts=contexts, usage=batch_usage
     )
     enriched: set[str] = set()
 

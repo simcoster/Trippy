@@ -42,6 +42,7 @@ def ensure_amenities(
     names: list[str],
     *,
     adjudicator: SubjectAdjudicatorLLMClient | None = None,
+    contexts: dict[str, str] | None = None,
     cache: dict[str, SubjectRef] | None = None,
     usage: LlmUsage | None = None,
 ) -> dict[str, int]:
@@ -52,6 +53,10 @@ def ensure_amenities(
     existing subject rather than forking a second row with its own vector.
     Names that cannot be phrased positively are dropped and simply absent from
     the returned mapping.
+
+    `contexts` maps a name to the tooltip it was read from. It is what lets the
+    sameness judge tell a room's own `bathroom` from a site's communal
+    `toilets` — the names alone give it nothing to work with.
     """
     unique: list[str] = []
     seen: set[str] = set()
@@ -94,6 +99,7 @@ def ensure_amenities(
             # This path only ever handles amenities, so a rule can never be a
             # candidate however close its vector sits.
             category=int(SubjectCategory.AMENITY),
+            context=(contexts or {}).get(name),
             cache=shared_cache,
             usage=usage,
         )

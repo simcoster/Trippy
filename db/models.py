@@ -179,6 +179,10 @@ class SubjectVector(Base):
     aliases: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, default=list
     )
+    # The sentence this subject was first read from, shown to the sameness judge
+    # on later comparisons. NULL for rows created before 026, and for any term
+    # resolved without one — then the judge decides on the names alone.
+    context: Mapped[str | None] = mapped_column(Text)
     # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
     # Embeds `name`, not the aliases, so the vector is stable as aliases accrue.
     embedding = mapped_column(Vector(1536), nullable=True)

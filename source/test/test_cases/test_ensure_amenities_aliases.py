@@ -110,3 +110,32 @@ def test_the_resolver_cache_is_shared_across_names(_register):
 
     assert len(seen) == 2
     assert seen[0] is seen[1]
+
+
+@patch("source.scraper.amenity_enrichment.db.register_vector")
+def test_the_room_tooltip_is_passed_as_context(_register):
+    """It is what tells a room's own bathroom from the site's communal toilets."""
+    conn, _cursor = make_conn({})
+    with patch(
+        "source.scraper.subjects.resolve.resolve_subject",
+        return_value=SubjectRef(9, "bathroom", 1),
+    ) as resolve:
+        ensure_amenities(
+            conn,
+            MagicMock(),
+            ["bathroom"],
+            contexts={"bathroom": "חדר צוות: בכל חדר שירותים, מקלחת מים חמים"},
+        )
+
+    assert resolve.call_args.kwargs["context"].startswith("חדר צוות")
+
+
+@patch("source.scraper.amenity_enrichment.db.register_vector")
+def test_a_name_with_no_context_resolves_without_one(_register):
+    conn, _cursor = make_conn({})
+    with patch(
+        "source.scraper.subjects.resolve.resolve_subject",
+        return_value=SubjectRef(9, "shower", 1),
+    ) as resolve:
+        ensure_amenities(conn, MagicMock(), ["shower"], contexts={"other": "x"})
+    assert resolve.call_args.kwargs["context"] is None

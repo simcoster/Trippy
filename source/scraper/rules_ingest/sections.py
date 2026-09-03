@@ -32,6 +32,17 @@ UNIT_SECTION_TITLES = ("אפשרויות לינה",)
 # costs one fewer extraction call; nothing in them states a rule.
 NAVIGATION_SECTION_TITLES = ("איך להגיע", "יצירת קשר")
 
+# `שעות כניסה ויציאה` is two topics in one paragraph, and handing the extractor
+# the whole thing makes it summarise: measured over five runs it returned seven
+# facts and skipped the early-arrival sentence entirely in four of them. Cut
+# between arrival and departure and it returns eleven facts every run, with
+# every number attached. Cutting at the character midpoint instead scores
+# better on a naive stability metric while losing the 50% fee and the 17:00
+# cut-off, so the boundary is found by topic, not by length.
+TOPIC_SPLIT_TITLES = ("שעות כניסה ויציאה",)
+# First line mentioning one of these starts the departure half.
+DEPARTURE_MARKERS = ("יציאה", "עזיבה", "לפנות", "להישאר")
+
 _BLANK_LINES_RE = re.compile(r"\n{2,}")
 
 
@@ -54,9 +65,28 @@ def parse_sections(html: str, *, source_url: str | None = None) -> list[Section]
     sections.extend(_icon_sections(soup))
     sections.extend(_visitor_info_sections(soup))
     sections.extend(_rate_note_sections(html))
-    return [
-        Section(s.title, s.text, source_url) for s in sections if s.text
-    ]
+    split: list[Section] = []
+    for section in sections:
+        split.extend(_split_topics(section))
+    return [Section(s.title, s.text, source_url) for s in split if s.text]
+
+
+def _split_topics(section: Section) -> list[Section]:
+    """Cut a known two-topic section at its topic boundary.
+
+    Both halves keep the section title: the extractor is given the same framing
+    either way, which is what the measurement compared.
+    """
+    if not any(t in section.title for t in TOPIC_SPLIT_TITLES):
+        return [section]
+    lines = section.text.split("\n")
+    for index, line in enumerate(lines):
+        if index and any(marker in line for marker in DEPARTURE_MARKERS):
+            return [
+                Section(section.title, "\n".join(lines[:index]), section.source_url),
+                Section(section.title, "\n".join(lines[index:]), section.source_url),
+            ]
+    return [section]
 
 
 def _block_text(node) -> str:

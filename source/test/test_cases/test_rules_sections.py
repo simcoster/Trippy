@@ -71,10 +71,13 @@ def test_the_dog_policy_appears_exactly_once(sections):
 
 
 def test_visitor_info_carries_the_time_rules(sections):
-    text = by_title(sections, "שעות כניסה ויציאה").text
+    """The section is split by topic, so check across both halves."""
+    halves = [s for s in sections if "שעות כניסה ויציאה" in s.title]
+    text = "\n".join(s.text for s in halves)
     assert "החל מהשעה 15:00 עד השעה 20:30" in text
     assert "עד השעה 12:00 ביום העזיבה" in text
-    assert not text.startswith("שעות כניסה ויציאה")  # heading stripped from the body
+    # heading stripped from the body
+    assert not halves[0].text.startswith("שעות כניסה ויציאה")
 
 
 def test_rate_notes_are_labelled_and_deduped(sections):
@@ -94,3 +97,52 @@ def test_empty_sections_are_dropped(sections):
 
 def test_a_page_with_none_of_the_structures_yields_nothing():
     assert parse_sections("<html><body><p>hello</p></body></html>") == []
+
+
+# --- topic split --------------------------------------------------------------
+
+
+def test_arrival_and_departure_become_separate_sections(sections):
+    """Whole, the model summarised: 7 facts and no early arrival in 4/5 runs.
+    Split, it returned 11 facts every run. See docs/design.md."""
+    halves = [s for s in sections if "שעות כניסה ויציאה" in s.title]
+    assert len(halves) == 2
+    arrival, departure = halves
+    assert "החל מהשעה 15:00 עד השעה 20:30" in arrival.text
+    assert "הגעה מוקדמת" in arrival.text
+    assert "יש לפנות את האוהלים" in departure.text
+    assert "לסיום שעות הפעילות בשעה 17:00" in departure.text
+
+
+def test_the_cut_falls_on_the_topic_not_the_midpoint(sections):
+    """A midpoint cut severs the 50% fee and the 17:00 limit from their context."""
+    arrival, departure = [s for s in sections if "שעות כניסה ויציאה" in s.title]
+    assert len(arrival.text) < len(departure.text)
+    # The late-checkout rule and both its numbers stay in one chunk.
+    assert "17:00" in departure.text
+    assert "50%" in departure.text
+    # Nothing about departure leaks into the arrival half.
+    assert "עזיבה" not in arrival.text
+
+
+def test_both_halves_keep_the_section_title_and_source(sections):
+    halves = [s for s in sections if "שעות כניסה ויציאה" in s.title]
+    assert {s.title for s in halves} == {"שעות כניסה ויציאה"}
+    assert {s.source_url for s in halves} == {"https://www.parks.org.il/camping/x/"}
+
+
+def test_no_text_is_lost_by_the_split(sections):
+    arrival, departure = [s for s in sections if "שעות כניסה ויציאה" in s.title]
+    assert not set(arrival.text.split("\n")) & set(departure.text.split("\n"))
+
+
+def test_other_sections_are_not_split(sections):
+    for title in ("מה בחניון?", "כניסת כלבים", "הערות למחירון"):
+        assert len([s for s in sections if title in s.title]) == 1
+
+
+def test_a_section_with_no_departure_line_is_left_whole():
+    from source.scraper.rules_ingest.sections import Section, _split_topics
+
+    only_arrival = Section("שעות כניסה ויציאה", "הכניסה החל מהשעה 15:00.")
+    assert _split_topics(only_arrival) == [only_arrival]

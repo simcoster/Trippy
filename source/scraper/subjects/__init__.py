@@ -3,6 +3,7 @@
 from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
 from source.scraper.subjects.naming import (
     normalize_alias,
+    opposed,
     predicate_suffix,
     same_predicate,
     to_positive_subject,
@@ -29,6 +30,7 @@ __all__ = [
     "format_trace",
     "resolve_subject",
     "normalize_alias",
+    "opposed",
     "predicate_suffix",
     "same_predicate",
     "to_positive_subject",

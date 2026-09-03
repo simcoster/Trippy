@@ -188,3 +188,34 @@ def same_predicate(left: str, right: str, *, category: int | None = None) -> boo
     return predicate_suffix(left, category=category) == predicate_suffix(
         right, category=category
     )
+
+
+# Two names that pick opposite members of one of these pairs state opposite
+# facts and are never one subject. A live ingest merged all four mattress-window
+# bounds into `mattress_pickup_start_time` and `child_max_age` into
+# `child_min_age` — the sameness judge sees near-identical strings and says yes,
+# so antonyms are decided here instead of asked about. False positives only
+# over-split, which is the safe direction (see docs/design.md).
+ANTONYM_PAIRS: tuple[tuple[str, str], ...] = (
+    ("min", "max"),
+    ("minimum", "maximum"),
+    ("start", "end"),
+    ("first", "last"),
+    ("early", "late"),
+    ("earliest", "latest"),
+    ("in", "out"),
+    ("entry", "exit"),
+    ("pickup", "return"),
+    ("arrival", "departure"),
+    ("open", "close"),
+    ("before", "after"),
+)
+
+
+def opposed(left: str, right: str) -> bool:
+    """True when the two names take opposite sides of a known antonym pair."""
+    a = set(normalize_alias(left).split("_"))
+    b = set(normalize_alias(right).split("_"))
+    return any(
+        (x in a and y in b) or (y in a and x in b) for x, y in ANTONYM_PAIRS
+    )
