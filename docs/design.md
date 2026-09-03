@@ -194,34 +194,48 @@ mattress_pickup_end_time    20  hour_of_day
 The prompt states this and `test_rules_extraction.test_no_subject_is_stated_twice`
 guards it. If ranges become common, the alternative is a `qualifier_max` column.
 
-### Experiments run against `test_*` tables
+### Experiments live in the `experiments` schema
 
-Production schema is not changed to try something out. `temp/rules_ingest_testbed.py`
-creates `test_subject_vectors` / `test_campsite_rules` / `test_accommodation_amenities`,
-seeds the vocabulary from production, and drives both ingest jobs against them:
+Production schema is not changed to try something out. The testbeds create their
+tables in a separate `experiments` schema — never in `public`, and never via an
+Alembic migration — and their connections set
+`options="-csearch_path=experiments"`:
 
 ```
 uv run python -m temp.rules_ingest_testbed --reset --rules --amenities --report
+uv run python -m temp.split_campsites_testbed --reset --guards --ingest --report
 ```
+
+**No foreign key crosses between the two schemas, in either direction.** That is
+the part doing the work. While the testbeds lived in `public` under a `test_*`
+prefix, the separation was a naming convention, and it had already failed twice:
+one testbed table held a real FK to `accommodation_types`, which put it inside
+production's cascade paths, so `just clear-data` emptied it (it is now
+`just clear-availability`, which does not); and every "what is
+in this database?" query returned testbed tables mixed in with real ones.
+Whatever production table a testbed needs is **copied** into the schema instead —
+`campsites` and `accommodation_types` are there for that reason, with their own
+sequences, because a shared sequence is a dependency as real as a foreign key.
+
+A read that genuinely wants production data names it: `public.subject_vectors`
+seeds the vocabulary so merges are judged against a realistic dictionary. Every
+unqualified name resolves inside `experiments`, so a forgotten prefix cannot
+quietly hit a production table. `temp/isolate_experiment_schema.py` performs the
+separation and refuses to commit if any FK still crosses.
 
 The only production change this needs is dependency injection:
 
 - `SubjectStore(table=..., has_context=...)` — where subjects live, and whether the
   table carries the `context` column. The table name is interpolated into SQL, so
-  `SubjectStore` rejects anything that is not a plain identifier.
+  `SubjectStore` rejects anything that is not a plain identifier. (Which is also
+  why the search path, not a schema-qualified name, is what points a testbed at
+  its own tables.)
 - `upsert_campsite_rules(table=...)` and `ingest_site(store=, rules_table=)`.
 
-The room-amenity job writes `test_accommodation_amenities` rather than
-`accommodation_types`, so a test run's subject ids never reach production rows.
-Before migration `027` there was also a `mirror_amenities=False` switch, because
-the ingest wrote `campsites.amenities` — production *data* even when the schema
-was untouched. Dropping the mirror removed the need for it.
-
-One DI gap is worth knowing about if this pattern is extended:
-`sync_campsite_amenity_ids` hardcoded `campsites` in its `UPDATE` and could not
-be pointed at a test table at all, so `temp/split_campsites_testbed.py` had to
-copy its SQL. That function is gone, but the lesson is not — a writer that names
-its table in a literal cannot be tested against a copy.
+A writer that names its table in a SQL literal cannot be tested against a copy at
+all: `sync_campsite_amenity_ids` hardcoded `campsites` in its `UPDATE`, so
+`temp/split_campsites_testbed.py` had to duplicate its SQL. That function is gone
+with migration `027`, but the lesson stands.
 
 ### Context: what a subject was first read from
 
@@ -385,13 +399,83 @@ figures; and the first comparison ran the strategies sequentially and pointed th
 *wrong* way — between-session drift exceeds the effect, so the strategies must be
 interleaved round-robin. `temp/section_split_probe.py` does that.
 
-### One site can be two campsites
+### One site can be two campsites, and config says which
 
 Akhziv's amenity section lists `חניון צפוני` and `חניון דרומי` separately, each
-with its own counts. `campsite_rules` has no zone dimension — the key is
-`(campsite_id, accommodation_type_id, subject_id)` — so the southern list
-collides with the northern one and is dropped as CONFLICTING. Recorded in
-`docs/PLAN.md`; the fix is a `zone` in the key or a zone-as-accommodation-type.
+with its own counts. `campsite_rules` is keyed
+`(campsite_id, accommodation_type_id, subject_id)` with no room for a subcamp, so
+the southern list collides with the northern one and is dropped as CONFLICTING —
+today every stored Akhziv count is a northern one and the southern list is gone.
+
+**Which sites are split is configuration, not detection.** `config.json` carries
+a `subcamps` block keyed by campsite URL:
+
+```json
+"subcamps": {
+  "<akhziv url>": [
+    {"heading": "חניון צפוני", "aliases": ["חניון הצפוני", "אכזיב צפון"],
+     "unit_name_contains": ["חניון צפוני"]},
+    {"heading": "חניון דרומי", "aliases": ["חניון הדרומי", "אכזיב דרום"],
+     "unit_name_contains": ["חניון דרומי"], "default_units": true}
+  ]
+}
+```
+
+Keyed by URL because ids are assigned at discovery and do not survive a wipe,
+while the URL is the site's identity and already `discover_sites`' upsert key.
+Being in the repo, it also survives repopulating an empty cloud database, which
+derived data would not.
+
+Detecting it instead was measured and rejected. The candidate signal — does the
+`אפשרויות לינה` panel carry subcamp headings — works on all 18 sites today
+(`temp/subcamp_detect_probe.py`: Akhziv splits into exactly two, nothing else
+splits, including the riskiest case). It is still the wrong mechanism, because
+**it answers a different question**. Nahal Amud has three named sub-areas —
+`מתחם ראשי / משני / הדס` — and must *not* be split: its counts are inline in one
+list, nothing collides, nothing is lost. Akhziv must be split because it has two
+complete parallel lists. That difference is about how a site is run; that it
+currently shows up as "panel headings vs parenthesised counts" is an authoring
+coincidence. The costs are also asymmetric — a false negative is the status quo,
+while a false positive puts phantom campsites in search results and partitions a
+real site's rules onto subcamps that do not exist.
+
+So the detector stays as a **warning** during discovery: a site that looks split
+but is absent from the config, or is in the config but no longer looks split,
+gets printed. It never restructures anything.
+
+`temp/check_subcamp_config.py` validates the block against the database and the
+live page — the URL must match exactly one campsite, every heading must still
+appear in the lodging panel, and every alias must occur somewhere on the page.
+That last check earned itself immediately: two aliases carried over from the
+experiment (`החניון הצפוני`, `החניון הדרומי`) appear nowhere, and were redundant
+besides — any text containing them contains the shorter form. A config that is
+quietly wrong produces no error anywhere; the site simply never splits.
+
+`unit_name_contains` routes booking unit types to a subcamp by name, and exactly
+one subcamp carries `default_units` for the rest. Akhziv's two tent pitches name
+their subcamp; its four `חושה` types name none, and no prompt can place them
+because their booking data never mentions one. The info page's accessibility line
+does — `אכזיב דרום: … שתי חושות …` — so they default south. That is a judgement
+recorded as data, which is the point of it living here.
+
+`unit_owner` (`rules_ingest/subcamps.py`) applies it: a booking unit whose name
+contains one of a subcamp's `unit_name_contains` strings belongs to that subcamp,
+anything else to the `default_units` one, and on an unsplit site to the site
+itself. Everything downstream of that follows the owner rather than the site —
+the `accommodation_types` row, its `campsite_rules`, its image urls, the
+`availability` row, and the delete that replaces a night's snapshot, which now
+spans the parent and every child (`site_ids`, not `site_id`).
+
+**Flagged as provisional.** Substring-matching a booking unit name is the weakest
+part of the subcamp design: it works because Akhziv's operator happens to put the
+subcamp in two unit names, it will not survive a rename, it does not generalise to
+a second split site distinguished some other way, and it fails *silently* — a
+config that stops matching routes everything to the default and looks fine. The
+replacement worth building is a reconciliation against the info page's per-subcamp
+lodging panel, which states the split in its own right; until then the strings at
+least live in `campsites.subcamp` (seeded from `config.json`) rather than in code,
+and `test_subcamp_unit_routing.py` pins the split at two units north, four south.
+There is a `FIXME(subcamp-routing)` on the function.
 
 It also produced the first truncation: ~30 amenities with Hebrew evidence spans
 overran `MAX_TOKENS = 2500`, and the cut-off JSON surfaced as a parse error, so
