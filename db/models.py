@@ -57,12 +57,40 @@ class QualifierUnit(IntEnum):
 
 class Campsite(Base):
     __tablename__ = "campsites"
+    __table_args__ = (
+        CheckConstraint(
+            "(parent_id IS NULL) = (subcamp IS NULL)",
+            name="campsites_subcamp_needs_parent",
+        ),
+        CheckConstraint(
+            "parent_id IS NULL OR (url IS NULL AND booking_hotel_id IS NULL)",
+            name="campsites_subcamp_has_no_page",
+        ),
+        Index(
+            "campsites_parent_idx",
+            "parent_id",
+            postgresql_where=text("parent_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # NULL on a subcamp: both of a split site's subcamps share one page. UNIQUE
+    # stays — standard SQL NULLs are distinct, so children coexist under it.
+    url: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
     booking_hotel_id: Mapped[str | None] = mapped_column(Text, unique=True)
     google_place_id: Mapped[str | None] = mapped_column(Text)
+    # A subcamp of a split site (Akhziv's חניון צפוני / חניון דרומי): its own
+    # campsites row, so campsite_rules needs no subcamp dimension. The parent
+    # keeps the page, booking id and Google place — and therefore the reviews,
+    # claims and prices, which describe the whole place and cannot be
+    # attributed to one subcamp.
+    parent_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=True
+    )
+    # {"heading": "חניון צפוני", "aliases": [...], "unit_name_contains": [...]}
+    # Seeded from config.json's `subcamps` block; no subcamp name lives in code.
+    subcamp = mapped_column(JSONB)
     # Site-wide amenities are `campsite_rules` rows with a NULL
     # accommodation_type_id; the `amenities` / `not_included_amenities` JSONB
     # mirrors of them were dropped in migration 027.
@@ -79,6 +107,12 @@ class Campsite(Base):
     reviews: Mapped[list[Review]] = relationship(back_populates="campsite")
     claims: Mapped[list[Claim]] = relationship(back_populates="campsite")
     rules: Mapped[list[CampsiteRule]] = relationship(back_populates="campsite")
+    subcamps: Mapped[list[Campsite]] = relationship(
+        back_populates="parent", remote_side=None
+    )
+    parent: Mapped[Campsite | None] = relationship(
+        back_populates="subcamps", remote_side="Campsite.id"
+    )
 
 
 class Review(Base):

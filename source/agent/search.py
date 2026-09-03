@@ -534,15 +534,24 @@ _CLAIMS_GLOBAL_SQL = """
 # claim with another site's, so drive one scan per site instead of trimming
 # after. LATERAL (not a window over the whole table) so each sub-select rides
 # claim_campsite_idx.
+#
+# A subcamp reads its parent's claims. Reviews are written against the Google
+# place, which the parent owns, and a guest says "Akhziv" rather than naming a
+# subcamp — so claims only ever exist on the parent row. Matching campsite_id
+# exactly would make every subcamp look like a site nobody has reviewed, while
+# the parent looked like a site with no amenities. The hit is still reported
+# under the id the caller asked about, so a subcamp's claims rank against that
+# subcamp's rules.
 _CLAIMS_BY_SITE_SQL = """
         SELECT s.campsite_id, x.claim, x.is_positive, x.published_at, x.distance
         FROM unnest(%s::bigint[]) AS s(campsite_id)
+        JOIN campsites site ON site.id = s.campsite_id
         CROSS JOIN LATERAL (
             SELECT c.claim, c.is_positive, r.published_at,
                    c.embedding <#> %s::vector AS distance
             FROM claims c
             JOIN reviews r ON r.id = c.review_id
-            WHERE c.campsite_id = s.campsite_id
+            WHERE c.campsite_id = COALESCE(site.parent_id, site.id)
               AND c.claim IS NOT NULL
               AND c.embedding IS NOT NULL
               AND r.skip_reason IS NULL

@@ -26,6 +26,11 @@ from source.scraper.rules_ingest.db import ResolvedRule, upsert_campsite_rules
 from source.scraper.rules_ingest.fetch import fetch_page_html
 from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
 from source.scraper.rules_ingest.sections import Section, parse_sections
+from source.scraper.rules_ingest.subcamps import (
+    load_subcamps,
+    subcamp_prompt,
+    subcamp_sections,
+)
 from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
 from source.scraper.subjects.resolve import (
     DEFAULT_STORE,
@@ -59,8 +64,12 @@ def database_url(config: dict) -> str:
 
 def fetch_campsites(config: dict, *, limit: int) -> list[dict]:
     with psycopg.connect(database_url(config)) as conn, conn.cursor() as cur:
+        # A subcamp has no page of its own — it is ingested as part of its
+        # parent's page, once per subcamp. Skipping children here is the whole
+        # cost of the split to this loop.
         cur.execute(
-            "SELECT id, name, url FROM campsites ORDER BY id LIMIT %s",
+            "SELECT id, name, url FROM campsites "
+            "WHERE url IS NOT NULL ORDER BY id LIMIT %s",
             (limit,),
         )
         rows = cur.fetchall()
@@ -163,6 +172,60 @@ def ingest_site(
     if not sections:
         return 0
 
+    subcamps = load_subcamps(conn, site["id"])
+    if not subcamps:
+        return _ingest_scope(
+            conn,
+            campsite_id=site["id"],
+            sections=sections,
+            extractor=extractor,
+            embedder=embedder,
+            adjudicator=adjudicator,
+            store=store,
+            rules_table=rules_table,
+            usage=usage,
+        )
+
+    # One pass per subcamp, each writing to its own campsites row — which is why
+    # campsite_rules needs no subcamp dimension. The subject cache is shared
+    # across the passes so they converge on the same subject ids; without it the
+    # two halves of one site would build parallel vocabularies.
+    print(f"    {len(subcamps)} subcamp(s): {', '.join(s.heading for s in subcamps)}")
+    cache: dict[str, SubjectRef] = {}
+    written = 0
+    for subcamp in subcamps:
+        print(f"    -- {subcamp.heading} (campsite {subcamp.campsite_id})")
+        written += _ingest_scope(
+            conn,
+            campsite_id=subcamp.campsite_id,
+            sections=subcamp_sections(sections, subcamp, subcamps),
+            extractor=RuleExtractorLLMClient(
+                system_prompt=subcamp_prompt(subcamp, subcamps)
+            ),
+            embedder=embedder,
+            adjudicator=adjudicator,
+            store=store,
+            rules_table=rules_table,
+            cache=cache,
+            usage=usage,
+        )
+    return written
+
+
+def _ingest_scope(
+    conn,
+    *,
+    campsite_id: int,
+    sections: list[Section],
+    extractor: RuleExtractorLLMClient,
+    embedder: EmbeddingLLMClient,
+    adjudicator: SubjectAdjudicatorLLMClient,
+    store: SubjectStore,
+    rules_table: str,
+    cache: dict[str, SubjectRef] | None = None,
+    usage: LlmUsage | None = None,
+) -> int:
+    """Extract and write one campsite row's worth of rules."""
     rules = rules_from_sections(
         conn,
         sections,
@@ -170,6 +233,7 @@ def ingest_site(
         embedder=embedder,
         adjudicator=adjudicator,
         store=store,
+        cache=cache,
         usage=usage,
     )
     if not rules:
@@ -178,7 +242,7 @@ def ingest_site(
 
     with conn.cursor() as cur:
         written = upsert_campsite_rules(
-            cur, campsite_id=site["id"], rules=rules, table=rules_table
+            cur, campsite_id=campsite_id, rules=rules, table=rules_table
         )
         print(f"    {written} rule(s) upserted")
     return written

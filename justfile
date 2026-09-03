@@ -63,6 +63,10 @@ clear-data:
 clear-reviews:
     uv run python scripts/clear_reviews_and_claims.py
 
+# Delete site-level campsite_rules; keeps per-unit rows + vocabulary (--all, --subjects, --site N)
+clear-rules *args:
+    uv run python scripts/clear_rules.py {{ trim_start_match(args, "-- ") }}
+
 # Apply pending Alembic migrations
 update-tables:
     uv run alembic upgrade head

@@ -122,6 +122,67 @@ def upsert_campsites(campsites: list[dict[str, str]]) -> list[dict]:
     return saved
 
 
+UPSERT_SUBCAMP_SQL = """
+INSERT INTO campsites (name, parent_id, subcamp)
+VALUES (%(name)s, %(parent_id)s, %(subcamp)s::jsonb)
+ON CONFLICT (parent_id, name) WHERE parent_id IS NOT NULL DO UPDATE
+SET subcamp = EXCLUDED.subcamp
+RETURNING id, name;
+"""
+
+
+def load_subcamp_config(path: Path = SCRAPER_DIR / "config.json") -> dict:
+    """The `subcamps` block: which sites are split, keyed by page URL.
+
+    Configuration rather than detection, and deliberately so — see
+    docs/design.md. Being in the repo it also survives repopulating an empty
+    database, which is the case that matters when this moves to the cloud.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f).get("subcamps") or {}
+    except FileNotFoundError:
+        return {}
+
+
+def upsert_subcamps(saved: list[dict]) -> int:
+    """Give every configured split site one child row per subcamp.
+
+    A child carries no `url` or `booking_hotel_id`: both subcamps share one
+    page and one booking id, and leaving those NULL is what makes every scraper
+    filtering `WHERE url IS NOT NULL` skip children without knowing they exist.
+    Reviews, claims and prices stay on the parent for the same reason — a guest
+    review says "Akhziv", not "the northern one".
+    """
+    config = load_subcamp_config()
+    if not config:
+        return 0
+    by_url = {site["url"]: site for site in saved}
+    written = 0
+    with psycopg.connect(_database_url()) as conn:
+        with conn.cursor() as cur:
+            for url, areas in config.items():
+                parent = by_url.get(url)
+                if parent is None:
+                    print(f"    subcamp config matches no campsite: {url[:70]}")
+                    continue
+                for area in areas:
+                    cur.execute(
+                        UPSERT_SUBCAMP_SQL,
+                        {
+                            "name": f"{parent['name']} – {area['heading']}",
+                            "parent_id": parent["id"],
+                            "subcamp": json.dumps(area, ensure_ascii=False),
+                        },
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        written += 1
+                        print(f"    subcamp {row[0]}: {row[1]}")
+        conn.commit()
+    return written
+
+
 def main():
     print(f"Crawling: {LISTING_URL}")
     print("-" * 80)
@@ -139,6 +200,10 @@ def main():
 
     saved = upsert_campsites(campsites)
     print(f"Upserted {len(saved)} campsites into Postgres")
+
+    subcamps = upsert_subcamps(saved)
+    if subcamps:
+        print(f"Upserted {subcamps} subcamp row(s) from config")
 
     print("\nFirst 5 DB rows:")
     for site in saved[:5]:

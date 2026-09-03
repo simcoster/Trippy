@@ -75,6 +75,9 @@ def fetch_campsites(config: dict) -> list[dict]:
     sql = """
         SELECT id, name, url, booking_hotel_id
         FROM campsites
+        -- Subcamps have no page of their own; their parent's rate card covers
+        -- them, and scraping a NULL url would fail.
+        WHERE url IS NOT NULL
         ORDER BY id
         LIMIT %s
     """
