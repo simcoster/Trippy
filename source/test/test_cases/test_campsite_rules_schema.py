@@ -123,15 +123,31 @@ def test_every_pre_existing_subject_was_backfilled_with_its_name_as_alias(conn):
         assert cur.fetchone()[0] == 0
 
 
-def test_the_amenity_name_views_followed_the_table_rename(conn):
-    """Postgres keys view definitions on OIDs, so no view rebuild was needed."""
+def test_the_amenity_name_views_are_gone(conn):
+    """They read the JSONB arrays, so migration 027 dropped them with it.
+
+    The readable id -> name join they existed for is now a plain join against
+    campsite_rules; nothing in the app queried them.
+    """
     with conn.cursor() as cur:
         for view in (
             "campsites_with_amenity_names",
             "accommodation_types_with_amenity_names",
         ):
-            cur.execute("SELECT pg_get_viewdef(%s::regclass)", (view,))
-            assert "subject_vectors" in cur.fetchone()[0]
+            cur.execute("SELECT to_regclass(%s)", (view,))
+            assert cur.fetchone()[0] is None, f"{view} still exists"
+
+
+def test_the_amenities_jsonb_columns_are_gone(conn):
+    """campsite_rules is the only home for an amenity now."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT table_name, column_name
+               FROM information_schema.columns
+               WHERE table_name IN ('campsites', 'accommodation_types')
+                 AND column_name IN ('amenities', 'not_included_amenities')"""
+        )
+        assert cur.fetchall() == []
 
 
 def test_site_level_rows_dedupe_on_reingest(scratch):

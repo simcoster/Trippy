@@ -125,7 +125,12 @@ class RuleExtractorLLMClient:
 
     MODEL = QWEN_INSTRUCT_MODEL
     TEMPERATURE = 0
-    MAX_TOKENS = 2500
+    # A dense amenity list runs long: `מה בחניון?` at Akhziv covers two
+    # sub-campsites, ~30 amenities each carrying a Hebrew evidence span, and
+    # Hebrew tokenises at roughly one token per one to two characters. At 2500
+    # the reply was cut mid-object, failed to parse, and the whole section was
+    # dropped as if it had produced nothing.
+    MAX_TOKENS = 8000
 
     def __init__(
         self,
@@ -165,5 +170,13 @@ class RuleExtractorLLMClient:
         )
         if usage is not None:
             usage.add_chat(response.usage)
-        data = _coerce_payload(response.choices[0].message.content or "")
+        choice = response.choices[0]
+        if getattr(choice, "finish_reason", None) == "length":
+            # Say what actually went wrong. Truncated JSON surfaces as a parse
+            # error otherwise, which sends you looking in the wrong place.
+            raise ValueError(
+                f"reply truncated at max_tokens={self.MAX_TOKENS} for section "
+                f"{section_title!r}; the section needs splitting or a bigger cap"
+            )
+        data = _coerce_payload(choice.message.content or "")
         return RuleExtract.model_validate(data)

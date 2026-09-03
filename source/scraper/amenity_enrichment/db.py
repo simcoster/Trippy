@@ -18,18 +18,25 @@ if TYPE_CHECKING:
 
 
 def load_types_with_amenities(conn, hotel_id: int) -> set[str]:
-    """Names of accommodation types that already have amenity ids + description."""
+    """Names of accommodation types that already have amenity ids + description.
+
+    Reads `campsite_rules` rather than the old `accommodation_types.amenities`
+    JSONB, which migration 027 dropped. A type counts as enriched when it has at
+    least one rule row of its own, whatever the polarity — a tooltip that only
+    yielded "bring your own towels" was still read.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT name
-            FROM accommodation_types
-            WHERE hotel_id = %s
-              AND amenities IS NOT NULL
-              AND jsonb_typeof(amenities) = 'array'
-              AND jsonb_array_length(amenities) > 0
-              AND description IS NOT NULL
-              AND btrim(description) <> ''
+            SELECT at.name
+            FROM accommodation_types at
+            WHERE at.hotel_id = %s
+              AND at.description IS NOT NULL
+              AND btrim(at.description) <> ''
+              AND EXISTS (
+                  SELECT 1 FROM campsite_rules cr
+                  WHERE cr.accommodation_type_id = at.id
+              )
             """,
             (hotel_id,),
         )
@@ -108,14 +115,61 @@ def ensure_amenities(
     return mapping
 
 
+UPSERT_UNIT_AMENITY = """
+INSERT INTO campsite_rules
+    (campsite_id, accommodation_type_id, subject_id, polarity)
+VALUES (%(campsite_id)s, %(accommodation_type_id)s, %(subject_id)s, %(polarity)s)
+ON CONFLICT ON CONSTRAINT campsite_rules_scope_subject_key DO UPDATE
+SET polarity = EXCLUDED.polarity,
+    updated_at = now()
+"""
+
+
+def write_unit_amenities(
+    cur,
+    *,
+    campsite_id: int,
+    accommodation_type_id: int,
+    amenity_ids: list[int],
+    not_included_ids: list[int],
+) -> int:
+    """Per-unit amenities as `campsite_rules` rows scoped to one type.
+
+    Replaces the `accommodation_types.amenities` / `not_included_amenities`
+    JSONB arrays, which migration 027 dropped. The two arrays were only ever a
+    polarity: provided, or explicitly not provided. Nothing else about them is
+    lost, and per-unit rules now live beside site-level ones instead of in a
+    parallel shape the planner had to query differently.
+
+    A subject the extractor put in both lists for one unit collides on
+    `campsite_rules_scope_subject_key`; the later write wins, which keeps the
+    not-included reading — the stricter claim, and the one the tooltip was
+    usually being explicit about.
+    """
+    written = 0
+    for subject_id, polarity in (
+        *((sid, True) for sid in amenity_ids),
+        *((sid, False) for sid in not_included_ids),
+    ):
+        cur.execute(
+            UPSERT_UNIT_AMENITY,
+            {
+                "campsite_id": campsite_id,
+                "accommodation_type_id": accommodation_type_id,
+                "subject_id": subject_id,
+                "polarity": polarity,
+            },
+        )
+        written += 1
+    return written
+
+
 def update_accommodation_type_details(
     cur,
     *,
     accommodation_type_id: int,
     description: str,
     details: dict[str, Any],
-    amenity_ids: list[int],
-    not_included_ids: list[int],
     image_urls: list[str] | None = None,
 ) -> None:
     double_beds = int(details.get("double_bed") or 0)
@@ -131,8 +185,6 @@ def update_accommodation_type_details(
         """
         UPDATE accommodation_types
         SET description = %(description)s,
-            amenities = %(amenities)s::jsonb,
-            not_included_amenities = %(not_included_amenities)s::jsonb,
             max_occupancy = %(max_occupancy)s,
             total_beds = %(total_beds)s,
             bed_configuration = %(bed_configuration)s::jsonb,
@@ -147,8 +199,6 @@ def update_accommodation_type_details(
         {
             "id": accommodation_type_id,
             "description": description,
-            "amenities": json.dumps(amenity_ids),
-            "not_included_amenities": json.dumps(not_included_ids),
             "max_occupancy": details.get("max_people"),
             "total_beds": total_beds if total_beds > 0 else None,
             "bed_configuration": json.dumps(bed_configuration),

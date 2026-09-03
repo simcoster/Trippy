@@ -1,17 +1,13 @@
-"""campsite_rules writes: idempotent upserts and the amenity-id mirror."""
+"""campsite_rules writes: idempotent upserts, site-level and per-unit."""
 
-import json
 from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
 
-from db.models import QualifierUnit, SubjectCategory
-from source.scraper.rules_ingest.db import (
-    ResolvedRule,
-    sync_campsite_amenity_ids,
-    upsert_campsite_rules,
-)
+from db.models import QualifierUnit
+from source.scraper.amenity_enrichment.db import write_unit_amenities
+from source.scraper.rules_ingest.db import ResolvedRule, upsert_campsite_rules
 from source.scraper.rules_ingest.llm import _coerce_payload
 from source.scraper.rules_ingest.schemas import RuleExtract, RuleStatement
 
@@ -94,35 +90,57 @@ def test_no_rules_writes_nothing():
     cursor.execute.assert_not_called()
 
 
-def test_sync_splits_site_amenities_by_polarity():
-    cursor = make_cursor(rows=[(11, True), (12, False), (13, None)])
+def test_unit_amenities_become_rows_scoped_to_the_type():
+    cursor = make_cursor()
 
-    included, not_included = sync_campsite_amenity_ids(cursor, campsite_id=5)
+    written = write_unit_amenities(
+        cursor,
+        campsite_id=5,
+        accommodation_type_id=9,
+        amenity_ids=[11, 13],
+        not_included_ids=[12],
+    )
 
-    assert (included, not_included) == (2, 1)
-    written = cursor.execute.call_args.args[1]
-    # A bare quantity ("6 fountains") still means the site has the thing.
-    assert json.loads(written["amenities"]) == [11, 13]
-    assert json.loads(written["not_included"]) == [12]
-    assert written["campsite_id"] == 5
+    assert written == 3
+    rows = [call.args[1] for call in cursor.execute.call_args_list]
+    assert all(r["campsite_id"] == 5 for r in rows)
+    assert all(r["accommodation_type_id"] == 9 for r in rows)
+    assert [(r["subject_id"], r["polarity"]) for r in rows] == [
+        (11, True),
+        (13, True),
+        (12, False),
+    ]
 
 
-def test_sync_reads_only_site_level_amenity_rows():
-    cursor = make_cursor(rows=[])
-    sync_campsite_amenity_ids(cursor, campsite_id=5)
+def test_not_included_is_written_after_included_so_it_wins_a_collision():
+    # A subject the extractor put in both lists collides on the unique key. The
+    # not-included row must land second, so the stricter reading survives.
+    cursor = make_cursor()
+    write_unit_amenities(
+        cursor,
+        campsite_id=5,
+        accommodation_type_id=9,
+        amenity_ids=[11],
+        not_included_ids=[11],
+    )
+    polarities = [call.args[1]["polarity"] for call in cursor.execute.call_args_list]
+    assert polarities == [True, False]
+    assert "DO UPDATE" in cursor.execute.call_args.args[0]
 
-    select_sql, select_params = cursor.execute.call_args_list[0].args
-    assert "cr.accommodation_type_id IS NULL" in select_sql
-    assert "sv.category = %(amenity)s" in select_sql
-    assert select_params["amenity"] == int(SubjectCategory.AMENITY)
 
-
-def test_sync_clears_the_arrays_when_a_site_has_no_amenities():
-    cursor = make_cursor(rows=[])
-    assert sync_campsite_amenity_ids(cursor, campsite_id=5) == (0, 0)
-    written = cursor.execute.call_args.args[1]
-    assert json.loads(written["amenities"]) == []
-    assert json.loads(written["not_included"]) == []
+def test_a_unit_with_no_amenities_writes_nothing():
+    cursor = make_cursor()
+    assert (
+        write_unit_amenities(
+            cursor,
+            campsite_id=5,
+            accommodation_type_id=9,
+            amenity_ids=[],
+            not_included_ids=[],
+        )
+        == 0
+    )
+    cursor.execute.assert_not_called()
 
 
 # --- extractor payload tolerance ----------------------------------------------
@@ -200,22 +218,52 @@ def test_the_default_rules_table_is_production():
     assert "INSERT INTO campsite_rules" in cursor.execute.call_args.args[0]
 
 
-def test_the_mirror_reads_and_writes_the_injected_tables():
-    cursor = make_cursor(rows=[(11, True)])
-    sync_campsite_amenity_ids(
-        cursor,
-        campsite_id=5,
-        rules_table="test_campsite_rules",
-        subjects_table="test_subject_vectors",
-    )
-    select_sql = cursor.execute.call_args_list[0].args[0]
-    assert "FROM test_campsite_rules cr" in select_sql
-    assert "JOIN test_subject_vectors sv" in select_sql
-
-
 @pytest.mark.parametrize("table", ["campsite_rules; DROP TABLE x", "a.b", "Rules"])
 def test_a_bad_table_name_is_refused(table):
     with pytest.raises(ValueError):
         upsert_campsite_rules(
             make_cursor(), campsite_id=5, rules=[ResolvedRule(subject_id=1)], table=table
         )
+
+
+# --- truncation ---------------------------------------------------------------
+
+
+def make_extractor_response(content, finish_reason="stop"):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock as MM
+
+    from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
+
+    openai = MM()
+    openai.chat.completions.create.return_value = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=content), finish_reason=finish_reason
+            )
+        ],
+        usage=None,
+    )
+    return RuleExtractorLLMClient(openai)
+
+
+def test_a_truncated_reply_says_it_was_truncated():
+    """It used to surface as a JSON parse error and silently drop the section."""
+    client = make_extractor_response('{"statements": [{"subject": "sh', "length")
+    with pytest.raises(ValueError, match="truncated at max_tokens"):
+        client.extract("...", section_title="מה בחניון?")
+
+
+def test_a_complete_reply_parses_normally():
+    client = make_extractor_response(
+        '{"statements": [{"subject": "shower", "category": "amenity", "polarity": true}]}'
+    )
+    extract = client.extract("...", section_title="מה בחניון?")
+    assert extract.statements[0].subject == "shower"
+
+
+def test_the_token_cap_holds_a_dense_amenity_section():
+    """Akhziv's two sub-campsite lists overran 2500 and lost ~30 amenities."""
+    from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
+
+    assert RuleExtractorLLMClient.MAX_TOKENS >= 8000

@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -7,6 +8,12 @@ from pgvector.psycopg import register_vector
 
 from main import telegram_webhook
 from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
+
+# Anchored to this file, not to the working directory: the payloads sit beside
+# it, and a bare "test_cases/..." only opened when pytest was run from
+# source/test.
+FIXTURES = Path(__file__).resolve().parent
+
 
 # Minimal fake Request to pass to the handler
 class FakeRequest:
@@ -28,8 +35,7 @@ def fake_request_factory():
 @pytest.mark.asyncio
 async def test_webhook_with_trip_planning_message(fake_request_factory):
     """Test webhook with a trip-planning related message."""
-    with open("test_cases/update_yes_trip.json", "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    payload = json.loads((FIXTURES / "update_yes_trip.json").read_text(encoding="utf-8"))
 
     req = fake_request_factory(payload)
     result = await telegram_webhook(req)
@@ -40,8 +46,7 @@ async def test_webhook_with_trip_planning_message(fake_request_factory):
 @pytest.mark.asyncio
 async def test_webhook_with_non_trip_message(fake_request_factory):
     """Test webhook with a non-trip-planning message."""
-    with open("test_cases/update_non_trip.json", "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    payload = json.loads((FIXTURES / "update_non_trip.json").read_text(encoding="utf-8"))
 
     req = fake_request_factory(payload)
     result = await telegram_webhook(req)
@@ -163,20 +168,27 @@ async def test_embedding_search_fit_for_kids():
     with psycopg.connect(db_url) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            # Find the closest embedding (cosine distance via pgvector <#>)
+            # Nearest neighbour by negative inner product. The vector goes in as
+            # a parameter: a pgvector literal is a *string* — '[1,2,3]'::vector —
+            # so interpolating the bare brackets into the SQL is a syntax error
+            # at the '['. Every query in source/agent/search.py passes it as a
+            # parameter for exactly this reason.
             cur.execute(
-                f"""
-                SELECT campsite_id, claim, embedding <#> {vec_literal}::vector AS distance
-                FROM claims
-                ORDER BY embedding <#> {vec_literal}::vector
-                LIMIT 1
                 """
+                SELECT campsite_id, claim, embedding <#> %(vec)s::vector AS distance
+                FROM claims
+                WHERE embedding IS NOT NULL
+                ORDER BY embedding <#> %(vec)s::vector
+                LIMIT 1
+                """,
+                {"vec": vec_literal},
             )
             row = cur.fetchone()
             assert row is not None, "No row found"
             claim_id, claim_text, distance = row
             print(f"Closest claim: {claim_text} (id: {claim_id}, distance: {distance})")
-            # Optionally add more thorough checks here
             assert isinstance(claim_text, str)
-            assert distance >= 0
+            # `<#>` is the NEGATIVE inner product, so a close match is very
+            # negative and only an orthogonal one approaches 0.
+            assert distance <= 0
 

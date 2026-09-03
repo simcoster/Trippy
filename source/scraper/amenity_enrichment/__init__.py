@@ -5,6 +5,7 @@ from .db import (
     fill_missing_image_urls,
     load_types_with_amenities,
     update_accommodation_type_details,
+    write_unit_amenities,
 )
 from .enrich import enrich_accommodation_types
 from .html_parse import (
@@ -49,4 +50,5 @@ __all__ = [
     "parse_room_categories",
     "parse_room_tooltips",
     "update_accommodation_type_details",
+    "write_unit_amenities",
 ]

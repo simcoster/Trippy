@@ -2,7 +2,6 @@
 
 from source.scraper.rules_ingest.db import (
     ResolvedRule,
-    sync_campsite_amenity_ids,
     upsert_campsite_rules,
 )
 from source.scraper.rules_ingest.fetch import fetch_page_html
@@ -18,6 +17,5 @@ __all__ = [
     "Section",
     "fetch_page_html",
     "parse_sections",
-    "sync_campsite_amenity_ids",
     "upsert_campsite_rules",
 ]

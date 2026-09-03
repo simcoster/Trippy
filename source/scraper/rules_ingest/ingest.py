@@ -22,11 +22,7 @@ import psycopg
 from dotenv import load_dotenv
 
 from source.scraper.amenity_enrichment.llm import EmbeddingLLMClient, LlmUsage
-from source.scraper.rules_ingest.db import (
-    ResolvedRule,
-    sync_campsite_amenity_ids,
-    upsert_campsite_rules,
-)
+from source.scraper.rules_ingest.db import ResolvedRule, upsert_campsite_rules
 from source.scraper.rules_ingest.fetch import fetch_page_html
 from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
 from source.scraper.rules_ingest.sections import Section, parse_sections
@@ -160,7 +156,6 @@ def ingest_site(
     adjudicator: SubjectAdjudicatorLLMClient,
     store: SubjectStore = DEFAULT_STORE,
     rules_table: str = "campsite_rules",
-    mirror_amenities: bool = True,
     usage: LlmUsage | None = None,
 ) -> int:
     sections = parse_sections(html, source_url=site["url"])
@@ -185,19 +180,7 @@ def ingest_site(
         written = upsert_campsite_rules(
             cur, campsite_id=site["id"], rules=rules, table=rules_table
         )
-        if mirror_amenities:
-            included, not_included = sync_campsite_amenity_ids(
-                cur,
-                campsite_id=site["id"],
-                rules_table=rules_table,
-                subjects_table=store.table,
-            )
-            print(
-                f"    {written} rule(s) upserted; "
-                f"mirrored {included} amenity id(s), {not_included} not-included"
-            )
-        else:
-            print(f"    {written} rule(s) upserted (amenity mirror skipped)")
+        print(f"    {written} rule(s) upserted")
     return written
 
 

@@ -30,33 +30,57 @@ same sentence (`ניתן להדליק מצלה (מנגל) בציוד עצמי`).
 convenience — it lets the planner ask only about amenities — not an ontology. If it
 starts costing more than it saves, collapse it.
 
-### Amenities live in two places
+### `campsite_rules` is the only home for an amenity (migration `027`)
 
-`campsite_rules` and the `campsites.amenities` / `accommodation_types.amenities`
-JSONB arrays both hold `subject_vectors` ids. The planner still reads the JSONB
-arrays (`source/agent/search.py` `search_stated_amenities` / `search_site_amenities`),
-so `rules_ingest.db.sync_campsite_amenity_ids` mirrors site-level amenity rows into
-`campsites.amenities` after each ingest. That is what finally gives the site lane
-something to search — it had no writer at all before (`docs/PLAN.md`).
+Amenities used to live in two places: `campsite_rules`, and four JSONB arrays of
+`subject_vectors` ids — `amenities` / `not_included_amenities` on both `campsites`
+and `accommodation_types`. The planner's two lanes read the JSONB, so
+`rules_ingest.db.sync_campsite_amenity_ids` mirrored site-level rows into
+`campsites.amenities` after every ingest.
 
-The duplication is deliberate and temporary. The follow-up is to point the two
-search functions at `campsite_rules` and drop the four JSONB columns. Until then,
-**`campsite_rules` is the source of truth for site-level amenities** and the JSONB
-array is a derived cache; do not write it by hand.
+`027_drop_amenities_jsonb` ended that. Both lanes in `source/agent/search.py` now
+join `campsite_rules`, the mirror function is gone, and the four columns and the
+two `*_with_amenity_names` views are dropped.
 
-### `accommodation_type_id` is always NULL today
+The two arrays only ever carried one bit between them — provided, or explicitly
+not provided — which is `campsite_rules.polarity`. The equivalent of "in the
+`amenities` array" is `polarity IS DISTINCT FROM false`: a NULL polarity is a
+bare quantity ("6 fountains"), which still means the thing is there, and only an
+explicit `false` was ever a negative.
 
-The column exists and is indexed, but the info-page ingest never fills it: per-unit
-amenities already come from the availability scrape
-(`source/scraper/populate_availability.py` → `amenity_enrichment`), which reads the
-booking-site tooltips. The info page's `אפשרויות לינה` panel is a second, weaker
-source for the same data, so `sections.parse_sections` drops it on purpose.
+The two sides were **not** symmetrical, which is the part worth remembering:
 
-That leaves per-unit rules in the older shape: `accommodation_types.check_in_time`,
-`check_out_time` and the `policy_rules` JSONB (`min_weekend_nights`, `pets_allowed`,
-…) — all of which `campsite_rules` can express better. Unifying them means teaching
-`amenity_enrichment` to write `campsite_rules` with a non-NULL
-`accommodation_type_id`, and is the natural next step.
+| | before `027` |
+|---|---|
+| `campsites.amenities` | a derived mirror; safe to drop |
+| `accommodation_types.amenities` | the **only** copy of per-unit amenities — 12 types held 98 ids, and `campsite_rules` had 0 rows with an `accommodation_type_id` |
+
+So the migration backfills before it drops. Verified first in
+`temp/drop_amenities_jsonb_testbed.py`: every one of the 105 subject vectors was
+used in turn as a query, and old (JSONB) and new (`campsite_rules`) SQL returned
+identical top-5 results — 105/105 on both lanes. Then
+`temp/verify_027_roundtrip.py` ran upgrade *and* downgrade against the real rows
+inside a rolled-back transaction: all 98 ids survived, and rebuilding the arrays
+from the rows reproduced them exactly, 30/30 rows identical. That round trip is
+the actual proof that nothing lived in the JSONB the rows cannot hold.
+
+### `accommodation_type_id` is filled by the availability scrape
+
+It used to be NULL on every row. `amenity_enrichment.db.write_unit_amenities` now
+writes per-unit amenities as `campsite_rules` rows carrying the type's id, which
+is what migration `027` backfilled and what the enrichment path writes from here
+on. The info-page ingest still only writes site-level rows: the info page's
+`אפשרויות לינה` panel is a second, weaker source for per-unit data, so
+`sections.parse_sections` drops it on purpose.
+
+A subject the extractor puts in both the included and not-included list for one
+unit collides on `campsite_rules_scope_subject_key`. `write_unit_amenities`
+writes the not-included pass second, so the stricter reading survives.
+
+Still in the older shape, and the next thing to unify:
+`accommodation_types.check_in_time`, `check_out_time` and the `policy_rules`
+JSONB (`min_weekend_nights`, `pets_allowed`, …), all of which `campsite_rules`
+can express better.
 
 ### `NULLS NOT DISTINCT` is load-bearing
 
@@ -185,13 +209,19 @@ The only production change this needs is dependency injection:
 - `SubjectStore(table=..., has_context=...)` — where subjects live, and whether the
   table carries the `context` column. The table name is interpolated into SQL, so
   `SubjectStore` rejects anything that is not a plain identifier.
-- `upsert_campsite_rules(table=...)`, `sync_campsite_amenity_ids(rules_table=,
-  subjects_table=)`, `ingest_site(store=, rules_table=, mirror_amenities=)`.
+- `upsert_campsite_rules(table=...)` and `ingest_site(store=, rules_table=)`.
 
-`mirror_amenities=False` is what keeps a test run out of `campsites.amenities`,
-which is production *data* even though the schema is untouched. The room-amenity
-job likewise writes `test_accommodation_amenities` rather than
-`accommodation_types`, whose JSONB ids would otherwise point at test subjects.
+The room-amenity job writes `test_accommodation_amenities` rather than
+`accommodation_types`, so a test run's subject ids never reach production rows.
+Before migration `027` there was also a `mirror_amenities=False` switch, because
+the ingest wrote `campsites.amenities` — production *data* even when the schema
+was untouched. Dropping the mirror removed the need for it.
+
+One DI gap is worth knowing about if this pattern is extended:
+`sync_campsite_amenity_ids` hardcoded `campsites` in its `UPDATE` and could not
+be pointed at a test table at all, so `temp/split_campsites_testbed.py` had to
+copy its SQL. That function is gone, but the lesson is not — a writer that names
+its table in a literal cannot be tested against a copy.
 
 ### Context: what a subject was first read from
 
@@ -354,6 +384,21 @@ across four probes on identical input, so trust the ordering and not the absolut
 figures; and the first comparison ran the strategies sequentially and pointed the
 *wrong* way — between-session drift exceeds the effect, so the strategies must be
 interleaved round-robin. `temp/section_split_probe.py` does that.
+
+### One site can be two campsites
+
+Akhziv's amenity section lists `חניון צפוני` and `חניון דרומי` separately, each
+with its own counts. `campsite_rules` has no zone dimension — the key is
+`(campsite_id, accommodation_type_id, subject_id)` — so the southern list
+collides with the northern one and is dropped as CONFLICTING. Recorded in
+`docs/PLAN.md`; the fix is a `zone` in the key or a zone-as-accommodation-type.
+
+It also produced the first truncation: ~30 amenities with Hebrew evidence spans
+overran `MAX_TOKENS = 2500`, and the cut-off JSON surfaced as a parse error, so
+the per-section `except` dropped Akhziv's entire amenity list as if the section
+had been empty. The cap is now 8000 and a `finish_reason == "length"` raises a
+message that says truncation, because the parse error sent us looking in the
+wrong place.
 
 ### Sources not yet ingested
 

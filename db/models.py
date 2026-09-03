@@ -63,14 +63,9 @@ class Campsite(Base):
     url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     booking_hotel_id: Mapped[str | None] = mapped_column(Text, unique=True)
     google_place_id: Mapped[str | None] = mapped_column(Text)
-    # JSONB array of subject_vectors.id values, e.g. [1, 5, 12] — site-wide /
-    # communal features (a shared fridge block, showers, a lake nearby), not
-    # per-unit. Mirrored from site-level campsite_rules by
-    # `source.scraper.rules_ingest.db.sync_campsite_amenity_ids`.
-    # Readable join of ids → names: view campsites_with_amenity_names
-    amenities = mapped_column(JSONB)
-    # JSONB array of subject_vectors.id values the site explicitly does not provide
-    not_included_amenities = mapped_column(JSONB)
+    # Site-wide amenities are `campsite_rules` rows with a NULL
+    # accommodation_type_id; the `amenities` / `not_included_amenities` JSONB
+    # mirrors of them were dropped in migration 027.
 
     availability: Mapped[list[Availability]] = relationship(back_populates="campsite")
     accommodation_types: Mapped[list[AccommodationType]] = relationship(
@@ -316,11 +311,9 @@ class AccommodationType(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     # Raw Hebrew tooltip text sent to the extraction LLM.
     description: Mapped[str | None] = mapped_column(Text)
-    # JSONB array of subject_vectors.id values, e.g. [1, 5, 12]
-    amenities = mapped_column(JSONB)
-    # JSONB array of subject_vectors.id values that are explicitly not included
-    not_included_amenities = mapped_column(JSONB)
-    # Readable join of amenity ids → names: view accommodation_types_with_amenity_names
+    # Per-unit amenities are `campsite_rules` rows carrying this type's id;
+    # the `amenities` / `not_included_amenities` JSONB arrays that used to hold
+    # them were dropped in migration 027, which backfilled them into rows.
     max_occupancy: Mapped[int | None] = mapped_column(Integer)
     total_beds: Mapped[int | None] = mapped_column(Integer)
     # Connected rooms/units in this listing (e.g. 2 for "שתי חושות מחוברות"). Default 1.

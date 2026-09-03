@@ -222,7 +222,7 @@ def test_the_resolver_cache_is_shared_across_sections():
     assert len(seen) == 2 and seen[0] is seen[1]
 
 
-def test_ingest_site_writes_rules_then_mirrors_the_amenity_ids():
+def test_ingest_site_writes_the_rules_it_extracted():
     html = FIXTURE.read_text(encoding="utf-8")
     site = {"id": 5, "name": "חורשת טל", "url": "https://x"}
     conn = MagicMock()
@@ -235,10 +235,6 @@ def test_ingest_site_writes_rules_then_mirrors_the_amenity_ids():
         patch(
             "source.scraper.rules_ingest.ingest.upsert_campsite_rules", return_value=1
         ) as upsert,
-        patch(
-            "source.scraper.rules_ingest.ingest.sync_campsite_amenity_ids",
-            return_value=(3, 1),
-        ) as sync,
     ):
         written = ingest_site(
             conn,
@@ -251,7 +247,6 @@ def test_ingest_site_writes_rules_then_mirrors_the_amenity_ids():
 
     assert written == 1
     assert upsert.call_args.kwargs["campsite_id"] == 5
-    assert sync.call_args.kwargs["campsite_id"] == 5
 
 
 def test_ingest_site_writes_nothing_when_no_statements_are_extracted():
@@ -261,7 +256,6 @@ def test_ingest_site_writes_nothing_when_no_statements_are_extracted():
             "source.scraper.rules_ingest.ingest.rules_from_sections", return_value=[]
         ),
         patch("source.scraper.rules_ingest.ingest.upsert_campsite_rules") as upsert,
-        patch("source.scraper.rules_ingest.ingest.sync_campsite_amenity_ids") as sync,
     ):
         written = ingest_site(
             MagicMock(),
@@ -274,7 +268,6 @@ def test_ingest_site_writes_nothing_when_no_statements_are_extracted():
 
     assert written == 0
     upsert.assert_not_called()
-    sync.assert_not_called()
 
 
 def test_ingest_site_on_a_page_with_no_sections_does_nothing():
@@ -354,32 +347,6 @@ def test_the_store_reaches_the_resolver():
             store=store,
         )
     assert resolve.call_args.kwargs["store"] is store
-
-
-def test_ingest_site_can_skip_the_production_amenity_mirror():
-    html = FIXTURE.read_text(encoding="utf-8")
-    with (
-        patch(
-            "source.scraper.rules_ingest.ingest.rules_from_sections",
-            return_value=[MagicMock(subject_id=1)],
-        ),
-        patch(
-            "source.scraper.rules_ingest.ingest.upsert_campsite_rules", return_value=1
-        ),
-        patch(
-            "source.scraper.rules_ingest.ingest.sync_campsite_amenity_ids"
-        ) as sync,
-    ):
-        ingest_site(
-            MagicMock(),
-            {"id": 5, "name": "x", "url": "https://x"},
-            html,
-            extractor=MagicMock(),
-            embedder=MagicMock(),
-            adjudicator=MagicMock(),
-            mirror_amenities=False,
-        )
-    sync.assert_not_called()
 
 
 def test_a_statement_with_neither_polarity_nor_qualifier_is_dropped():

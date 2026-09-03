@@ -7,6 +7,7 @@ from typing import Any
 from .db import (
     ensure_amenities,
     update_accommodation_type_details,
+    write_unit_amenities,
 )
 from .html_parse import MAX_IMAGE_URLS
 from .llm import EmbeddingLLMClient, ExtractorLLMClient, LlmUsage
@@ -100,9 +101,15 @@ def enrich_accommodation_types(
                 accommodation_type_id=accom_id,
                 description=descriptions[name],
                 details=details,
+                image_urls=image_urls,
+            )
+            # Amenities are rows now, not two JSONB arrays on the type.
+            write_unit_amenities(
+                cur,
+                campsite_id=hotel_id,
+                accommodation_type_id=accom_id,
                 amenity_ids=amenity_ids,
                 not_included_ids=not_included_ids,
-                image_urls=image_urls,
             )
             enriched.add(name)
             print(

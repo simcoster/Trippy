@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from decimal import Decimal
 
-from db.models import QualifierUnit, SubjectCategory
+from db.models import QualifierUnit
 from source.scraper.subjects.resolve import ensure_table_name
 
 UPSERT_RULE_TEMPLATE = """
@@ -29,26 +28,6 @@ SET polarity = EXCLUDED.polarity,
     confidence = EXCLUDED.confidence,
     updated_at = now()
 """
-
-# Site-level amenities, split by polarity, mirrored into the JSONB arrays the
-# planner's site lane reads (source/agent/search.py:search_site_amenities).
-SYNC_AMENITY_IDS_TEMPLATE = """
-UPDATE campsites
-SET amenities = %(amenities)s::jsonb,
-    not_included_amenities = %(not_included)s::jsonb
-WHERE id = %(campsite_id)s
-"""
-
-SELECT_SITE_AMENITY_IDS_TEMPLATE = """
-SELECT cr.subject_id, cr.polarity
-FROM {rules_table} cr
-JOIN {subjects_table} sv ON sv.id = cr.subject_id
-WHERE cr.campsite_id = %(campsite_id)s
-  AND cr.accommodation_type_id IS NULL
-  AND sv.category = %(amenity)s
-ORDER BY sv.name
-"""
-
 
 @dataclass(frozen=True)
 class ResolvedRule:
@@ -118,42 +97,3 @@ def upsert_campsite_rules(
         )
         written += 1
     return written
-
-
-def sync_campsite_amenity_ids(
-    cur,
-    *,
-    campsite_id: int,
-    rules_table: str = "campsite_rules",
-    subjects_table: str = "subject_vectors",
-) -> tuple[int, int]:
-    """Mirror site-level amenity rules into campsites.amenities.
-
-    The planner's site lane reads the JSONB arrays, not campsite_rules, so this
-    is what makes the ingested amenities searchable today. Returns
-    (included, not_included) counts. See docs/design.md — the duplication is
-    deliberate and temporary.
-    """
-    cur.execute(
-        SELECT_SITE_AMENITY_IDS_TEMPLATE.format(
-            rules_table=ensure_table_name(rules_table),
-            subjects_table=ensure_table_name(subjects_table),
-        ),
-        {"campsite_id": campsite_id, "amenity": int(SubjectCategory.AMENITY)},
-    )
-    included: list[int] = []
-    not_included: list[int] = []
-    for subject_id, polarity in cur.fetchall():
-        # polarity None means a bare quantity, which still describes something
-        # the site has; only an explicit False is a negative.
-        (not_included if polarity is False else included).append(int(subject_id))
-
-    cur.execute(
-        SYNC_AMENITY_IDS_TEMPLATE,
-        {
-            "campsite_id": campsite_id,
-            "amenities": json.dumps(included),
-            "not_included": json.dumps(not_included),
-        },
-    )
-    return len(included), len(not_included)
