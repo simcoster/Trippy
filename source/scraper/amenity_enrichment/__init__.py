@@ -5,6 +5,7 @@ from .db import (
     fill_missing_image_urls,
     load_types_with_amenities,
     update_accommodation_type_details,
+    write_unit_amenities,
 )
 from .enrich import enrich_accommodation_types
 from .html_parse import (
@@ -13,14 +14,14 @@ from .html_parse import (
     parse_room_tooltips,
 )
 from .llm import (
+    QWEN_INSTRUCT_30B_MODEL,
+    QWEN_INSTRUCT_MODEL,
     AgentChatClient,
     ClaimsEmbeddingLLMClient,
     EmbeddingLLMClient,
     ExtractorLLMClient,
     LlmUsage,
     PlaceEnrichmentLLMClient,
-    QWEN_INSTRUCT_30B_MODEL,
-    QWEN_INSTRUCT_MODEL,
     amenity_llm_clients,
     make_agent_chat_model,
     make_nebius_openai_client,
@@ -49,4 +50,5 @@ __all__ = [
     "parse_room_categories",
     "parse_room_tooltips",
     "update_accommodation_type_details",
+    "write_unit_amenities",
 ]

@@ -1,0 +1,458 @@
+"""Resolve a raw term to a `subject_vectors` row, growing aliases as it goes.
+
+The point is that `air_conditioner` and `air_conditioning` must land on one row
+with one vector, while `dogs_allowed` and `last_dogs_entry_time` must stay
+apart. Exact-alias lookup handles everything already seen; only genuinely new
+surface forms pay for an embedding and two small-LLM calls.
+
+    term -> normalize + force positive phrasing
+         -> exact hit on aliases (GIN)                        [no LLM]
+         -> 5 nearest by <#>, filtered, adjudicate             [1 LLM call]
+            -> match: append the term as an alias, done
+         -> classify into category + canonical name            [1 LLM call]
+            -> canonical already exists: append alias, done
+            -> else insert, embedding the CANONICAL name
+
+Three filters stand between "near in the vector space" and "same subject", and
+each exists because the adjudicator merged something it should not have:
+
+  distance   too far to be worth asking about
+  category   a rule is never an amenity — `barbecue_allowed` vs `barbecue`
+  opposed    antonyms are opposite facts — `child_min_age` vs `child_max_age`
+  predicate  different trailing predicate, different fact — `barbecue_allowed`
+             vs `barbecue_equipment_included`
+
+Every resolution emits a one-line trace of what was considered and why it landed
+where it did. Over-merges are silent without it (see docs/design.md).
+
+Embeddings are cast through a literal `%s::vector`, so callers do not need
+`register_vector` on the connection.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+
+from db.models import SubjectCategory
+from source.scraper.amenity_enrichment.llm import EmbeddingLLMClient, LlmUsage
+from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
+from source.scraper.subjects.naming import (
+    normalize_alias,
+    opposed,
+    same_predicate,
+    to_positive_subject,
+)
+
+# Five nearest, per the resolution design; `<#>` is negative inner product, so
+# more-negative is closer. Mirrors AMENITY_MATCH_MAX_DISTANCE in the planner.
+NEAREST_K = 5
+MATCH_MAX_DISTANCE = -0.75
+
+# Why a nearest neighbour never reached the adjudicator.
+REJECT_FAR = "far"
+REJECT_CATEGORY = "category"
+REJECT_PREDICATE = "predicate"
+REJECT_OPPOSED = "opposed"
+
+_IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def ensure_table_name(name: str) -> str:
+    """Return `name` if it is a plain table identifier, else raise.
+
+    Table names are injected so experiments can target `test_*` copies, which
+    means they get interpolated into SQL rather than passed as parameters.
+    """
+    if not _IDENT_RE.fullmatch(name or ""):
+        raise ValueError(f"not a plain table identifier: {name!r}")
+    return name
+
+
+@dataclass(frozen=True)
+class SubjectStore:
+    """Which table holds the subjects, and what it can store.
+
+    Injected so an ingestion experiment can point at `test_subject_vectors`
+    without the production schema being touched. The table name is interpolated
+    into SQL, so it is checked against a plain-identifier pattern.
+
+    `has_context` says whether the table carries the `context` column: the
+    sentence a subject was first read from, shown to the sameness judge so it
+    can tell a communal toilet block from an in-room bathroom.
+    """
+
+    table: str = "subject_vectors"
+    has_context: bool = True
+
+    def __post_init__(self) -> None:
+        ensure_table_name(self.table)
+
+
+DEFAULT_STORE = SubjectStore()
+
+
+@dataclass(frozen=True)
+class SubjectRef:
+    """A resolved subject, plus any polarity implied by the term's phrasing."""
+
+    id: int
+    name: str
+    category: int
+    # False when the incoming term was negatively phrased ("no dogs") and the
+    # negation was moved out of the name. None when the term said nothing.
+    implied_polarity: bool | None = None
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """One nearest neighbour and what became of it."""
+
+    id: int
+    name: str
+    distance: float
+    category: int
+    # None means it was offered to the adjudicator.
+    rejected_for: str | None = None
+    # What this subject was first read from, when the store keeps it.
+    context: str | None = None
+
+
+@dataclass
+class ResolutionTrace:
+    """What was considered for one term, and how it was decided."""
+
+    term: str
+    normalized: str
+    category: int | None = None
+    candidates: list[Candidate] = field(default_factory=list)
+    outcome: str = ""
+    subject_id: int | None = None
+    subject_name: str | None = None
+
+    @property
+    def offered(self) -> list[Candidate]:
+        return [c for c in self.candidates if c.rejected_for is None]
+
+
+def category_label(category: int | None) -> str:
+    if category is None:
+        return "?"
+    try:
+        return SubjectCategory(int(category)).name.lower()
+    except ValueError:
+        return str(category)
+
+
+def format_trace(trace: ResolutionTrace) -> str:
+    """The one-line story of a resolution, for the ingest log."""
+    head = f"{trace.term!r} from extractor ({category_label(trace.category)})."
+    if not trace.candidates:
+        return f"    {head} {trace.outcome}"
+
+    listed = ", ".join(
+        f"{c.name} {c.distance:+.3f}"
+        + (f"[{c.rejected_for}]" if c.rejected_for else "")
+        for c in trace.candidates
+    )
+    return (
+        f"    {head} no alias match. ran NN, top {len(trace.candidates)}: "
+        f"[{listed}]. considered {len(trace.offered)}. {trace.outcome}"
+    )
+
+
+def vector_literal(values: list[float]) -> str:
+    """pgvector literal, matching `source.agent.search._query_vec_literal`."""
+    return "[" + ",".join(f"{x:.8f}" for x in values) + "]"
+
+
+def resolve_subject(
+    conn,
+    term: str,
+    *,
+    embedder: EmbeddingLLMClient,
+    adjudicator: SubjectAdjudicatorLLMClient,
+    category: int | None = None,
+    context: str | None = None,
+    store: SubjectStore = DEFAULT_STORE,
+    cache: dict[str, SubjectRef] | None = None,
+    usage: LlmUsage | None = None,
+    trace_sink: list[ResolutionTrace] | None = None,
+    verbose: bool = True,
+) -> SubjectRef | None:
+    """Return the subject this term names, creating it if it is genuinely new.
+
+    `category` is what the extractor read off the sentence — it has context a
+    bare term does not, so it beats the classifier's guess and keeps rules and
+    amenities out of each other's candidate lists. None searches every category.
+
+    `context` is the sentence the term was read from. It is stored with a new
+    subject and shown to the sameness judge on later comparisons, which is how
+    `toilets` (a 30-stall communal block) stays apart from `bathroom` (in a
+    room) when the names alone give no clue.
+
+    None is returned when the term was empty, or so negatively phrased it could
+    not be rewritten into a positive subject; drop the statement.
+    """
+    raw_key = normalize_alias(term)
+    if not raw_key:
+        return None
+    if cache is not None and raw_key in cache:
+        return cache[raw_key]
+
+    trace = ResolutionTrace(term=term, normalized=raw_key, category=category)
+    positive, implied = to_positive_subject(raw_key)
+    if positive is None:
+        trace.outcome = "DROPPED (negative phrasing that cannot be made positive)."
+        _emit(trace, trace_sink, verbose)
+        return None
+    trace.normalized = positive
+
+    ref = _resolve_positive(
+        conn,
+        positive,
+        embedder=embedder,
+        adjudicator=adjudicator,
+        category=category,
+        context=context,
+        store=store,
+        usage=usage,
+        trace=trace,
+    )
+    _emit(trace, trace_sink, verbose)
+    if ref is None:
+        return None
+
+    ref = SubjectRef(ref.id, ref.name, ref.category, implied)
+    if cache is not None:
+        cache[raw_key] = ref
+    return ref
+
+
+def _emit(
+    trace: ResolutionTrace,
+    trace_sink: list[ResolutionTrace] | None,
+    verbose: bool,
+) -> None:
+    if trace_sink is not None:
+        trace_sink.append(trace)
+    if verbose:
+        print(format_trace(trace))
+
+
+def _resolve_positive(
+    conn,
+    key: str,
+    *,
+    embedder: EmbeddingLLMClient,
+    adjudicator: SubjectAdjudicatorLLMClient,
+    category: int | None,
+    context: str | None,
+    store: SubjectStore,
+    usage: LlmUsage | None,
+    trace: ResolutionTrace,
+) -> SubjectRef | None:
+    hit = _select_by_alias(conn, key, store)
+    if hit is not None:
+        trace.outcome = f"alias hit -> {hit.name!r}."
+        trace.subject_id, trace.subject_name = hit.id, hit.name
+        return hit
+
+    probe = embedder.embed([key], usage=usage)[0]
+    # The category filter belongs in the SQL: filtering afterwards spends all
+    # five slots on the wrong category and can leave nothing to consider.
+    trace.candidates = [
+        _judge_candidate(key, row, category)
+        for row in _nearest(conn, probe, NEAREST_K, category=category, store=store)
+    ]
+    offered = trace.offered
+
+    matched = None
+    if offered:
+        matched = adjudicator.pick_match(
+            key,
+            [c.name for c in offered],
+            term_context=context,
+            candidate_contexts={c.name: c.context for c in offered if c.context},
+            usage=usage,
+        )
+    if matched is not None:
+        winner = next(c for c in offered if c.name == matched)
+        _append_alias(conn, winner.id, key, store)
+        trace.outcome = f"ADJUDICATOR merged into {matched!r}."
+        trace.subject_id, trace.subject_name = winner.id, winner.name
+        return SubjectRef(winner.id, winner.name, winner.category)
+
+    payload = adjudicator.classify(key, context=context, usage=usage)
+    canonical, _ = to_positive_subject(payload.canonical_name)
+    if canonical is None:
+        # The classifier proposed something unrewritable; the term is already
+        # positive, so use it rather than losing the statement.
+        canonical = key
+    # The extractor read the sentence; the classifier saw one word and its context.
+    resolved_category = int(category if category is not None else payload.category)
+    verdict = "ADJUDICATOR rejected all." if offered else "nothing near enough to ask."
+
+    existing = _select_by_name(conn, canonical, store)
+    if existing is not None:
+        _append_alias(conn, existing.id, key, store)
+        trace.outcome = (
+            f"{verdict} classified as {canonical!r}, which already exists -> aliased."
+        )
+        trace.subject_id, trace.subject_name = existing.id, existing.name
+        return existing
+
+    aliases = [canonical] if canonical == key else [canonical, key]
+    # Embed the canonical name, not the surface form, so the vector stays put
+    # as more aliases accrue to this row.
+    vector = embedder.embed([canonical], usage=usage)[0]
+    inserted = _insert(
+        conn, canonical, resolved_category, aliases, vector, context, store
+    )
+    trace.outcome = (
+        f"{verdict} classified as {category_label(resolved_category)} "
+        f"{canonical!r}. INSERTED."
+    )
+    trace.subject_id, trace.subject_name = inserted.id, inserted.name
+    return inserted
+
+
+def _judge_candidate(
+    key: str,
+    row: tuple[int, str, int, float, str | None],
+    category: int | None,
+) -> Candidate:
+    subject_id, name, row_category, distance, context = row
+    if distance > MATCH_MAX_DISTANCE:
+        reason = REJECT_FAR
+    elif category is not None and int(row_category) != int(category):
+        # Belt and braces: the SQL already filtered, so this only fires when the
+        # caller passed no category to the query.
+        reason = REJECT_CATEGORY
+    elif opposed(key, name):
+        # min vs max, start vs end: opposite facts wearing near-identical names.
+        reason = REJECT_OPPOSED
+    elif not same_predicate(key, name, category=category or row_category):
+        reason = REJECT_PREDICATE
+    else:
+        reason = None
+    return Candidate(
+        id=subject_id,
+        name=name,
+        distance=distance,
+        category=row_category,
+        rejected_for=reason,
+        context=context,
+    )
+
+
+def _select_by_alias(conn, key: str, store: SubjectStore) -> SubjectRef | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT id, name, category
+            FROM {store.table}
+            WHERE aliases @> ARRAY[%s]::text[]
+            LIMIT 1
+            """,
+            (key,),
+        )
+        row = cur.fetchone()
+    return None if row is None else SubjectRef(int(row[0]), row[1], int(row[2]))
+
+
+def _select_by_name(conn, name: str, store: SubjectStore) -> SubjectRef | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT id, name, category FROM {store.table} WHERE name = %s",
+            (name,),
+        )
+        row = cur.fetchone()
+    return None if row is None else SubjectRef(int(row[0]), row[1], int(row[2]))
+
+
+def _nearest(
+    conn,
+    probe: list[float],
+    limit: int,
+    *,
+    category: int | None = None,
+    store: SubjectStore = DEFAULT_STORE,
+) -> list[tuple[int, str, int, float, str | None]]:
+    """The `limit` nearest subjects, restricted to one category when given.
+
+    Restricting in SQL rather than afterwards is the point: the partial HNSW
+    indexes from migration 025 serve exactly this, and a post-filter would spend
+    all `limit` slots on the wrong category and return nothing to consider.
+    """
+    literal = vector_literal(probe)
+    context_col = "context" if store.has_context else "NULL::text"
+    clauses = ["embedding IS NOT NULL"]
+    params: list[object] = [literal]
+    if category is not None:
+        clauses.append("category = %s")
+        params.append(int(category))
+    params.extend([literal, limit])
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT id, name, category, embedding <#> %s::vector AS distance,
+                   {context_col} AS context
+            FROM {store.table}
+            WHERE {" AND ".join(clauses)}
+            ORDER BY embedding <#> %s::vector
+            LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    return [(int(r[0]), r[1], int(r[2]), float(r[3]), r[4]) for r in rows]
+
+
+def _append_alias(conn, subject_id: int, key: str, store: SubjectStore) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE {store.table}
+            SET aliases = array_append(aliases, %(alias)s)
+            WHERE id = %(id)s
+              AND NOT (aliases @> ARRAY[%(alias)s]::text[])
+            """,
+            {"id": subject_id, "alias": key},
+        )
+
+
+def _insert(
+    conn,
+    name: str,
+    category: int,
+    aliases: list[str],
+    vector: list[float],
+    context: str | None = None,
+    store: SubjectStore = DEFAULT_STORE,
+) -> SubjectRef:
+    columns = ["name", "category", "aliases", "embedding"]
+    values = ["%(name)s", "%(category)s", "%(aliases)s", "%(embedding)s::vector"]
+    params: dict[str, object] = {
+        "name": name,
+        "category": int(category),
+        "aliases": aliases,
+        "embedding": vector_literal(vector),
+    }
+    if store.has_context:
+        columns.append("context")
+        values.append("%(context)s")
+        params["context"] = context
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO {store.table} ({", ".join(columns)})
+            VALUES ({", ".join(values)})
+            ON CONFLICT (name) DO UPDATE
+            SET embedding = COALESCE({store.table}.embedding, EXCLUDED.embedding)
+            RETURNING id, name, category
+            """,
+            params,
+        )
+        row = cur.fetchone()
+    return SubjectRef(int(row[0]), row[1], int(row[2]))

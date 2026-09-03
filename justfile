@@ -3,7 +3,15 @@
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-export PYTHONPATH := "source/scraper"
+# Both, and the repo root first. `source/scraper` is what lets the scrapers'
+# bare `from amenity_enrichment import ...` / `from info_site import ...`
+# imports resolve; the repo root is what lets those same modules reach `db.models`
+# and `source.scraper.*`. Without the root, running a scraper as a script put
+# only `source/scraper` on the path and `just scrape-availability` died at
+# import with "No module named 'db'" — a script's sys.path[0] is its own
+# directory, never the working directory.
+path_sep := if os_family() == "windows" { ";" } else { ":" }
+export PYTHONPATH := justfile_directory() + path_sep + justfile_directory() / "source/scraper"
 
 [private]
 default:
@@ -42,6 +50,10 @@ scrape-availability:
 # Google Place Details → reviews + claims (newest). Seed: just populate-reviews -- --most-relevant
 populate-reviews *args:
     uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
+
+# info-site static pages -> campsite_rules (site-level rules + amenities)
+ingest-rules *args:
+    uv run python -m source.scraper.rules_ingest.ingest {{ trim_start_match(args, "-- ") }}
 
 # Truncate accommodation_types (CASCADE to availability); keep prices
 clear-data:

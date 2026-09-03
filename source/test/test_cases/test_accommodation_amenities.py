@@ -1,4 +1,8 @@
-"""Failing tomorrow-target: first campsite rooms must carry amenity ids with embeddings."""
+"""First campsite rooms must carry amenity subjects, and those must be embedded.
+
+Reads `campsite_rules` rather than the `accommodation_types.amenities` JSONB,
+which migration 027 dropped after backfilling it into rows.
+"""
 
 from __future__ import annotations
 
@@ -33,10 +37,13 @@ def test_first_site_accommodation_has_amenities_with_embeddings(conn):
         site_id, site_name = site
         cur.execute(
             """
-            SELECT id, name, amenities
-            FROM accommodation_types
-            WHERE hotel_id = %s
-            ORDER BY id
+            SELECT at.id, at.name,
+                   array_remove(array_agg(cr.subject_id), NULL) AS amenity_ids
+            FROM accommodation_types at
+            LEFT JOIN campsite_rules cr ON cr.accommodation_type_id = at.id
+            WHERE at.hotel_id = %s
+            GROUP BY at.id, at.name
+            ORDER BY at.id
             """,
             (site_id,),
         )
@@ -47,19 +54,13 @@ def test_first_site_accommodation_has_amenities_with_embeddings(conn):
 
         accom_id, accom_name, amenity_ids = types[0]
         assert amenity_ids, (
-            f"accommodation_type {accom_id} ({accom_name!r}) has empty amenities"
-        )
-        assert isinstance(amenity_ids, list), (
-            f"amenities should be a JSON list of ids, got {type(amenity_ids).__name__}"
-        )
-        assert all(isinstance(a, int) for a in amenity_ids), (
-            f"amenities must be amenity ids (ints), got {amenity_ids!r}"
+            f"accommodation_type {accom_id} ({accom_name!r}) has no campsite_rules rows"
         )
 
         cur.execute(
             """
             SELECT id, name, embedding IS NOT NULL AS has_embedding
-            FROM amenities
+            FROM subject_vectors
             WHERE id = ANY(%s)
             ORDER BY id
             """,

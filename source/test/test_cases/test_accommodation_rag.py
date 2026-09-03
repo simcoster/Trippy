@@ -4,27 +4,19 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 import psycopg
-import pytest
 from dotenv import load_dotenv
-from pgvector.psycopg import register_vector
+
+from source.agent.search import search_stated_amenities
 
 load_dotenv()
 
-FIXTURES_DIR = Path(__file__).resolve().parent / "test_cases"
+# This file already lives in test_cases/, so the fixtures sit beside it.
+FIXTURES_DIR = Path(__file__).resolve().parent
 BARBECUE_QUERY_CACHE = FIXTURES_DIR / "barbecue_query_embedding.json"
-
-
-@dataclass
-class AccommodationMatch:
-    id: int
-    name: str
-    matched_amenity: str
-    distance: float
 
 
 def _db_url() -> str:
@@ -34,74 +26,70 @@ def _db_url() -> str:
 
 
 @lru_cache
-def load_barbecue_query_embedding() -> tuple[str, list[float]]:
-    """Load cached query text + embedding (see test_cases/barbecue_query_embedding.json)."""
+def load_barbecue_query_embedding() -> tuple[str, str]:
+    """Cached query text + embedding, so the test costs no LLM call.
+
+    Returned as a pgvector literal string, which is what
+    `search_stated_amenities(embedding=...)` takes.
+    """
     data = json.loads(BARBECUE_QUERY_CACHE.read_text(encoding="utf-8"))
     query = data["query"]
     embedding = data["embedding"]
     assert isinstance(query, str) and query.strip(), "cache must include query text"
     assert isinstance(embedding, list) and embedding, "cache must include embedding"
     assert len(embedding) == data.get("dimensions", len(embedding))
-    return query, embedding
+    return query, "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
 
 
-def search_accommodations_by_amenity(
-    conn,
-    embedding: list[float],
-    *,
-    limit: int = 5,
-) -> list[AccommodationMatch]:
-    """Rank accommodation types by closest embedded amenity to the query vector."""
-    register_vector(conn)
-    with conn.cursor() as cur:
+def trailer_parking_type_id() -> int:
+    """The unit type that offers trailer parking, found by its own amenity.
+
+    Not a hardcoded id: this test used to assert `id == 1`, which stopped being
+    the trailer spot (id 1 is the tent pitch, id 2 the caravan bay) and turned a
+    data change into a search failure.
+    """
+    with psycopg.connect(_db_url()) as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT at.id,
-                   at.name,
-                   MIN(a.embedding <#> %s::vector) AS distance,
-                   (array_agg(a.name ORDER BY a.embedding <#> %s::vector))[1]
-                       AS matched_amenity
-            FROM accommodation_types at
-            CROSS JOIN LATERAL jsonb_array_elements(at.amenities) AS elem(val)
-            JOIN amenities a ON a.id = (elem.val)::int
-            WHERE a.embedding IS NOT NULL
-              AND at.amenities IS NOT NULL
-            GROUP BY at.id, at.name
-            ORDER BY distance
-            LIMIT %s
-            """,
-            (embedding, embedding, limit),
+            SELECT cr.accommodation_type_id
+            FROM campsite_rules cr
+            JOIN subject_vectors sv ON sv.id = cr.subject_id
+            WHERE sv.name = 'trailer_parking'
+              AND cr.accommodation_type_id IS NOT NULL
+            ORDER BY cr.accommodation_type_id
+            LIMIT 1
+            """
         )
-        rows = cur.fetchall()
-    return [
-        AccommodationMatch(
-            id=int(row[0]),
-            name=row[1],
-            distance=float(row[2]),
-            matched_amenity=row[3],
-        )
-        for row in rows
-    ]
+        row = cur.fetchone()
+    assert row is not None, "no accommodation type offers trailer_parking"
+    return int(row[0])
 
 
-@pytest.fixture
-def conn():
-    with psycopg.connect(_db_url()) as connection:
-        yield connection
+def test_barbecue_query_returns_trailer_parking_spot():
+    """Semantic amenity search: 'barbecue' → the trailer spot, via its grill.
 
+    Calls the shipped `search_stated_amenities` rather than a copy of its SQL.
+    The copy this test used to carry still read `accommodation_types.amenities`
+    and broke silently when migration 027 dropped it — the point of a search
+    test is the query that actually ships.
 
-def test_barbecue_query_returns_trailer_parking_spot(conn):
-    """Semantic amenity search: 'barbecue' → trailer spot (id=1) via fire pit."""
+    The amenity is matched by shape, not by name: the subject was
+    `barbecue_pit` when this was written and is `personal_grill_station` now.
+    What the test is really asserting is that an English query reaches a Hebrew
+    tooltip's grill through the embedding, whatever that subject ends up called.
+    """
     query, embedding = load_barbecue_query_embedding()
     assert query == "barbecue"
 
-    results = search_accommodations_by_amenity(conn, embedding, limit=5)
+    results = search_stated_amenities(query, limit=5, embedding=embedding)
     assert results, "expected at least one accommodation match"
+    assert "error" not in results[0], results[0]
 
     top = results[0]
-    assert top.id == 1, (
-        f"expected trailer parking spot id=1, got id={top.id} ({top.name!r})"
+    assert top["accommodation_type_id"] == trailer_parking_type_id(), (
+        f"expected the trailer parking spot, got "
+        f"id={top['accommodation_type_id']} ({top['accommodation_type']!r})"
     )
-    assert top.matched_amenity == "barbecue_pit", (
-        f"expected fire-pit amenity match, got {top.matched_amenity!r}"
+    assert any(word in top["amenity"] for word in ("grill", "barbecue", "fire")), (
+        f"expected a grill-shaped amenity match, got {top['amenity']!r}"
     )

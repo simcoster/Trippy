@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from langchain_core.tools import StructuredTool
 from pgvector.psycopg import register_vector
 
+from db.models import SubjectCategory
 from source.agent.constraints import claim_recency, today_il
 from source.agent.dates import iso_day, parse_iso_day, stay_night_starts
 from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
@@ -404,8 +405,19 @@ def search_stated_amenities(
     if accommodation_type_ids is not None and not accommodation_type_ids:
         return []
     vec_literal = embedding or _query_vec_literal(query)
-    clauses = ["a.embedding IS NOT NULL", "at.amenities IS NOT NULL"]
-    params: list[Any] = [vec_literal, vec_literal]
+    # Per-unit amenities are `campsite_rules` rows scoped to the type. The
+    # `accommodation_types.amenities` JSONB this used to read was dropped in
+    # migration 027; see docs/design.md.
+    clauses = [
+        "a.embedding IS NOT NULL",
+        "a.category = %s",
+        # An amenity array only ever held things the unit has. A NULL polarity
+        # is a bare quantity, which still describes something present; only an
+        # explicit false is a negative, and those were the separate
+        # `not_included_amenities` array that this lane never read.
+        "cr.polarity IS DISTINCT FROM false",
+    ]
+    params: list[Any] = [vec_literal, vec_literal, int(SubjectCategory.AMENITY)]
     if accommodation_type_ids is not None:
         clauses.append("at.id = ANY(%s)")
         params.append([int(x) for x in accommodation_type_ids])
@@ -418,8 +430,8 @@ def search_stated_amenities(
                (array_agg(a.name ORDER BY a.embedding <#> %s::vector))[1]
                    AS matched_amenity
         FROM accommodation_types at
-        CROSS JOIN LATERAL jsonb_array_elements(at.amenities) AS elem(val)
-        JOIN amenities a ON a.id = (elem.val)::int
+        JOIN campsite_rules cr ON cr.accommodation_type_id = at.id
+        JOIN subject_vectors a ON a.id = cr.subject_id
         WHERE {' AND '.join(clauses)}
         GROUP BY at.id, at.name, at.hotel_id
         ORDER BY distance
@@ -459,8 +471,15 @@ def search_site_amenities(
     if campsite_ids is not None and not campsite_ids:
         return []
     vec_literal = embedding or _query_vec_literal(query)
-    clauses = ["a.embedding IS NOT NULL", "c.amenities IS NOT NULL"]
-    params: list[Any] = [vec_literal, vec_literal]
+    # Site-wide amenities are `campsite_rules` rows with no accommodation type.
+    # `campsites.amenities` was a mirror of exactly these rows and was dropped
+    # in migration 027, along with the sync step that maintained it.
+    clauses = [
+        "a.embedding IS NOT NULL",
+        "a.category = %s",
+        "cr.polarity IS DISTINCT FROM false",
+    ]
+    params: list[Any] = [vec_literal, vec_literal, int(SubjectCategory.AMENITY)]
     if campsite_ids is not None:
         clauses.append("c.id = ANY(%s)")
         params.append([int(x) for x in campsite_ids])
@@ -472,8 +491,9 @@ def search_site_amenities(
                (array_agg(a.name ORDER BY a.embedding <#> %s::vector))[1]
                    AS matched_amenity
         FROM campsites c
-        CROSS JOIN LATERAL jsonb_array_elements(c.amenities) AS elem(val)
-        JOIN amenities a ON a.id = (elem.val)::int
+        JOIN campsite_rules cr
+          ON cr.campsite_id = c.id AND cr.accommodation_type_id IS NULL
+        JOIN subject_vectors a ON a.id = cr.subject_id
         WHERE {' AND '.join(clauses)}
         GROUP BY c.id, c.name
         ORDER BY distance
