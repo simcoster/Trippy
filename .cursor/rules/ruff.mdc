@@ -11,6 +11,6 @@ alwaysApply: true
 uv run ruff check path/to/file.py
 ```
 
-If Ruff reports import-order (`I`) or unused-import (`F401`) issues you introduced, fix them (`uv run ruff check --fix path/to/file.py` is fine for safe auto-fixes). Do not leave a new or import-edited file with Ruff errors.
+If Ruff reports import-order (`I`) or unused-import (`F401`) issues **you introduced**, fix them — by hand, on your own lines. `uv run ruff check --fix path/to/file.py` re-sorts every import block in the file, including ones you never touched, so run it only on a file you created or whose import blocks are entirely yours. If Ruff also flags something that was already there, leave it and mention it (see `no-incidental-reformatting.mdc`). Do not leave a new or import-edited file with Ruff errors you caused.
 
 Skip this for non-Python files and for edits that do not touch imports.
