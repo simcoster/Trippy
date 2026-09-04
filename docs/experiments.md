@@ -161,3 +161,144 @@ classifier's category is never consulted in production today — only by tests.
 back on the 30B where it was stable. design.md "Predicates are the judge's
 call" (model paragraph). Open: the same instability could affect the judge;
 re-run §5's grid a few times before relying on its zero.
+
+### 7. Three categories: split `rule` into `boolean_rule` / `numeric_rule` — `category_split_experiment` schema
+
+**Question.** The live two-site run earlier today lost two facts to the judge
+accepting a boolean/numeric pair as one subject: `late_check_out_end_time`
+(17:00) merged into `late_check_out_allowed` on site 1 and then propagated by
+alias to sites 19 and 20; `early_arrival_fee_required` merged into
+`early_check_in_fee_percent` on site 19, so the 50% was dropped as CONFLICTING
+on both Akhziv camps. Both pairs are in the judge prompt as worked "null"
+examples. If the extractor tags each rule as boolean (answered by polarity:
+predicates `allowed` / `required`) or numeric (answered by a number: every other
+predicate), and candidates come only from the same category, do the merges
+disappear, and what else moves?
+
+**Setup.** `temp/category_split_experiment.py`. Schema
+`category_split_experiment` with `subject_vectors` / `campsite_rules` cloned
+`LIKE … INCLUDING ALL`, own sequences, category CHECK widened to 1..3, an HNSW
+partial index for `category = 3`. The ingest connects with
+`search_path=category_split_experiment,public`, so its bare table names land in
+the schema while `campsites` still reads production; the script refuses to run
+unless `to_regclass('subject_vectors')` resolves inside the schema, and asserts
+production row counts before and after (64 / 145, unchanged). Nothing in
+`source/` edited: `SYSTEM_PROMPT` (in `llm` and the `subcamps` copy) rewritten
+to three categories — a category bullet naming the predicate split and every
+`/ rule /` example relabelled by its unit — `RuleExtract` swapped for a payload
+that accepts the new labels, `resolve.category_label` given the third name.
+Same two sites, same models, empty vocabulary, like the production run.
+20 extract / 25 judge / 70 embed, $0.0256, 459 s (production run: 32 judge,
+$0.0277, 489 s).
+
+**Result.**
+
+| | production run | three categories |
+|---|---|---|
+| subjects | 64 | 64 (31 amenity, 15 boolean, 18 numeric) |
+| judge calls | 32 | 25 |
+| collisions (site 1 + Akhziv) | 1 + 9 | 1 + 5 |
+| `late_check_out_end_time` 17:00 | lost on 1, 19, 20 | kept on 1, 19, 20 |
+| `early_*_fee_percent` 50% | lost on 19, 20 | kept on 1, 19, 20 |
+
+Both target merges are gone, and for the reason predicted: `late_check_out_end_time`
+(numeric) was offered only `check_out_time` at −0.806 and the judge rejected it;
+`late_check_out_allowed` was never a candidate. `early_arrival_fee_required`
+(boolean) was offered only `early_arrival_allowed` and was rejected;
+`early_arrival_fee_percent` (numeric) had nothing within −0.75 at all. The four
+remaining Akhziv collisions are all the `נגישות` section re-emitting `toilets` /
+`showers` / a fountain as bare amenities — not a category matter.
+
+One **new wrong merge**, same category: `family_and_friends_group_stay_min_occupancy`
+(30) merged into `group_stay_min_occupancy` (80), single candidate at −0.898,
+and the 30 was dropped as CONFLICTING. The production run kept the same pair
+apart (named `…group_booking…` that time, −0.923, rejected). Both names are in
+the same numeric category, so the split cannot help here; this is the
+broader-vs-narrower rule the prompt already states, decided the other way on a
+second look — the §6 instability, now seen on the judge.
+
+One **extractor mislabel**: `hot_water_in_showers` came back `boolean_rule`
+(no amenity twin existed, so no duplicate this time). This is the cost of the
+design: a wrongly tagged term is searched against the wrong shelf and a
+duplicate written where nothing will find it. Extraction noise otherwise as
+usual on this model — `lighting` / `field_lighting`, `picnic_tables` /
+`picnic_tables_and_benches`, `shade_sails_on_beach` / `shade_screens`,
+`mattresses` / `mattresses_for_rent` all landed as separate subjects (missed
+merges, the tolerable direction), and פלטות became `planks_for_rent`.
+
+**Decision.** Pending the user's call. What the run shows: the split removes
+exactly the class of merge it targets, saves ~20% of judge calls, and shifts
+the risk to extractor mislabels; it does nothing for same-kind over-merges,
+which the judge still gets wrong on occasion.
+
+### 8. The split in production code, re-run on the same two pages (smoke run)
+
+**Question.** §7 was accepted. Does the ported code — `SubjectCategory` with
+three members, migration `030`, the rewritten extractor prompt with the
+numeric-range example, the run report file — behave the same on the same
+pages, and does the range example land?
+
+**Setup.** `python -m source.scraper.rules_ingest.ingest --limit 2` with
+`DATABASE_URL` carrying `search_path=category_split_experiment,public` (schema
+reset first), `RULES_REPORT_DIR=temp/reports`, `SCRAPE_COST_LOG` pointed at
+`temp/`. Production tables 64 / 145 before and after. 20 extract / 27 judge /
+73 embed, $0.0278, 447 s. Report: `temp/reports/2026-09-04_191431.md`.
+
+**Result.** Categories 31 amenity / 13 boolean / 21 numeric. The two §7 target
+merges stayed gone: `late_check_out_end_time` and `early_arrival_fee_percent`
+are separate numeric subjects with their 17:00 and 50% on all three campsite
+rows. The range example works at the extractor: `(30-80 לנים)` came out as
+`family_and_friends_group_min_occupancy 30` + `_max_occupancy 80`, and `מעל 80`
+as `group_min_occupancy 80`. Then the judge merged the family-and-friends min
+into `group_min_occupancy` (single candidate, −0.874) and the 30 was dropped as
+CONFLICTING on all three rows — the same pair merged in §7 and was kept apart
+in the production run; two of three runs now. A second same-shelf merge:
+`late_check_out_on_saturday_evening_allowed` into `late_check_out_allowed`
+(−0.917, one of two candidates; dropped as a duplicate since both are true, so
+the Saturday variant is simply gone as a subject). Both pairs are the
+narrowing rule the judge prompt states with near-identical worked examples
+(`min_weekend_nights` vs `min_nights`, `late_check_out_saturday_allowed` vs
+`late_check_out_allowed`). Extractor: `hot_water_in_showers` tagged
+`boolean_rule` again (2/2), `showers_women_count` / `showers_men_count`
+emitted again, this time as `numeric_rule`.
+
+**Decision.** Split confirmed in production code (design.md "Category: three
+shelves"). Open: the 235B judge accepts a narrower name as the broader subject
+often enough to matter, on the same shelf, with the counter-example in its
+prompt; the split cannot reach that. Candidates: repeat the §5 grid with these
+two pairs, or an experiment on candidate presentation (one candidate at a time,
+or showing the qualifier word explicitly).
+
+### 9. Without the ("in", "out") antonym pair, does the judge reject what it blocked?
+
+**Question.** In today's runs `opposed()` rejected
+`late_check_out_in_accommodation_units_*` as candidates for the other
+`late_check_out_*` subjects only by accident — through the ("in", "out") pair,
+which fires whenever one name has `in` and the other `out`, even when both have
+both. Is the accident load-bearing, or would the judge get those right anyway?
+
+**Setup.** `temp/in_out_guard_probe.py`: `pick_match` on the 235B with the
+run's Hebrew contexts, offering exactly the candidates the judge would have
+seen without that pair; three calls per case; no writes. 12 judge calls,
+$0.004.
+
+**Result.**
+
+| term | candidates | judge ×3 |
+|---|---|---|
+| `late_check_out_in_accommodation_units_allowed` | `late_check_out_allowed` (−0.951) | merged 3/3 |
+| `late_check_out_in_accommodation_units_fee_required` | `…_units_allowed` (−0.907), `late_check_out_allowed` | merged into `…_units_allowed` 3/3 |
+| `late_check_out_on_saturday_evening_allowed` | `late_check_out_allowed`, `…_units_allowed` | null 3/3 |
+| `check_out_time` | `check_in_end_time` (−0.896), `check_in_start_time` | null 3/3 |
+
+The first two are exactly what the guard has been preventing: a scoped variant
+folded into its parent, and a `fee_required` folded into an `allowed` on the
+same shelf — the judge said yes every time, with the narrowing rule and the
+"different kinds of question" rule both in its prompt. The Saturday variant,
+which the judge merged once in a live run, was rejected all three times here.
+`check_in` / `check_out` was kept apart.
+
+**Decision.** Keep the ("in", "out") pair. Its accidental reach is doing real
+work, and the guard can only over-split (design.md "Antonyms are decided in
+code"). Noted that `opposed()` also fires when both names contain both words;
+left as is, since every such pair seen so far should indeed stay apart.

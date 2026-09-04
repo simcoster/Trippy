@@ -18,6 +18,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -37,6 +38,7 @@ from source.scraper.rules_ingest.db import (
 )
 from source.scraper.rules_ingest.fetch import fetch_page_html
 from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
+from source.scraper.rules_ingest.report import SiteRun, write_run_report
 from source.scraper.rules_ingest.sections import Section, parse_sections
 from source.scraper.rules_ingest.subcamps import (
     load_subcamps,
@@ -470,11 +472,14 @@ def run(
     limit: int,
     site: int | None = None,
     usage: LlmUsage | None = None,
+    runs: list[SiteRun] | None = None,
 ) -> int:
     """Ingest up to `limit` campsites (or just `site`). Returns rules upserted.
 
     `usage` is filled with every LLM call made, per role and model, so the
     caller can report the run's cost; a fresh one is used when none is given.
+    `runs` collects one `SiteRun` per page -- its report, rows written, time
+    taken and any failure -- for the run report `main()` writes afterwards.
     """
     campsites = fetch_campsites(config, limit=limit, site=site)
     if not campsites:
@@ -498,18 +503,23 @@ def run(
             print(f"{site['id']}. {site['name']}")
             print(f"   {site['url']}")
             site_started = time.monotonic()
+            report = SiteReport()
+            outcome = SiteRun(site=site, report=report)
+            if runs is not None:
+                runs.append(outcome)
             try:
                 html = fetch_page_html(site["url"])
             except httpx.HTTPError as exc:
                 print(f"    HTTP error: {exc}")
+                outcome.error = f"HTTP error: {exc}"
+                outcome.seconds = time.monotonic() - site_started
                 continue
             print(
                 f"    fetched {len(html):,} chars in "
                 f"{time.monotonic() - site_started:.1f}s"
             )
-            report = SiteReport()
             try:
-                total += ingest_site(
+                outcome.written = ingest_site(
                     conn,
                     site,
                     html,
@@ -519,14 +529,17 @@ def run(
                     usage=usage,
                     report=report,
                 )
+                total += outcome.written
                 conn.commit()
                 print(f"    site done in {time.monotonic() - site_started:.1f}s")
             except Exception as exc:  # noqa: BLE001 — keep going to the next site
                 conn.rollback()
+                outcome.error = str(exc)
                 print(
                     f"    failed, rolled back after "
                     f"{time.monotonic() - site_started:.1f}s: {exc}"
                 )
+            outcome.seconds = time.monotonic() - site_started
             # Printed after a rollback too: the over-merge behind a collision
             # is still worth seeing even when nothing was written.
             print(report.render())
@@ -567,11 +580,19 @@ def main(argv: list[str] | None = None) -> None:
     if limit is None:
         limit = int(config.get("info_site", {}).get("limit_campsites", DEFAULT_LIMIT))
     usage = LlmUsage()
-    run(config, limit=limit, site=args.site, usage=usage)
+    runs: list[SiteRun] = []
+    started_at = datetime.now()
+    started = time.monotonic()
+    run(config, limit=limit, site=args.site, usage=usage, runs=runs)
     # Recorded here, not in run(): a test driving run() must not write reports/.
     written = record_scrape_cost("scrape-rules", usage)
     if written:
         print(f"cost report appended to {written}")
+    if runs:
+        path = write_run_report(
+            runs, usage, started_at=started_at, seconds=time.monotonic() - started
+        )
+        print(f"run report written to {path}")
 
 
 if __name__ == "__main__":

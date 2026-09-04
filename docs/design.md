@@ -10,7 +10,7 @@ schema, so you know which parts are load-bearing and which are scaffolding.
 
 | Choice | Decision |
 |--------|----------|
-| Dictionary table | `amenities` → `subject_vectors`: one row per subject, `name` canonical, `aliases[1] = name`, `category` 1 amenity / 2 rule |
+| Dictionary table | `amenities` → `subject_vectors`: one row per subject, `name` canonical, `aliases[1] = name`, `category` 1 amenity / 2 boolean rule / 3 numeric rule (migration `030`) |
 | Subject naming | snake_case English, carries the predicate, **always positively phrased** — `dogs_allowed`, never `dogs_not_allowed`. Enforced by the extractor prompt and backstopped by `subjects/naming.to_positive_subject` |
 | Polarity | nullable `BOOLEAN` on `campsite_rules`: `True` allowed/provided, `False` forbidden/not provided, `NULL` a pure quantity |
 | Qualifier | `NUMERIC` + `qualifier_unit SMALLINT`. Direction lives in the name (`min_weekend_nights`, `max_occupancy`), matching the extractor's existing `policy_rules` keys. Times of day are decimal hours: 20:30 → 20.5 |
@@ -21,14 +21,38 @@ schema, so you know which parts are load-bearing and which are scaffolding.
 
 ## Provisional — expect these to change
 
-### Category is not a clean split
+### Category: three shelves, decided by what answers the statement
 
-Amenities come in "provided / not provided". Rules come in "allowed / forbidden"
-**and** in "only after 18". The line between them is fuzzy: `barbecue_allowed` is a
-rule, `barbecue_equipment_included` is an amenity, and they are extracted from the
-same sentence (`ניתן להדליק מצלה (מנגל) בציוד עצמי`). `category` is a search
-convenience — it lets the planner ask only about amenities — not an ontology. If it
-starts costing more than it saves, collapse it.
+`category` was amenity / rule until 2026-09-04. Rules now split by what answers
+them:
+
+| | answered by | predicates |
+|---|---|---|
+| 1 `amenity` | `polarity` | none — a bare noun |
+| 2 `boolean_rule` | `polarity` | `allowed`, `required` |
+| 3 `numeric_rule` | `qualifier` | `time`, `fee_ils`, `fee_percent`, `min_age`/`max_age`, `min_nights`/`max_nights`, `min_occupancy`/`max_occupancy`, `count` |
+
+The extractor tags every statement (it has the sentence; a classifier shown one
+word does not), and the resolver searches only the term's own shelf, so a
+permission is never a merge candidate for a deadline on the same topic. The live
+run that forced this had the judge merge `late_check_out_end_time` into
+`late_check_out_allowed` and `early_arrival_fee_required` into
+`early_check_in_fee_percent` — both pairs sit in its prompt as "null" examples —
+and every campsite then lost the 17:00 and the 50%. Re-run on the same two pages
+in an isolated schema with three categories: both merges gone, judge calls
+32 → 25, no new cross-kind merge (experiments.md 2026-09-04 §7).
+
+What the split does not do. Same-shelf over-merges are still the judge's to get
+right (`family_and_friends_group_stay_min_occupancy` went into
+`group_stay_min_occupancy` in that run). And the tag is trusted: a term the
+extractor mislabels — `hot_water_in_showers` came back `boolean_rule` once — is
+searched on the wrong shelf and, if a twin exists, duplicated where nothing will
+find it. The amenity / rule line is still fuzzy (`barbecue_allowed` and
+`barbecue_equipment` come from one sentence); `category` remains a search
+convenience, not an ontology. Migration `030` widens the CHECK and adds the
+third partial HNSW index but does **not** reclassify existing category-2 rows —
+that would be a suffix list — so the vocabulary is rebuilt:
+`scripts/clear_rules.py --subjects`, then `just scrape-rules`.
 
 ### `campsite_rules` is the only home for an amenity (migration `027`)
 
@@ -386,7 +410,13 @@ grid in §5 should be repeated before its 0/6 is relied on. (experiments.md
 The per-site report printed by the rules ingest lists every subject a page
 touched, which term reached it by which path (alias / merged / existing /
 inserted), and every upsert collision with both phrasings — the evidence the
-above was diagnosed from.
+above was diagnosed from. Since 2026-09-04 each `scrape-rules` run also writes
+the same evidence as one Markdown file, `reports/rules_ingest/<start time>.md`
+(`RULES_REPORT_DIR` overrides the folder; git-ignored like the cost log): per
+page, every merge with the sentence each side was read from, the new subjects
+and their sentences, the upsert collisions, the resolver drops, and the run's
+cost by role and model (`rules_ingest/report.py`). The terminal scrolls past;
+the file is what you re-read when a subject looks wrong a week later.
 
 A qualifying word **anywhere** in the name is narrowing, not just a prefix. A live
 run collapsed `gas_in_field_kitchen` into `field_kitchen` (losing "no gas"),

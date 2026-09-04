@@ -11,6 +11,7 @@ source. Each file is imported here; edit the rule there, not in this file.
 @.cursor/rules/python-imports.mdc
 @.cursor/rules/ruff.mdc
 @.cursor/rules/agent-temp-files.mdc
+@.cursor/rules/no-unasked-scrape-runs.mdc
 
 ## Orientation
 
