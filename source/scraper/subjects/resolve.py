@@ -16,7 +16,9 @@ surface forms pay for an embedding and two small-LLM calls.
 Three filters stand between "near in the vector space" and "same subject":
 
   distance   too far to be worth asking about
-  category   a rule is never an amenity — `barbecue_allowed` vs `barbecue`
+  category   an amenity, a boolean rule and a numeric rule never mix —
+             `barbecue_allowed` vs `barbecue`, `late_check_out_allowed` vs
+             `late_check_out_end_time`
   opposed    antonyms are opposite facts — `child_min_age` vs `child_max_age`
 
 Whether two names state the same predicate (a permission vs a time vs a price)
@@ -127,6 +129,9 @@ class ResolutionTrace:
     term: str
     normalized: str
     category: int | None = None
+    # The sentence the term was read from, for reports that show a merge with
+    # both sides' original phrasing.
+    context: str | None = None
     candidates: list[Candidate] = field(default_factory=list)
     outcome: str = ""
     # Which path decided it, for reports that group by decision rather than
@@ -205,7 +210,9 @@ def resolve_subject(
     if cache is not None and raw_key in cache:
         return cache[raw_key]
 
-    trace = ResolutionTrace(term=term, normalized=raw_key, category=category)
+    trace = ResolutionTrace(
+        term=term, normalized=raw_key, category=category, context=context
+    )
     positive, implied = to_positive_subject(raw_key)
     if positive is None:
         trace.outcome = "DROPPED (negative phrasing that cannot be made positive)."

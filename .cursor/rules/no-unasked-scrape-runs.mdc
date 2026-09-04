@@ -1,0 +1,21 @@
+---
+description: Never start a scrape or any LLM-calling job unless the user asked for that run
+alwaysApply: true
+---
+
+# No scrape runs without being told
+
+Do not start a `scrape-*` recipe, the ingest modules behind them, an
+experiment script, or any other job that calls an LLM or runs for minutes,
+unless the user asked for that specific run in this conversation.
+
+- Permission for one run does not carry over to the next, even on an isolated
+  schema, even at the same cost.
+- "Checking that my change works" is not a reason. `pytest -m "not llm"` is
+  the verification the agent may run unasked; anything past that is stated as
+  unverified, with the command offered for the user to run.
+- When a run seems worth doing, say so in one line with the expected duration
+  and cost, and wait for a yes.
+
+Context: an eight-minute, ~120-call ingest was launched as a "smoke run" after
+the user had authorised only an earlier experiment.

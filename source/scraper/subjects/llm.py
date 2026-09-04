@@ -121,9 +121,11 @@ canonical label and category.
 Rules:
 - Output valid JSON only, without markdown wrappers.
 - category is 1 for an amenity (something the site provides or does not provide:
-  shower, refrigerator, electric_hookup, towels) and 2 for a rule (something a
-  guest may, must, or must not do, or a limit on a stay: dogs_allowed,
-  quiet_hours_start, min_weekend_nights, check_out_time).
+  shower, refrigerator, electric_hookup, towels); 2 for a boolean rule (something
+  a guest may, must, or must not do, answered yes or no: dogs_allowed,
+  late_check_out_fee_required); 3 for a numeric rule (a time or a limit on a
+  stay, answered by a number: quiet_hours_start, min_weekend_nights,
+  check_out_time, adult_min_age).
 - canonical_name is lower snake_case English, and states the predicate.
 - ALWAYS phrase the name POSITIVELY. Negation is recorded separately, not in the
   name. Never emit not_/no_/cant_/cannot_/without_/_forbidden/_banned names.
@@ -155,7 +157,7 @@ Rules:
   barbecue_equipment_included (is a grill provided?) are two subjects, not one, and
   so are late_check_out_available and late_check_out_fee.
 Schema:
-{"category": 1 | 2, "canonical_name": "<snake_case>"}
+{"category": 1 | 2 | 3, "canonical_name": "<snake_case>"}
 """
 
 

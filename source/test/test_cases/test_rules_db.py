@@ -172,12 +172,16 @@ def test_unparseable_output_still_raises():
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("rule", 2),
-        ("rules", 2),
+        ("boolean_rule", 2),
+        ("numeric_rule", 3),
+        # A bare "rule" no longer says which kind; None searches every shelf.
+        ("rule", None),
+        ("rules", None),
         ("amenity", 1),
         ("amenities", 1),
         (1, 1),
         (2, 2),
+        (3, 3),
     ],
 )
 def test_statement_category_is_coerced(raw, expected):

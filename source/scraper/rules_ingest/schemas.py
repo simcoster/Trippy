@@ -27,10 +27,11 @@ class RuleStatement(BaseModel):
 
     subject: str
     # The extractor reads the sentence, so it knows whether it is stating a
-    # provision or a permission far better than a classifier shown one word.
-    # Used to keep rules and amenities out of each other's candidate lists.
-    # None when the model omitted it: search every category rather than assert
-    # a category that may be wrong.
+    # provision, a permission or a number far better than a classifier shown
+    # one word. Amenities, boolean rules and numeric rules are searched apart,
+    # so a permission is never a merge candidate for a deadline on the same
+    # topic. None when the model omitted it: search every category rather than
+    # assert a category that may be wrong.
     category: int | None = None
     polarity: bool | None = None
     qualifier: Decimal | None = None
@@ -53,16 +54,20 @@ class RuleStatement(BaseModel):
             return None
         if isinstance(value, str):
             text = value.strip().casefold()
-            if text.startswith("rule"):
-                return int(SubjectCategory.RULE)
             if text.startswith("amenit"):
                 return int(SubjectCategory.AMENITY)
-            return None
+            if text.startswith("bool"):
+                return int(SubjectCategory.BOOLEAN_RULE)
+            if text.startswith("num"):
+                return int(SubjectCategory.NUMERIC_RULE)
+            if not text.isdigit():
+                # A bare "rule" no longer says which kind; None searches everything.
+                return None
         try:
             number = int(value)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return None
-        return number if number in (1, 2) else None
+        return number if number in {int(c) for c in SubjectCategory} else None
 
     @field_validator("qualifier", mode="before")
     @classmethod

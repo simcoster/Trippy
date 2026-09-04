@@ -31,16 +31,19 @@ class ClassificationPayload(BaseModel):
     def _coerce_category(cls, value: object) -> int:
         if isinstance(value, str):
             text = value.strip().casefold()
-            if text.startswith("rule"):
-                return int(SubjectCategory.RULE)
             if text.startswith("amenit"):
                 return int(SubjectCategory.AMENITY)
+            if text.startswith(("bool", "rule")):
+                return int(SubjectCategory.BOOLEAN_RULE)
+            if text.startswith("num"):
+                return int(SubjectCategory.NUMERIC_RULE)
         try:
             number = int(value)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return int(SubjectCategory.AMENITY)
         # Anything unrecognised is the safer, more common case.
-        return number if number in (1, 2) else int(SubjectCategory.AMENITY)
+        known = {int(c) for c in SubjectCategory}
+        return number if number in known else int(SubjectCategory.AMENITY)
 
     @field_validator("canonical_name")
     @classmethod

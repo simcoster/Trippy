@@ -35,9 +35,22 @@ class Base(DeclarativeBase):
 
 
 class SubjectCategory(IntEnum):
-    """subject_vectors.category — numeric so the column stays narrow."""
+    """subject_vectors.category — numeric so the column stays narrow.
+
+    Rules are split by what answers them: a BOOLEAN_RULE by `polarity`
+    (predicates `allowed` / `required`), a NUMERIC_RULE by `qualifier` (a time,
+    fee, age, night or occupancy limit, a count). The resolver offers the merge
+    judge only candidates of the term's own category, so a permission is never
+    a candidate for a deadline on the same topic — the judge had merged
+    `late_check_out_end_time` into `late_check_out_allowed` with both names in
+    view (experiments.md 2026-09-04 §7).
+    """
 
     AMENITY = 1
+    BOOLEAN_RULE = 2
+    NUMERIC_RULE = 3
+    # The name every rule carried before the split; an alias of BOOLEAN_RULE so
+    # older callers still import. `SubjectCategory(2).name` is BOOLEAN_RULE.
     RULE = 2
 
 
@@ -191,7 +204,7 @@ class SubjectVector(Base):
 
     __tablename__ = "subject_vectors"
     __table_args__ = (
-        CheckConstraint("category IN (1, 2)", name="subject_vectors_category_check"),
+        CheckConstraint("category IN (1, 2, 3)", name="subject_vectors_category_check"),
         CheckConstraint("aliases[1] = name", name="subject_vectors_canonical_alias"),
         Index("subject_vectors_aliases_gin_idx", "aliases", postgresql_using="gin"),
     )

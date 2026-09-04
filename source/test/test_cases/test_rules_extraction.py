@@ -125,17 +125,18 @@ def test_site_amenity_counts_are_kept(statements):
 @pytest.mark.parametrize(
     ("needle", "category"),
     [
-        ("dog", SubjectCategory.RULE),
-        ("check_in", SubjectCategory.RULE),
-        ("check_out", SubjectCategory.RULE),
-        ("night", SubjectCategory.RULE),
-        ("age", SubjectCategory.RULE),
+        ("dog", SubjectCategory.BOOLEAN_RULE),
+        ("check_in", SubjectCategory.NUMERIC_RULE),
+        ("check_out", SubjectCategory.NUMERIC_RULE),
+        ("night", SubjectCategory.NUMERIC_RULE),
+        ("age", SubjectCategory.NUMERIC_RULE),
         ("refrigerator", SubjectCategory.AMENITY),
         ("shower", SubjectCategory.AMENITY),
     ],
 )
 def test_statements_are_categorised(statements, needle, category):
-    """The category is what keeps a rule out of an amenity's candidate list."""
+    """The category keeps a rule out of an amenity's candidate list, and a
+    permission out of a deadline's."""
     statement = find(statements, needle)
     assert statement is not None, [s.subject for s in statements]
     assert statement.category == int(category)
@@ -146,7 +147,7 @@ def test_one_sentence_can_yield_a_rule_and_an_amenity(statements):
     allowed = find(statements, "barbecue", "allowed")
     equipment = find(statements, "barbecue", "equipment")
     assert allowed is not None and equipment is not None
-    assert allowed.category == int(SubjectCategory.RULE)
+    assert allowed.category == int(SubjectCategory.BOOLEAN_RULE)
     assert allowed.polarity is True
     assert equipment.category == int(SubjectCategory.AMENITY)
     assert equipment.polarity is False
