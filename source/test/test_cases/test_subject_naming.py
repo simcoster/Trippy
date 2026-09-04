@@ -5,8 +5,6 @@ import pytest
 from source.scraper.subjects.naming import (
     normalize_alias,
     opposed,
-    predicate_suffix,
-    same_predicate,
     to_positive_subject,
 )
 
@@ -88,123 +86,9 @@ def test_empty_term_yields_nothing():
     assert to_positive_subject("   ") == (None, None)
 
 
-@pytest.mark.parametrize(
-    ("name", "suffix"),
-    [
-        ("barbecue_allowed", "allowed"),
-        ("late_check_out_fee", "fee"),
-        # A trailing provision word is not a predicate of its own.
-        ("barbecue_equipment_included", None),
-        ("late_check_out_available", None),
-        ("towels_included", None),
-        ("check_in_time", "time"),
-        ("adult_min_age", "age"),
-        ("min_weekend_nights", "nights"),
-        ("rental_deposit_required", "required"),
-        ("barbecue", None),
-        ("refrigerator", None),
-        ("ash_collection_stations", None),
-        ("drinking_water_fountain", None),
-    ],
-)
-def test_predicate_suffix(name, suffix):
-    assert predicate_suffix(name) == suffix
-
-
-@pytest.mark.parametrize(
-    ("left", "right"),
-    [
-        ("air_conditioner", "air_conditioning"),  # both bare nouns
-        ("refrigerators", "refrigerator"),
-        ("check_in_time", "check_out_time"),  # same predicate, nouns differ
-        ("dogs_allowed", "pets_allowed"),
-    ],
-)
-def test_same_predicate_lets_real_candidates_through(left, right):
-    assert same_predicate(left, right)
-
-
-@pytest.mark.parametrize(
-    ("left", "right"),
-    [
-        # The over-merges seen on the first live Hurshat Tal run.
-        ("barbecue_allowed", "barbecue"),
-        ("late_check_out_fee", "late_check_out_available"),
-        ("equipment_rental_deposit_required", "rental_equipment_available"),
-        ("last_dogs_entry_time", "dogs_allowed"),
-    ],
-)
-def test_different_predicates_are_never_the_same_subject(left, right):
-    assert not same_predicate(left, right)
-
-
-@pytest.mark.parametrize(
-    ("left", "right"),
-    [
-        # "is it provided" is what polarity records, so these are one subject
-        # and the pair must reach the judge rather than be blocked in code.
-        ("towels_included", "towels"),
-        ("electric_hookup_included", "electric_hookup"),
-        ("picnic_tables_provided", "picnic_tables"),
-        ("wifi_available", "wifi"),
-        # Word order is not a new subject either.
-        ("child_min_age", "min_child_age"),
-        # Same noun, so the judge gets to decide; it rejects this one on the
-        # nouns (equipment is not the activity), not on the suffix.
-        ("barbecue_equipment_included", "barbecue"),
-    ],
-)
-def test_provision_suffixes_and_word_order_reach_the_judge(left, right):
-    assert same_predicate(left, right)
-
-
-# --- a suffix can mean different things on a rule and on an amenity -----------
-
-AMENITY, RULE = 1, 2
-
-
-@pytest.mark.parametrize(
-    ("left", "right"),
-    [
-        # On a rule, every way of asking "may I?" is the same predicate.
-        ("late_checkout_allowed", "late_check_out_available"),
-        ("dogs_allowed", "dogs_permitted"),
-        ("early_arrival_available", "early_arrival_allowed"),
-    ],
-)
-def test_permission_words_are_one_predicate_on_a_rule(left, right):
-    assert same_predicate(left, right, category=RULE)
-
-
-@pytest.mark.parametrize(
-    ("left", "right"),
-    [
-        # On an amenity the same word means "supplied", which polarity records.
-        ("wifi_available", "wifi"),
-        ("towels_included", "towels"),
-        ("electric_hookup_included", "electric_hookup"),
-    ],
-)
-def test_provision_words_are_no_predicate_on_an_amenity(left, right):
-    assert same_predicate(left, right, category=AMENITY)
-
-
-@pytest.mark.parametrize(
-    ("left", "right", "category"),
-    [
-        ("late_check_out_available", "late_check_out_fee", RULE),
-        ("barbecue_allowed", "barbecue", RULE),
-        ("last_dogs_entry_time", "dogs_allowed", RULE),
-    ],
-)
-def test_a_real_predicate_difference_survives_either_way(left, right, category):
-    assert not same_predicate(left, right, category=category)
-
-
-def test_available_is_read_differently_by_category():
-    """The whole reason the comparison needs to know what it is looking at."""
-    assert same_predicate("x_available", "x", category=AMENITY)
-    assert not same_predicate("x_available", "x", category=RULE)
+# Whether two names state the same predicate is the judge LLM's decision now
+# (ADJUDICATE_SYSTEM_PROMPT); the suffix-list gate that lived here fragmented
+# `late_check_out_*` into nine subjects and was removed.
 
 
 # --- antonyms: opposite facts wearing near-identical names ---------------------

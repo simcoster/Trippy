@@ -5,7 +5,6 @@ Extracts campsite elements and upserts them into Postgres.
 
 import json
 import os
-import ssl
 import sys
 from pathlib import Path
 from urllib.parse import urljoin
@@ -14,6 +13,8 @@ import httpx
 import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+
+from source.scraper.tls import ssl_context
 
 # Windows consoles often default to cp1252 and choke on Hebrew titles.
 if hasattr(sys.stdout, "reconfigure"):
@@ -35,21 +36,6 @@ ON CONFLICT (url) DO UPDATE
 SET name = EXCLUDED.name
 RETURNING id, name, url;
 """
-
-
-def _ssl_context() -> ssl.SSLContext:
-    """
-    TLS context that verifies via the OS trust store (Windows certs), not
-    certifi alone — MITM appliances (Norton, Zscaler, etc.) inject a local
-    root that browsers trust but Mozilla's bundle does not.
-
-    Also clears Python 3.13+'s VERIFY_X509_STRICT flag; those extra RFC
-    checks often fail on MITM-rewritten chains that browsers still accept.
-    """
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
 
 
 def _database_url() -> str:
@@ -74,7 +60,7 @@ def crawl_campsites(url: str = LISTING_URL) -> list[dict[str, str]]:
     try:
         with httpx.Client(
             timeout=30.0,
-            verify=_ssl_context(),
+            verify=ssl_context(),
             follow_redirects=True,
         ) as client:
             response = client.get(url, headers=headers)

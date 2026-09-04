@@ -31,3 +31,6 @@ Thumbs.db
 temp/
 
 __pycache__/graph.cpython-314.pyc
+
+# Per-run LLM cost log written by the scrape-* recipes (SCRAPE_COST_LOG overrides)
+reports/

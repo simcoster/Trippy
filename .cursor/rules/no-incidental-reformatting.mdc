@@ -1,0 +1,35 @@
+---
+description: Touch only the lines a change needs; indentation, formatting and pre-existing lint fixes go on their own branch and PR
+alwaysApply: true
+---
+
+# No incidental reformatting
+
+When you edit a file, change only the lines the task needs. Do not fix indentation, re-wrap lines, re-sort import blocks, or clean up pre-existing lint in the same change — even when the fix is correct. Every such hunk is one more thing the reviewer has to read to find the real change.
+
+```python
+# BAD — the task was to add `role=` on one line; the diff also re-sorts an
+# import block that was already there and re-wraps a neighbouring call.
+-from amenity_enrichment import (LlmUsage, parse_room_categories,
+-    amenity_llm_clients)
++from amenity_enrichment import (
++    LlmUsage,
++    amenity_llm_clients,
++    parse_room_categories,
++)
+-    other_client.call(a, b,
+-        c)
++    other_client.call(a, b, c)
+     usage.add_chat(response.usage, role="merge_judge", model=self.model)
+
+# GOOD — only the line the task needed changed. Wrapping *that* line to fit
+# the file's width is fine; it is yours.
+-    usage.add_chat(response.usage)
++    usage.add_chat(
++        response.usage, role="classify_amenity_or_rule", model=self.classify_model
++    )
+```
+
+This narrows the Ruff rule: run Ruff on files you touched, and fix what *you introduced* (an unused import you added, an import you added out of order). If Ruff also flags something that was already there, leave it and say so. `ruff check --fix` on a whole file re-sorts every import block in it — run it only when the file's imports are yours, or apply the fix to your lines by hand.
+
+Formatting, indentation and lint clean-ups are welcome — on their own branch, as their own PR, so they can be reviewed as "no behaviour change" in one pass.

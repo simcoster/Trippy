@@ -9,18 +9,22 @@ surface forms pay for an embedding and two small-LLM calls.
          -> exact hit on aliases (GIN)                        [no LLM]
          -> 5 nearest by <#>, filtered, adjudicate             [1 LLM call]
             -> match: append the term as an alias, done
-         -> classify into category + canonical name            [1 LLM call]
-            -> canonical already exists: append alias, done
-            -> else insert, embedding the CANONICAL name
+         -> insert the TERM as a new subject, storing the probe embedding;
+            the classifier is asked only for a category the extractor left out
+            (the extractor names subjects -- nothing downstream renames them)
 
-Three filters stand between "near in the vector space" and "same subject", and
-each exists because the adjudicator merged something it should not have:
+Three filters stand between "near in the vector space" and "same subject":
 
   distance   too far to be worth asking about
   category   a rule is never an amenity — `barbecue_allowed` vs `barbecue`
   opposed    antonyms are opposite facts — `child_min_age` vs `child_max_age`
-  predicate  different trailing predicate, different fact — `barbecue_allowed`
-             vs `barbecue_equipment_included`
+
+Whether two names state the same predicate (a permission vs a time vs a price)
+is deliberately NOT filtered here: a suffix list used to do it and fragmented
+`late_check_out_*` into nine subjects wherever a suffix was missing from the
+list. The judge decides that, with both names and their contexts in view. When
+the judge rejects every neighbour, those neighbours are handed to the classifier
+so the new canonical name is chosen to stay clear of them.
 
 Every resolution emits a one-line trace of what was considered and why it landed
 where it did. Over-merges are silent without it (see docs/design.md).
@@ -40,7 +44,6 @@ from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
 from source.scraper.subjects.naming import (
     normalize_alias,
     opposed,
-    same_predicate,
     to_positive_subject,
 )
 
@@ -52,7 +55,6 @@ MATCH_MAX_DISTANCE = -0.75
 # Why a nearest neighbour never reached the adjudicator.
 REJECT_FAR = "far"
 REJECT_CATEGORY = "category"
-REJECT_PREDICATE = "predicate"
 REJECT_OPPOSED = "opposed"
 
 _IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -127,6 +129,9 @@ class ResolutionTrace:
     category: int | None = None
     candidates: list[Candidate] = field(default_factory=list)
     outcome: str = ""
+    # Which path decided it, for reports that group by decision rather than
+    # parse `outcome`: "alias", "merged", "inserted" or "dropped".
+    kind: str = ""
     subject_id: int | None = None
     subject_name: str | None = None
 
@@ -204,6 +209,7 @@ def resolve_subject(
     positive, implied = to_positive_subject(raw_key)
     if positive is None:
         trace.outcome = "DROPPED (negative phrasing that cannot be made positive)."
+        trace.kind = "dropped"
         _emit(trace, trace_sink, verbose)
         return None
     trace.normalized = positive
@@ -255,6 +261,7 @@ def _resolve_positive(
     hit = _select_by_alias(conn, key, store)
     if hit is not None:
         trace.outcome = f"alias hit -> {hit.name!r}."
+        trace.kind = "alias"
         trace.subject_id, trace.subject_name = hit.id, hit.name
         return hit
 
@@ -280,39 +287,30 @@ def _resolve_positive(
         winner = next(c for c in offered if c.name == matched)
         _append_alias(conn, winner.id, key, store)
         trace.outcome = f"ADJUDICATOR merged into {matched!r}."
+        trace.kind = "merged"
         trace.subject_id, trace.subject_name = winner.id, winner.name
         return SubjectRef(winner.id, winner.name, winner.category)
 
-    payload = adjudicator.classify(key, context=context, usage=usage)
-    canonical, _ = to_positive_subject(payload.canonical_name)
-    if canonical is None:
-        # The classifier proposed something unrewritable; the term is already
-        # positive, so use it rather than losing the statement.
-        canonical = key
-    # The extractor read the sentence; the classifier saw one word and its context.
-    resolved_category = int(category if category is not None else payload.category)
+    # The extractor names subjects; nothing here renames them. Letting the
+    # classifier pick a "distinct" name was measured over 40 terms: it reordered
+    # words, dropped words, and turned `dogs_entry_time` ("from 16:00") into
+    # `last_dogs_entry_time`. The classifier is consulted only for a category
+    # the extractor did not supply.
+    if category is not None:
+        resolved_category = int(category)
+    else:
+        payload = adjudicator.classify(key, context=context, usage=usage)
+        resolved_category = int(payload.category)
     verdict = "ADJUDICATOR rejected all." if offered else "nothing near enough to ask."
 
-    existing = _select_by_name(conn, canonical, store)
-    if existing is not None:
-        _append_alias(conn, existing.id, key, store)
-        trace.outcome = (
-            f"{verdict} classified as {canonical!r}, which already exists -> aliased."
-        )
-        trace.subject_id, trace.subject_name = existing.id, existing.name
-        return existing
-
-    aliases = [canonical] if canonical == key else [canonical, key]
-    # Embed the canonical name, not the surface form, so the vector stays put
-    # as more aliases accrue to this row.
-    vector = embedder.embed([canonical], usage=usage)[0]
-    inserted = _insert(
-        conn, canonical, resolved_category, aliases, vector, context, store
-    )
+    # The term is the name, so the probe that ran the neighbour search is the
+    # row's vector: no second embedding, and the alias key can never collide
+    # with a different subject's alias -- it just missed that lookup.
+    inserted = _insert(conn, key, resolved_category, [key], probe, context, store)
     trace.outcome = (
-        f"{verdict} classified as {category_label(resolved_category)} "
-        f"{canonical!r}. INSERTED."
+        f"{verdict} INSERTED as {category_label(resolved_category)} {key!r}."
     )
+    trace.kind = "inserted"
     trace.subject_id, trace.subject_name = inserted.id, inserted.name
     return inserted
 
@@ -332,9 +330,9 @@ def _judge_candidate(
     elif opposed(key, name):
         # min vs max, start vs end: opposite facts wearing near-identical names.
         reason = REJECT_OPPOSED
-    elif not same_predicate(key, name, category=category or row_category):
-        reason = REJECT_PREDICATE
     else:
+        # Everything else -- including whether the two names state the same
+        # predicate -- is the judge's call, with contexts in view.
         reason = None
     return Candidate(
         id=subject_id,
@@ -356,16 +354,6 @@ def _select_by_alias(conn, key: str, store: SubjectStore) -> SubjectRef | None:
             LIMIT 1
             """,
             (key,),
-        )
-        row = cur.fetchone()
-    return None if row is None else SubjectRef(int(row[0]), row[1], int(row[2]))
-
-
-def _select_by_name(conn, name: str, store: SubjectStore) -> SubjectRef | None:
-    with conn.cursor() as cur:
-        cur.execute(
-            f"SELECT id, name, category FROM {store.table} WHERE name = %s",
-            (name,),
         )
         row = cur.fetchone()
     return None if row is None else SubjectRef(int(row[0]), row[1], int(row[2]))
@@ -420,6 +408,40 @@ def _append_alias(conn, subject_id: int, key: str, store: SubjectStore) -> None:
             """,
             {"id": subject_id, "alias": key},
         )
+
+
+# Past this many aliases a subject is usually swallowing its neighbours: in one
+# experiment `check_in_time` took `car_entry_time`, `arrival_time` and
+# `earliest_check_in_time` in a single run. The ingest reports offenders after
+# every site.
+ALIAS_OVERFLOW = 20
+
+
+def alias_overflow(
+    conn, *, threshold: int = ALIAS_OVERFLOW, store: SubjectStore = DEFAULT_STORE
+) -> list[dict]:
+    """Subjects whose alias list has grown past `threshold`, longest first."""
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT id, name, category, aliases
+            FROM {store.table}
+            WHERE cardinality(aliases) > %s
+            ORDER BY cardinality(aliases) DESC, id
+            """,
+            (threshold,),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "id": int(r[0]),
+            "name": r[1],
+            "category": category_label(int(r[2])),
+            "n_aliases": len(r[3]),
+            "aliases": list(r[3]),
+        }
+        for r in rows
+    ]
 
 
 def _insert(

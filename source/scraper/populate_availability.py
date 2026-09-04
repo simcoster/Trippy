@@ -12,7 +12,6 @@ import argparse
 import json
 import os
 import re
-import ssl
 import sys
 import time
 from datetime import date, timedelta
@@ -30,6 +29,7 @@ from amenity_enrichment import (
     load_types_with_amenities,
     parse_room_categories,
 )
+from amenity_enrichment.llm import record_scrape_cost
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from info_site.match_listing import InfoWebsiteNameMatcher, match_info_website_name
@@ -41,6 +41,7 @@ from source.scraper.rules_ingest.subcamps import (
     owned_site_ids,
     unit_owner,
 )
+from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -104,13 +105,6 @@ _WS_RE = re.compile(r"\s+")
 def load_config(path: Path = CONFIG_PATH) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
-
-
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
 
 
 def database_url(config: dict) -> str:
@@ -238,7 +232,7 @@ def parse_rooms(html: str) -> list[dict]:
 def fetch_results_html(url: str) -> str:
     with httpx.Client(
         timeout=45.0,
-        verify=_ssl_context(),
+        verify=ssl_context(),
         follow_redirects=True,
         headers={
             "User-Agent": (
@@ -640,6 +634,16 @@ def main(argv: list[str] | None = None) -> None:
         print(listing_llm_usage.summary(prefix="Info-site name match total: "))
     if amenity_llm_usage.chat_calls or amenity_llm_usage.embed_calls:
         print(amenity_llm_usage.summary(prefix="Amenity enrich total: "))
+
+    # One record for the run; the per-role rows keep name-matching, amenity
+    # extraction, place enrichment and embedding apart.
+    run_usage = LlmUsage()
+    run_usage.merge(listing_llm_usage)
+    run_usage.merge(amenity_llm_usage)
+    written = record_scrape_cost("scrape-availability", run_usage)
+    if written:
+        print(run_usage.summary(prefix="Scrape total: "))
+        print(f"cost report appended to {written}")
 
 
 if __name__ == "__main__":

@@ -235,15 +235,24 @@ def make_extractor_response(content, finish_reason="stop"):
 
     from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
 
+    def chunk(content=None, finish_reason=None):
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content=content), finish_reason=finish_reason
+                )
+            ],
+            usage=None,
+        )
+
     openai = MM()
-    openai.chat.completions.create.return_value = SimpleNamespace(
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content=content), finish_reason=finish_reason
-            )
-        ],
-        usage=None,
-    )
+    # `extract` streams: content deltas, a last choice carrying finish_reason,
+    # then a choice-less chunk that carries usage (None here, as before).
+    openai.chat.completions.create.return_value = [
+        chunk(content=content),
+        chunk(finish_reason=finish_reason),
+        SimpleNamespace(choices=[], usage=None),
+    ]
     return RuleExtractorLLMClient(openai)
 
 

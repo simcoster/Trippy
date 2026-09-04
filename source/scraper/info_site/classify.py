@@ -123,7 +123,7 @@ class RateCardClassifier:
             temperature=self.TEMPERATURE,
         )
         if usage is not None:
-            usage.add_chat(response.usage)
+            usage.add_chat(response.usage, role="rate_card_classify", model=self.model)
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
         return ClassificationPayload.model_validate(data)

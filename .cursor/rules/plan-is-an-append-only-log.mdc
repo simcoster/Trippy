@@ -1,0 +1,26 @@
+---
+description: docs/PLAN.md is an append-only dated log; design.md is the living document
+alwaysApply: true
+---
+
+# PLAN.md is a log. Append to it; never rewrite it.
+
+`docs/PLAN.md` is an ongoing log of what was tried, decided and left open, in the order it happened. Old entries are the record of what was true and believed at the time. Do not edit, reword, trim or delete them — even when they are now wrong, even to fix a command name that has since been renamed.
+
+When something changes, add a **new dated entry at the top of the `## Progress log`** — the log runs newest-first, as the existing `### Done (…)` entries do — saying what changed and, if it matters, which earlier entry it supersedes.
+
+```markdown
+## Progress log
+
+### Done (2026-09-04)
+
+**Predicate gate removed; the judge decides.** … Supersedes the
+`_percent is redundant` note below: `PREDICATE_SUFFIXES` no longer exists.
+
+### Done (2026-09-01)
+…
+```
+
+`docs/design.md` is different: it describes how the system works *now*, so rewrite it freely to stay accurate.
+
+Renaming things in the code does not license a find-and-replace through PLAN.md. Note the rename in a new dated entry instead.

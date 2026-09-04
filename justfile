@@ -47,12 +47,12 @@ scrape-sites:
 scrape-availability *args:
     uv run python source/scraper/populate_availability.py {{ trim_start_match(args, "-- ") }}
 
-# Google Place Details → reviews + claims (newest). Seed: just populate-reviews -- --most-relevant
-populate-reviews *args:
+# Google Place Details → reviews + claims (newest). Seed: just scrape-reviews -- --most-relevant
+scrape-reviews *args:
     uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
 
 # info-site static pages -> campsite_rules (site-level rules + amenities; --site N)
-ingest-rules *args:
+scrape-rules *args:
     uv run python -m source.scraper.rules_ingest.ingest {{ trim_start_match(args, "-- ") }}
 
 # Delete availability rows; keeps types, rules and prices (--types, --site N)

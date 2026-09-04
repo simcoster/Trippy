@@ -1,6 +1,6 @@
 """Clear campsite_rules, without touching the vocabulary that gives it meaning.
 
-The inverse of `just ingest-rules`, so by default it deletes exactly what that
+The inverse of `just scrape-rules`, so by default it deletes exactly what that
 job writes: **site-level rows only** (`accommodation_type_id IS NULL`). Per-unit
 rows come from the availability scrape's amenity enrichment and can only be
 rebuilt by re-running it, so they are kept unless you ask for them.
@@ -184,7 +184,7 @@ def main() -> None:
             "REINDEX TABLE subject_vectors if you do this often."
         )
     if deleted:
-        _log("Rebuild with: just ingest-rules")
+        _log("Rebuild with: just scrape-rules")
 
 
 if __name__ == "__main__":

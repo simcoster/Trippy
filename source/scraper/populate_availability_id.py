@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import ssl
 import sys
 import unicodedata
 from datetime import date, timedelta
@@ -30,6 +29,8 @@ import httpx
 import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+
+from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -60,13 +61,6 @@ RETURNING id, name, booking_hotel_id;
 """
 
 
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
-
-
 def _database_url() -> str:
     url = os.environ.get("DATABASE_URL")
     if not url:
@@ -77,7 +71,7 @@ def _database_url() -> str:
 def _client() -> httpx.Client:
     return httpx.Client(
         timeout=30.0,
-        verify=_ssl_context(),
+        verify=ssl_context(),
         follow_redirects=True,
         headers={
             "User-Agent": (

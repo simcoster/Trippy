@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Load secrets from environment variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-NGROK_URL = os.getenv("NGROK_URL", "")
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN environment variable is not set. Please check your .env file.")
 TELEGRAM_API_BASE = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"

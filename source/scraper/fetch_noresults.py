@@ -1,17 +1,14 @@
 import re
-import ssl
 import sys
 from pathlib import Path
 
 import httpx
 
+from source.scraper.tls import ssl_context
+
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 SCRAPER_DIR = Path(__file__).resolve().parent
-
-ctx = ssl.create_default_context()
-if hasattr(ssl, "VERIFY_X509_STRICT"):
-    ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
 
 headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
@@ -21,7 +18,7 @@ urls = [
     "https://secure-hotels.net/INPA/",
 ]
 
-with httpx.Client(timeout=30, verify=ctx, follow_redirects=True) as client:
+with httpx.Client(timeout=30, verify=ssl_context(), follow_redirects=True) as client:
     for url in urls:
         r = client.get(url, headers=headers)
         name = url.rstrip("/").split("/")[-1] or "index"

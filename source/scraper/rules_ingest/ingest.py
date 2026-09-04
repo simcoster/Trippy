@@ -15,14 +15,26 @@ import json
 import os
 import sys
 import time
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
 import psycopg
 from dotenv import load_dotenv
 
-from source.scraper.amenity_enrichment.llm import EmbeddingLLMClient, LlmUsage
-from source.scraper.rules_ingest.db import ResolvedRule, upsert_campsite_rules
+from db.models import QualifierUnit
+from source.scraper.amenity_enrichment.llm import (
+    EmbeddingLLMClient,
+    LlmUsage,
+    record_scrape_cost,
+)
+from source.scraper.rules_ingest.db import (
+    DroppedRule,
+    ResolvedRule,
+    upsert_campsite_rules,
+)
 from source.scraper.rules_ingest.fetch import fetch_page_html
 from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
 from source.scraper.rules_ingest.sections import Section, parse_sections
@@ -37,17 +49,114 @@ from source.scraper.subjects.resolve import (
     ResolutionTrace,
     SubjectRef,
     SubjectStore,
+    alias_overflow,
     resolve_subject,
 )
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    # line_buffering so progress lines land as they happen when stdout is a
+    # pipe or a file, not in one burst at exit.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
 load_dotenv()
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.json"
 DEFAULT_LIMIT = 2
 DEFAULT_PAUSE_SECONDS = 0.5
+
+
+@dataclass
+class SiteReport:
+    """What one page's ingest dropped at the upsert, and why each term landed
+    where it did.
+
+    `traces` is every resolver decision made for the page; `drops` is every
+    statement the upsert refused because its subject already had a row in the
+    scope. Together they say, for each collision, which two extractor terms
+    were judged one subject and on what grounds -- what you need to decide
+    whether that was an over-merge.
+    """
+
+    drops: list[DroppedRule] = field(default_factory=list)
+    traces: list[ResolutionTrace] = field(default_factory=list)
+
+    def render(self) -> str:
+        # A term is traced the first time it is resolved; later repeats come
+        # from the cache, so the first trace is the one that explains it.
+        first_trace: dict[str, ResolutionTrace] = {}
+        for trace in self.traces:
+            first_trace.setdefault(trace.term, trace)
+        names = {
+            t.subject_id: t.subject_name
+            for t in self.traces
+            if t.subject_id is not None and t.subject_name
+        }
+        lines = self._subjects_section(first_trace)
+        lines.extend(self._collisions_section(first_trace, names))
+        return "\n".join(lines)
+
+    def _subjects_section(self, first_trace: dict[str, ResolutionTrace]) -> list[str]:
+        """Every subject the page touched, with each term that reached it and how."""
+        by_subject: dict[int | None, list[ResolutionTrace]] = {}
+        for trace in first_trace.values():
+            by_subject.setdefault(trace.subject_id, []).append(trace)
+        kinds = Counter(t.kind or "?" for t in first_trace.values())
+        collided = {d.kept.subject_id: d.label for d in self.drops}
+
+        found = [sid for sid in by_subject if sid is not None]
+        summary = ", ".join(f"{n} {kind}" for kind, n in sorted(kinds.items()))
+        lines = [f"    subjects on this page: {len(found)} ({summary})"]
+        for sid in sorted(found):
+            traces = by_subject[sid]
+            name = traces[0].subject_name or "?"
+            terms = "; ".join(f"{t.term!r} [{t.kind or '?'}]" for t in traces)
+            flag = f"   !! {collided[sid]}" if sid in collided else ""
+            lines.append(f"    #{sid} {name!r} <- {terms}{flag}")
+        for trace in by_subject.get(None, []):
+            lines.append(f"    (no subject) {trace.term!r}: {trace.outcome}")
+        return lines
+
+    def _collisions_section(
+        self, first_trace: dict[str, ResolutionTrace], names: dict[int, str]
+    ) -> list[str]:
+        if not self.drops:
+            return ["    collisions on this page: none"]
+        lines = [f"    collisions on this page: {len(self.drops)}"]
+        for drop in self.drops:
+            sid = drop.kept.subject_id
+            lines.append(
+                f"    {drop.label} on subject #{sid} {names.get(sid, '?')!r} "
+                f"(campsite {drop.campsite_id})"
+            )
+            for role, rule in (("kept   ", drop.kept), ("dropped", drop.dropped)):
+                trace = first_trace.get(rule.term) if rule.term else None
+                lines.extend(_describe_side(role, rule, trace))
+        return lines
+
+
+def _describe_side(
+    role: str, rule: ResolvedRule, trace: ResolutionTrace | None
+) -> list[str]:
+    """Three lines: the extractor's term and values, its evidence, its resolution."""
+    if rule.qualifier is None:
+        value = f"polarity={rule.polarity}"
+    else:
+        try:
+            unit = QualifierUnit(int(rule.qualifier_unit)).name.lower()
+        except ValueError:
+            unit = str(rule.qualifier_unit)
+        value = f"polarity={rule.polarity} qualifier={rule.qualifier} {unit}"
+    where = f" in {rule.section_title!r}" if rule.section_title else ""
+    how = (
+        trace.outcome
+        if trace is not None
+        else "(no trace: the term was already in the cache for this page)"
+    )
+    return [
+        f"      {role}: {rule.term!r}{where} -> {value}",
+        f"               {rule.evidence_span!r}",
+        f"               {how}",
+    ]
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
@@ -108,61 +217,149 @@ def rules_from_sections(
     resolved: list[ResolvedRule] = []
     shared_cache = cache if cache is not None else {}
     for section in sections:
-        print(f"    extract: {section.title}")
+        # One chat call per section, and a dense Hebrew amenity list keeps the
+        # model busy for 30-90s. The reply is streamed and rendered as dots on
+        # this line, so a long wait looks like work rather than a hang.
+        print(
+            f"    extract: {section.title} ({len(section.text):,} chars) "
+            f"-> {extractor.model} ",
+            end="",
+            flush=True,
+        )
+        extract_usage = LlmUsage()
+        started = time.monotonic()
         try:
             extract = extractor.extract(
-                section.text, section_title=section.title, usage=usage
+                section.text,
+                section_title=section.title,
+                usage=extract_usage,
+                progress=_stream_dots(),
             )
         except Exception as exc:  # noqa: BLE001 — one bad section must not stop the page
-            print(f"    extract failed for {section.title!r}: {exc}")
+            print()  # close the dots line
+            print(
+                f"    extract failed for {section.title!r} after "
+                f"{time.monotonic() - started:.1f}s: {exc}"
+            )
+            if usage is not None:
+                usage.merge(extract_usage)
             continue
+        print()  # close the dots line
+        print(
+            f"      {len(extract.statements)} statement(s) in "
+            f"{time.monotonic() - started:.1f}s, tokens "
+            f"in={extract_usage.chat_prompt_tokens} "
+            f"out={extract_usage.chat_completion_tokens}"
+        )
 
-        for statement in extract.statements:
-            # A statement with neither a polarity nor a number asserts nothing:
-            # it would add a permanent subject no query can use, and one that
-            # later terms could be merged into.
-            if statement.polarity is None and statement.qualifier is None:
-                print(
-                    f"    dropping {statement.subject!r}: no polarity and no "
-                    f"qualifier, so it states nothing"
-                )
-                continue
-            ref = resolve_subject(
-                conn,
-                statement.subject,
-                embedder=embedder,
-                adjudicator=adjudicator,
-                category=statement.category,
-                # The sentence the statement was read from is the context a
-                # later sameness judgement needs; "toilets" means one thing in
-                # a site amenity list and another inside a room description.
-                context=_statement_context(section, statement),
-                store=store,
-                cache=shared_cache,
-                usage=usage,
-                trace_sink=trace_sink,
-            )
-            if ref is None:
-                continue
-            # A term the resolver had to de-negate ("no dogs") overrides whatever
-            # polarity the extractor paired with the negative phrasing.
-            polarity = (
-                ref.implied_polarity
-                if ref.implied_polarity is not None
-                else statement.polarity
-            )
-            resolved.append(
-                ResolvedRule(
-                    subject_id=ref.id,
-                    polarity=polarity,
-                    qualifier=statement.qualifier,
-                    qualifier_unit=statement.qualifier_unit,
-                    evidence_span=statement.evidence_span,
-                    source_url=section.source_url,
-                    confidence=statement.confidence,
-                )
-            )
+        # The resolver prints a trace per term it has to look up (cache hits
+        # are silent). This tally is what says the section finished, and what
+        # the embedding + adjudicator calls behind it cost.
+        resolve_usage = LlmUsage()
+        started = time.monotonic()
+        rules, dropped = _resolve_statements(
+            conn,
+            section,
+            extract.statements,
+            embedder=embedder,
+            adjudicator=adjudicator,
+            store=store,
+            cache=shared_cache,
+            usage=resolve_usage,
+            trace_sink=trace_sink,
+        )
+        resolved.extend(rules)
+        print(
+            f"      resolved: {len(rules)} kept, {dropped} dropped in "
+            f"{time.monotonic() - started:.1f}s "
+            f"({resolve_usage.embed_calls} embed, "
+            f"{resolve_usage.chat_calls} adjudicator call(s))"
+        )
+        if usage is not None:
+            usage.merge(extract_usage)
+            usage.merge(resolve_usage)
     return resolved
+
+
+def _stream_dots(every: int = 40) -> Callable[[int], None]:
+    """Progress renderer for `extract`: one dot per `every` streamed chunks."""
+
+    def tick(chunks: int) -> None:
+        if chunks % every == 0:
+            print(".", end="", flush=True)
+
+    return tick
+
+
+def _resolve_statements(
+    conn,
+    section: Section,
+    statements,
+    *,
+    embedder: EmbeddingLLMClient,
+    adjudicator: SubjectAdjudicatorLLMClient,
+    store: SubjectStore,
+    cache: dict[str, SubjectRef],
+    usage: LlmUsage,
+    trace_sink: list[ResolutionTrace] | None,
+) -> tuple[list[ResolvedRule], int]:
+    """Resolve one section's statements to subject ids.
+
+    Returns the rules that survived and how many statements were dropped,
+    whether for asserting nothing or because the resolver could not place them.
+    """
+    rules: list[ResolvedRule] = []
+    dropped = 0
+    for statement in statements:
+        # A statement with neither a polarity nor a number asserts nothing:
+        # it would add a permanent subject no query can use, and one that
+        # later terms could be merged into.
+        if statement.polarity is None and statement.qualifier is None:
+            print(
+                f"    dropping {statement.subject!r}: no polarity and no "
+                f"qualifier, so it states nothing"
+            )
+            dropped += 1
+            continue
+        ref = resolve_subject(
+            conn,
+            statement.subject,
+            embedder=embedder,
+            adjudicator=adjudicator,
+            category=statement.category,
+            # The sentence the statement was read from is the context a
+            # later sameness judgement needs; "toilets" means one thing in
+            # a site amenity list and another inside a room description.
+            context=_statement_context(section, statement),
+            store=store,
+            cache=cache,
+            usage=usage,
+            trace_sink=trace_sink,
+        )
+        if ref is None:
+            dropped += 1
+            continue
+        # A term the resolver had to de-negate ("no dogs") overrides whatever
+        # polarity the extractor paired with the negative phrasing.
+        polarity = (
+            ref.implied_polarity
+            if ref.implied_polarity is not None
+            else statement.polarity
+        )
+        rules.append(
+            ResolvedRule(
+                subject_id=ref.id,
+                polarity=polarity,
+                qualifier=statement.qualifier,
+                qualifier_unit=statement.qualifier_unit,
+                evidence_span=statement.evidence_span,
+                source_url=section.source_url,
+                confidence=statement.confidence,
+                term=statement.subject,
+                section_title=section.title,
+            )
+        )
+    return rules, dropped
 
 
 def ingest_site(
@@ -176,6 +373,7 @@ def ingest_site(
     store: SubjectStore = DEFAULT_STORE,
     rules_table: str = "campsite_rules",
     usage: LlmUsage | None = None,
+    report: SiteReport | None = None,
 ) -> int:
     sections = parse_sections(html, source_url=site["url"])
     print(f"    {len(sections)} section(s): {', '.join(s.title for s in sections)}")
@@ -194,6 +392,7 @@ def ingest_site(
             store=store,
             rules_table=rules_table,
             usage=usage,
+            report=report,
         )
 
     # One pass per subcamp, each writing to its own campsites row — which is why
@@ -218,6 +417,7 @@ def ingest_site(
             rules_table=rules_table,
             cache=cache,
             usage=usage,
+            report=report,
         )
     return written
 
@@ -234,6 +434,7 @@ def _ingest_scope(
     rules_table: str,
     cache: dict[str, SubjectRef] | None = None,
     usage: LlmUsage | None = None,
+    report: SiteReport | None = None,
 ) -> int:
     """Extract and write one campsite row's worth of rules."""
     rules = rules_from_sections(
@@ -245,6 +446,7 @@ def _ingest_scope(
         store=store,
         cache=cache,
         usage=usage,
+        trace_sink=report.traces if report is not None else None,
     )
     if not rules:
         print("    no statements extracted")
@@ -252,13 +454,28 @@ def _ingest_scope(
 
     with conn.cursor() as cur:
         written = upsert_campsite_rules(
-            cur, campsite_id=campsite_id, rules=rules, table=rules_table
+            cur,
+            campsite_id=campsite_id,
+            rules=rules,
+            table=rules_table,
+            dropped_sink=report.drops if report is not None else None,
         )
         print(f"    {written} rule(s) upserted")
     return written
 
 
-def run(config: dict, *, limit: int, site: int | None = None) -> int:
+def run(
+    config: dict,
+    *,
+    limit: int,
+    site: int | None = None,
+    usage: LlmUsage | None = None,
+) -> int:
+    """Ingest up to `limit` campsites (or just `site`). Returns rules upserted.
+
+    `usage` is filled with every LLM call made, per role and model, so the
+    caller can report the run's cost; a fresh one is used when none is given.
+    """
     campsites = fetch_campsites(config, limit=limit, site=site)
     if not campsites:
         print("No campsites found")
@@ -270,8 +487,9 @@ def run(config: dict, *, limit: int, site: int | None = None) -> int:
     extractor = RuleExtractorLLMClient()
     embedder = EmbeddingLLMClient()
     adjudicator = SubjectAdjudicatorLLMClient()
-    usage = LlmUsage()
+    usage = usage if usage is not None else LlmUsage()
     total = 0
+    run_started = time.monotonic()
 
     print(f"Ingesting rules for {len(campsites)} campsite(s)")
     with psycopg.connect(database_url(config)) as conn:
@@ -279,11 +497,17 @@ def run(config: dict, *, limit: int, site: int | None = None) -> int:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}")
             print(f"   {site['url']}")
+            site_started = time.monotonic()
             try:
                 html = fetch_page_html(site["url"])
             except httpx.HTTPError as exc:
                 print(f"    HTTP error: {exc}")
                 continue
+            print(
+                f"    fetched {len(html):,} chars in "
+                f"{time.monotonic() - site_started:.1f}s"
+            )
+            report = SiteReport()
             try:
                 total += ingest_site(
                     conn,
@@ -293,16 +517,31 @@ def run(config: dict, *, limit: int, site: int | None = None) -> int:
                     embedder=embedder,
                     adjudicator=adjudicator,
                     usage=usage,
+                    report=report,
                 )
                 conn.commit()
+                print(f"    site done in {time.monotonic() - site_started:.1f}s")
             except Exception as exc:  # noqa: BLE001 — keep going to the next site
                 conn.rollback()
-                print(f"    failed, rolled back: {exc}")
+                print(
+                    f"    failed, rolled back after "
+                    f"{time.monotonic() - site_started:.1f}s: {exc}"
+                )
+            # Printed after a rollback too: the over-merge behind a collision
+            # is still worth seeing even when nothing was written.
+            print(report.render())
+            # One JSON line per subject whose alias list has outgrown
+            # ALIAS_OVERFLOW -- greppable, and the list itself shows what it ate.
+            for subject in alias_overflow(conn):
+                print("    ALIAS OVERFLOW " + json.dumps(subject, ensure_ascii=False))
             if pause_s > 0:
                 time.sleep(pause_s)
 
     print("-" * 60)
-    print(f"Done. Upserted {total} rule(s).")
+    print(
+        f"Done. Upserted {total} rule(s) in "
+        f"{time.monotonic() - run_started:.1f}s."
+    )
     if usage.chat_calls or usage.embed_calls:
         print(usage.summary(prefix="Rules ingest total: "))
     return total
@@ -327,7 +566,12 @@ def main(argv: list[str] | None = None) -> None:
     limit = args.limit
     if limit is None:
         limit = int(config.get("info_site", {}).get("limit_campsites", DEFAULT_LIMIT))
-    run(config, limit=limit, site=args.site)
+    usage = LlmUsage()
+    run(config, limit=limit, site=args.site, usage=usage)
+    # Recorded here, not in run(): a test driving run() must not write reports/.
+    written = record_scrape_cost("scrape-rules", usage)
+    if written:
+        print(f"cost report appended to {written}")
 
 
 if __name__ == "__main__":

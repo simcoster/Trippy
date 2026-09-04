@@ -65,7 +65,7 @@ class InfoWebsiteNameMatcher:
             temperature=self.TEMPERATURE,
         )
         if usage is not None:
-            usage.add_chat(response.usage)
+            usage.add_chat(response.usage, role="listing_match", model=self.model)
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
         picked = data.get("name")

@@ -81,7 +81,13 @@ def test_arrival_window_lands_as_decimal_hours(statements):
     assert float(check_in.qualifier) == 15.0
     assert check_in.qualifier_unit == int(QualifierUnit.HOUR_OF_DAY)
 
-    latest = find(statements, "arrival") or find(statements, "latest")
+    # The canonical shape names the window's close `check_in_end_time`; older
+    # extractions said `latest_arrival_time`. Either is the 20:30 fact.
+    latest = (
+        find(statements, "check_in_end")
+        or find(statements, "arrival")
+        or find(statements, "latest")
+    )
     assert latest is not None
     assert float(latest.qualifier) == 20.5
     assert latest.qualifier_unit == int(QualifierUnit.HOUR_OF_DAY)

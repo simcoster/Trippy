@@ -12,9 +12,9 @@ scrapers.
 
 from __future__ import annotations
 
-import ssl
-
 import httpx
+
+from source.scraper.tls import ssl_context
 
 LISTING_URL = (
     "https://www.parks.org.il/"
@@ -28,17 +28,10 @@ USER_AGENT = (
 TIMEOUT_SECONDS = 45.0
 
 
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
-
-
 def fetch_page_html(url: str, *, referer: str = LISTING_URL) -> str:
     with httpx.Client(
         timeout=TIMEOUT_SECONDS,
-        verify=_ssl_context(),
+        verify=ssl_context(),
         follow_redirects=True,
         headers={"User-Agent": USER_AGENT, "Referer": referer},
     ) as client:
