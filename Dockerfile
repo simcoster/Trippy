@@ -3,17 +3,10 @@ FROM python:3.14-slim
 WORKDIR /app
 
 # Install system dependencies for PostgreSQL
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-
-    # Install ngrok
-RUN curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-| tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
-&& echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
-| tee /etc/apt/sources.list.d/ngrok.list \
-&& apt-get update \
-&& apt-get install -y ngrok
 
 # Install uv for faster package management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -34,6 +27,6 @@ RUN chmod +x /start.sh
 # Expose port
 EXPOSE 8000
 
-# Start ngrok, then the app
+# Start the app
 CMD ["sh", "/start.sh"]
 

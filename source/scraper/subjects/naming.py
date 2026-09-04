@@ -113,82 +113,11 @@ def _settle(text: str) -> str | None:
     return cleaned
 
 
-# The trailing token of a subject name is its predicate: `barbecue_allowed` and
-# `barbecue_equipment_included` are two facts about one noun, not one subject.
-# Embeddings put them almost on top of each other and the adjudicator LLM merges
-# them if asked, so the suffix comparison is done in code instead.
-# For an amenity, "is it provided" is what polarity records, so these suffixes
-# name no predicate of their own: `towels_included` and `towels` are one
-# subject, and `electric_hookup_included` is not a second `electric_hookup`.
-PROVISION_SUFFIXES: tuple[str, ...] = ("included", "provided", "available")
-
-# For a rule these all ask the same question — may I? — so `late_checkout_allowed`
-# and `late_check_out_available` are one subject. Note `available` appears in both
-# lists: on an amenity it means "supplied", on a rule it means "permitted", which
-# is why the comparison needs to know the category.
-PERMISSION_SUFFIXES: tuple[str, ...] = ("allowed", "permitted", "available")
-PERMISSION = "permission"
-
-# subject_vectors.category values, kept as plain ints so this module stays free
-# of database imports.
-CATEGORY_RULE = 2
-
-PREDICATE_SUFFIXES: tuple[str, ...] = (
-    "allowed",
-    "permitted",
-    "required",
-    "time",
-    "fee",
-    "price",
-    "age",
-    "count",
-    "nights",
-    "days",
-    "limit",
-    "deposit",
-)
-
-
-def predicate_suffix(name: str, *, category: int | None = None) -> str | None:
-    """The predicate a subject name ends in, or None for a bare noun.
-
-    On a rule, every way of asking "may I?" collapses to `PERMISSION`. On
-    anything else a trailing provision word is stripped first, so
-    `towels_included` reports the same (absent) predicate as `towels`.
-    """
-    text = normalize_alias(name)
-    if category == CATEGORY_RULE:
-        if _ends_with_any(text, PERMISSION_SUFFIXES):
-            return PERMISSION
-    else:
-        text = _strip_suffix(text, PROVISION_SUFFIXES)
-    for suffix in PREDICATE_SUFFIXES:
-        if text == suffix or text.endswith(f"_{suffix}"):
-            return suffix
-    return None
-
-
-def _ends_with_any(text: str, suffixes: tuple[str, ...]) -> bool:
-    return any(text == s or text.endswith(f"_{s}") for s in suffixes)
-
-
-def _strip_suffix(text: str, suffixes: tuple[str, ...]) -> str:
-    for suffix in suffixes:
-        if text.endswith(f"_{suffix}"):
-            return text[: -len(suffix) - 1]
-    return text
-
-
-def same_predicate(left: str, right: str, *, category: int | None = None) -> bool:
-    """Can these two names possibly be one subject?
-
-    Only compares predicates, so it says nothing about the nouns —
-    `check_in_time` and `check_out_time` both pass and are told apart later.
-    """
-    return predicate_suffix(left, category=category) == predicate_suffix(
-        right, category=category
-    )
-
+# Whether two names state the same predicate (a permission vs a time vs a
+# price) is the judge LLM's call, made with both names and their contexts in
+# view; see ADJUDICATE_SYSTEM_PROMPT. A suffix list used to pre-empt it here and
+# fragmented the vocabulary wherever a suffix was missing from the list
+# (`_until` vs `_end_time`, `_applies` vs `_required`). Do not reintroduce one.
 
 # Two names that pick opposite members of one of these pairs state opposite
 # facts and are never one subject. A live ingest merged all four mattress-window

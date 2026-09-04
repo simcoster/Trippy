@@ -12,14 +12,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import ssl
 import sys
 import time
 from pathlib import Path
 
 import httpx
 import psycopg
-from amenity_enrichment.llm import LlmUsage
+from amenity_enrichment.llm import LlmUsage, record_scrape_cost
 from dotenv import load_dotenv
 
 _SCRAPER_DIR = Path(__file__).resolve().parents[1]
@@ -33,6 +32,7 @@ from info_site.parse import (  # noqa: E402
     parse_rate_table,
     parse_wp_post_id,
 )
+from source.scraper.tls import ssl_context  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -54,13 +54,6 @@ USER_AGENT = (
 def load_config(path: Path = CONFIG_PATH) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
-
-
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
 
 
 def database_url(config: dict) -> str:
@@ -98,7 +91,7 @@ def fetch_campsites(config: dict) -> list[dict]:
 def fetch_page_html(url: str, *, referer: str = LISTING_URL) -> str:
     with httpx.Client(
         timeout=45.0,
-        verify=_ssl_context(),
+        verify=ssl_context(),
         follow_redirects=True,
         headers={"User-Agent": USER_AGENT, "Referer": referer},
     ) as client:
@@ -133,7 +126,11 @@ def scrape_prices_for_site(
     return len(lodging)
 
 
-def run_prices(config: dict) -> int:
+def run_prices(config: dict, *, usage: LlmUsage | None = None) -> int:
+    """Scrape rate cards for the configured campsites. Returns rows stored.
+
+    `usage` collects every LLM call so the caller can report the run's cost.
+    """
     campsites = fetch_campsites(config)
     if not campsites:
         print("No campsites found")
@@ -141,7 +138,7 @@ def run_prices(config: dict) -> int:
 
     pause_s = float(config.get("info_site", {}).get("request_pause_seconds", 0.5))
     classifier = RateCardClassifier()
-    usage = LlmUsage()
+    usage = usage if usage is not None else LlmUsage()
     total = 0
 
     print(f"Scraping list prices for {len(campsites)} campsite(s)")
@@ -180,7 +177,11 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if not args.prices:
         parser.error("pass --prices (newsflashes are not wired yet)")
-    run_prices(load_config())
+    usage = LlmUsage()
+    run_prices(load_config(), usage=usage)
+    written = record_scrape_cost("scrape-prices", usage)
+    if written:
+        print(f"cost report appended to {written}")
 
 
 if __name__ == "__main__":

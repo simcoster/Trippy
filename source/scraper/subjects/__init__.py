@@ -4,8 +4,6 @@ from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
 from source.scraper.subjects.naming import (
     normalize_alias,
     opposed,
-    predicate_suffix,
-    same_predicate,
     to_positive_subject,
 )
 from source.scraper.subjects.resolve import (
@@ -31,8 +29,6 @@ __all__ = [
     "resolve_subject",
     "normalize_alias",
     "opposed",
-    "predicate_suffix",
-    "same_predicate",
     "to_positive_subject",
     "NEAREST_K",
     "MATCH_MAX_DISTANCE",

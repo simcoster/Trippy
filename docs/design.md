@@ -119,13 +119,14 @@ Three defences, in order:
    so it never saw a single existing rule. The partial indexes from migration
    `025` serve exactly this query. Note this applies to *resolution* only: the
    planner's lanes stay unfiltered and see both categories.
-2. **`naming.same_predicate`, in code.** The trailing token of a subject name *is*
-   its predicate, so `barbecue_allowed` (may I grill?) and
-   `barbecue_equipment_included` (is a grill provided?) cannot be the same subject
-   whatever the model thinks. Candidates with a different predicate suffix are
-   filtered out before the adjudicator ever sees them — which also saves the call.
-   Same rule kills `late_check_out_fee` → `late_check_out_available` and
-   `equipment_rental_deposit_required` → `rental_equipment_available`.
+2. **Predicates, in the prompt — no longer in code.** `barbecue_allowed` (may I
+   grill?) and `barbecue_equipment_included` (is a grill provided?) are different
+   kinds of question about one noun and must stay apart; `late_check_out_fee`
+   vs `late_check_out_available` likewise. A suffix-list filter
+   (`naming.same_predicate`) used to enforce this before the judge saw the pair.
+   It was removed after it fragmented `late_check_out_*` into nine subjects —
+   see "Predicates are the judge's call" below. The distinction is now stated in
+   `ADJUDICATE_SYSTEM_PROMPT` with the synonym groups that *do* merge.
 3. **Prompt, for the semantics.** Narrowing qualifiers (`accessible_toilets` vs
    `toilets`, `mattresses_for_rent` vs `mattress`) are judgement calls, not
    structure, so they live in `ADJUDICATE_SYSTEM_PROMPT` with worked counter-examples.
@@ -277,13 +278,19 @@ Aliases only converge if a term maps to the same canonical name every time;
 non-determinism here means the *next* campsite creates a duplicate subject rather
 than aliasing onto the first.
 
-Bypassing the classifier when the extractor supplied a category was tried and
-reverted — it removed the one place that cleans a genuinely bad name. Instead the
-prompt is strict: **return the term unchanged unless there is a real problem**
-(a misspelling, a plural, a negation, or a name stating no predicate). Reordering,
-adding and dropping words for style are forbidden. `picnic_tables_and_benches` →
-`picnic_tables` still happens; `child_max_age` and
-`suitable_for_shabbat_observers` now survive untouched.
+**The classifier no longer names anything.** Asking it for a name distinct from
+the neighbours the judge had rejected was measured over 40 terms: it reordered
+`weekend_min_nights` → `min_weekend_nights`, dropped words
+(`stay_min_nights` → `min_nights`), and invented a direction — `dogs_entry_time`,
+whose context said "from 16:00", became `last_dogs_entry_time`. A wrong name on a
+real fact is as damaging as a wrong merge, and reordered names fork the alias
+vocabulary. So the extractor's term — normalized, negation moved to polarity — is
+the canonical name, stored with the probe embedding (one embed call, not two), and
+the classifier is consulted only for a category the extractor did not supply. Name
+quality is the extractor prompt's job (the canonical shape above); duplicates from
+naming drift are the tolerable failure, surfaced by the per-site report and the
+`ALIAS OVERFLOW` lines (subjects with more than 20 aliases) rather than repaired
+by a model.
 
 It is also told that a trailing `included` / `provided` / `available` always marks
 an **amenity**, and that it must never append `_included` to a bare noun.
@@ -317,30 +324,69 @@ dropping CONFLICTING statement for subject 291
     (kept polarity=None qualifier=15, dropped polarity=None qualifier=20)
 ```
 
-### A suffix means different things on a rule and on an amenity
+### Predicates are the judge's call, not a suffix list's
 
-`towels_included` and `towels` are one subject — whether it is provided is what
-`polarity` records. The same for `_provided` and `_available`. `same_predicate`
-strips those before comparing, so the pair reaches the judge instead of being
-blocked in code, and the judge is told the rule explicitly. Before this,
-`electric_hookup` and `electric_hookup_included` were two rows for one thing.
+`same_predicate` used to compare the trailing token of two names against a fixed
+tuple (`allowed`, `required`, `time`, `fee`, …) and refuse to offer the judge any
+pair whose suffixes differed. It was removed. Any suffix missing from the list
+read as "bare noun", so `late_check_out_end_time` / `late_check_out_available_until`
+and `late_check_out_fee_required` / `late_check_out_fee_applies` were never
+compared and became separate subjects, while `late_check_out_fee_percent` and
+`late_check_out_fee_applies` (both "unknown") were judged the same predicate and a
+boolean was merged into a numeric — site 20 holds a `fee_percent` row whose value
+is `True`. One section of one page produced nine `late_check_out_*` subjects. The
+gate over-split where its vocabulary was missing and over-merged where it was
+blind, and both failures were silent.
 
-But `available` is not one word. On an amenity it means *supplied*; on a rule it
-means *permitted*, and `late_checkout_allowed` / `late_check_out_available` are one
-rule. Stripping it there produced a false split instead — the trace caught it:
+The rule now lives in `ADJUDICATE_SYSTEM_PROMPT`, applied to the actual pair with
+both contexts in view: different *kinds* of question about a noun (permission,
+obligation, time, price, count, limit) are different subjects however alike the
+words; different *words* for the same kind (`_available` / `_allowed`,
+`_until` / `_end_time`, `_applies` / `_required`, `_included` / bare noun) are one
+subject. The judge is also told that identical contexts are not evidence of
+sameness: one list item can say a field kitchen exists *and* that it has no gas,
+and a reproduced run showed the judge merging `gas_stove_in_field_kitchen` into
+`field_kitchen` on exactly that signal, with the counter-example already in its
+prompt. The prompt carries that case now.
 
-```
-'late_checkout_allowed' (rule). NN: [late_check_out_available -0.788[predicate], ...].
-   considered 0. INSERTED.
-```
+When the judge rejects every offered neighbour, those neighbours go to the
+classifier (`classify(near=…)`), which is asked to choose a canonical name that
+stays clear of them by adding the one distinguishing facet the context supports.
+The original term is kept as an alias either way, so later alias hits still land.
 
-So `same_predicate` takes the category. On a rule, `allowed` / `permitted` /
-`available` all collapse to one `permission` predicate; on anything else the
-provision words are stripped. `available` sits in both lists on purpose.
+The repo rule behind this is `.cursor/rules/llm-decides-semantics.mdc`: do not
+decide meaning by comparing strings to a constant list. `opposed()` is the one
+sanctioned exception, kept on evidence: with it off, the 30B judge merged 4 of
+6 direction pairs (`child_max_age` → `child_min_age`, `gate_close` → `gate_open`,
+…) even with contexts stating the direction; the 235B merged none. The guard can
+only over-split, which is the tolerable failure, so it stays in front of the
+judge. A `direction` column remains the structural fix if the name is ever to
+stop carrying min/max.
 
-The cost: `barbecue_equipment_included` vs `barbecue` is no longer blocked
-structurally and now depends on the judge reading the nouns. It is pinned in
-`test_subject_adjudication_llm.py` in both directions.
+**The judge runs on the 235B, not the 30B.** On 13 pinned cases the 30B merged
+4 of 6 direction pairs with the current prompt and 1 of 6 with the added
+direction/actor block; the 235B merged none on either prompt and missed no true
+synonym. It costs 2× per token (~$0.32 vs ~$0.16 per 1000 judge calls), and judge
+calls grow with the vocabulary, not with ingest volume, so a full re-population
+is cents. The block was added as well. (experiments.md 2026-09-04 §5; the guard
+decision above is §4.)
+
+**The classifier stays on the 30B.** Moving it with the judge broke a pinned
+test: asked for the category of a bare `dogs_allowed`, the 235B answered
+"amenity" 9 times in 10 on one run and "rule" 4 of 4 on another — unstable, not
+merely wrong — where the 30B was 20/20 "rule". The two models are therefore
+separate constants (`MODEL` for `pick_match`, `CLASSIFY_MODEL` for `classify`).
+The classifier's category is only consulted when a caller passes none, and every
+production caller passes one, so today this is a test-suite guarantee rather than
+a production path. Temperature 0 on Nebius is not a determinism guarantee for
+either model; live-model tests should expect occasional flakes and the judge
+grid in §5 should be repeated before its 0/6 is relied on. (experiments.md
+2026-09-04 §6.)
+
+The per-site report printed by the rules ingest lists every subject a page
+touched, which term reached it by which path (alias / merged / existing /
+inserted), and every upsert collision with both phrasings — the evidence the
+above was diagnosed from.
 
 A qualifying word **anywhere** in the name is narrowing, not just a prefix. A live
 run collapsed `gas_in_field_kitchen` into `field_kitchen` (losing "no gas"),

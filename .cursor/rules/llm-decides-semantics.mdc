@@ -1,0 +1,34 @@
+---
+description: Semantic decisions belong to the LLM judge, not to constant string lists
+alwaysApply: true
+---
+
+# Do not decide meaning by matching strings against a constant list
+
+When code has to decide what a word or name *means* — are these two subjects the same, are they opposites, is this a part of that, is this a permission or a price — do not answer it by comparing the string against a hand-maintained tuple of words. That is what the project's LLM calls are for: the resolver has a judge (`SubjectAdjudicatorLLMClient.pick_match`) and a classifier (`.classify`) precisely so this judgement is made with the full name, its context and the candidates in view. A partial vocabulary in code pre-empts the judge with something worse, and it fails silently when the vocabulary is incomplete.
+
+```python
+# BAD — a suffix list decides which pairs the judge is even allowed to see.
+# "until" and "percent" are not in it, so late_check_out_end_time and
+# late_check_out_available_until are never compared, and fee_percent (numeric)
+# and fee_applies (boolean) both read as "unknown" and are merged.
+PREDICATE_SUFFIXES = ("allowed", "required", "time", "fee", ...)
+if predicate_suffix(a) != predicate_suffix(b):
+    reject()
+
+# GOOD — the instruction lives in the judge's prompt, applied to the actual pair.
+# "Two names are different subjects when one states a permission and the other
+#  a time, price or count, however similar the nouns."
+match = adjudicator.pick_match(term, candidates, term_context=..., candidate_contexts=...)
+```
+
+Allowed without an LLM call:
+
+- A trivial comparison: equality, `in`, or choosing between two or three fixed variants.
+- A list we know for certain is closed and finite, such as an enumeration the code itself defines (connection types: IPv4, IPv6, Wi-Fi; `QualifierUnit`; `SubjectCategory`).
+
+Natural-language suffixes, synonyms, antonyms and "words that mean a quantity" are not closed lists.
+
+If a guard has to stay in code because the model has been shown to fail on it, say so explicitly in the conversation and get the user's decision. Do not add the list quietly.
+
+`naming.opposed()` / `ANTONYM_PAIRS` is the one sanctioned exception. Measured 2026-09-04: with it off, the 30B judge merged 4 of 6 direction pairs (`child_max_age` into `child_min_age`, `gate_close_time` into `gate_open_time`, …) despite contexts stating the direction. The guard rejects a candidate *before* the judge sees it and can only over-split, which is the tolerable failure; the user chose to keep it.

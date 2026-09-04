@@ -1,6 +1,12 @@
-"""Small-LLM clients for subject resolution: adjudicate, then classify.
+"""LLM clients for subject resolution: adjudicate, then classify.
 
-Both are Qwen 30B at temperature 0 with the JSON schema in the system prompt,
+The judge runs on the 235B: the 30B was measured merging 4 of 6 direction pairs
+(`child_max_age` into `child_min_age`, …) that the 235B kept apart on the same
+prompt, for 2x the per-call cost -- cents, since these calls scale with
+vocabulary growth. The classifier stays on the 30B: asked for the category of a
+bare `dogs_allowed`, the 235B answered "amenity" 9 times in 10 where the 30B was
+20/20 "rule" (experiments.md 2026-09-04 §5, §6). Temperature 0 on either model
+is not a determinism guarantee. Both follow
 following `source.scraper.info_site.classify.RateCardClassifier`. They only run
 on a cache-and-alias miss, so the cost is bounded by vocabulary growth rather
 than by ingest volume.
@@ -12,6 +18,7 @@ from openai import OpenAI
 
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_30B_MODEL,
+    QWEN_INSTRUCT_MODEL,
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
@@ -27,6 +34,21 @@ Rules:
 - Answer with the exact candidate string, copied character for character, or null.
 - Match only true synonyms or spelling/pluralisation variants of the SAME subject.
 - Do NOT match two different facts about the same noun. They are separate subjects.
+- Two names are different subjects when they ask different KINDS of question about
+  the noun -- a permission (may I?), an obligation (must I? must I pay?), a time,
+  a price, a count, an age or night limit -- however alike the words:
+  - "late_check_out_allowed" vs "late_check_out_end_time"   -> null
+  - "barbecue_allowed" vs "barbecue"                         -> null
+  - "last_dogs_entry_time" vs "dogs_allowed"                 -> null
+  But different WORDS for the same kind of question are one subject. Match them:
+  - "late_check_out_available" / "late_check_out_allowed" / "late_check_out_permitted"
+  - "late_check_out_available_until" / "late_check_out_end_time"
+  - "late_check_out_fee_applies" / "late_check_out_fee_required"
+  - "towels_included" / "towels_provided" / "towels"
+- Identical contexts are NOT evidence of sameness. One sentence often states
+  several facts: "מטבח שדה (1) בשלב הזה בלי גז" names a field kitchen AND says it has
+  no gas. When the term and a candidate quote the same sentence, judge the names
+  alone -- and a term that adds a noun to the candidate is a PART of it, so null.
 - Do NOT match a broader subject to a narrower one. If one name is the other plus
   a qualifying word, they are different subjects — the qualifier is usually the
   thing a guest is searching for, and the two often have opposite polarities.
@@ -46,6 +68,17 @@ Rules:
     activity; one asks what is supplied, the other names the thing itself)
 - Word order does not make a new subject. "child_min_age" and "min_child_age" are
   one subject; so are "for_rent_mattress" and "mattress_for_rent". Match them.
+- Two names that differ by a DIRECTION word state opposite bounds of one thing and
+  are NEVER one subject, however identical the rest of the name: min/max,
+  minimum/maximum, start/end, first/last, earliest/latest, open/close, entry/exit,
+  arrival/departure, before/after, pickup/return.
+  - "child_min_age" vs "child_max_age"                         -> null
+  - "mattress_pickup_start_time" vs "mattress_pickup_end_time" -> null
+  - "gate_open_time" vs "gate_close_time"                      -> null
+- A different ACTOR or OBJECT is a different subject even when the predicate is the
+  same. Vehicles are not guests and dogs are not guests:
+  - "car_entry_time" vs "check_in_time"  -> null
+  - "dogs_entry_time" vs "check_in_time" -> null
 - When unsure, answer null. A wrong merge is worse than a duplicate.
 - Context lines quote the sentence each subject was first read from. Use them:
   two subjects whose names look alike but whose contexts describe different
@@ -63,6 +96,10 @@ Examples:
 - term "toilets" (context: "שירותים (15 תאי שירותי נשים ו- 15 תאי שירותי גברים)"),
   candidate "bathroom" (context: "בכל חדר: ... שירותים, מקלחת מים חמים")
   -> {"match": null}  (a shared block on the site is not a room's own bathroom)
+- term "gas_stove_in_field_kitchen" (context: "מטבח שדה (1) בשלב הזה בלי גז"),
+  candidate "field_kitchen" (context: the very same sentence)
+  -> {"match": null}  (the stove is a part of the kitchen; the sentence says the
+     kitchen exists and the gas does not -- two facts, two subjects)
 - term "accessible_toilets", candidates ["toilets", ...] -> {"match": null}
   (accessibility is what someone is searching for; merging it hides that)
 - term "mattresses_for_rent", candidates ["mattress", ...] -> {"match": null}
@@ -117,16 +154,28 @@ Rules:
 - Keep separate facts about one noun separate. barbecue_allowed (may I grill?) and
   barbecue_equipment_included (is a grill provided?) are two subjects, not one, and
   so are late_check_out_available and late_check_out_fee.
-
 Schema:
 {"category": 1 | 2, "canonical_name": "<snake_case>"}
 """
 
 
+# TODO(rename): Adjudicator -> MergeJudge across all files, keeping each
+# occurrence's letter case: SubjectAdjudicatorLLMClient -> SubjectMergeJudgeLLMClient,
+# ADJUDICATE_SYSTEM_PROMPT -> MERGE_JUDGE_SYSTEM_PROMPT, `adjudicator` -> `merge_judge`,
+# AdjudicationPayload -> MergeJudgementPayload, and the "ADJUDICATOR merged into"
+# trace text. Its own branch and PR: a rename touches every caller and test.
 class SubjectAdjudicatorLLMClient:
-    """Is this term one of the nearest existing subjects, or a new one?"""
+    """Is this term one of the nearest existing subjects, or a new one?
 
-    MODEL = QWEN_INSTRUCT_30B_MODEL
+    Two jobs, reported as two cost roles: `pick_match` is the merge judge
+    (`merge_judge`); `classify` answers amenity-or-rule for a term the caller
+    gave no category for (`classify_amenity_or_rule`).
+    """
+
+    # The judge's model. `classify()` uses CLASSIFY_MODEL -- see the module
+    # docstring for why they differ.
+    MODEL = QWEN_INSTRUCT_MODEL
+    CLASSIFY_MODEL = QWEN_INSTRUCT_30B_MODEL
     TEMPERATURE = 0
 
     def __init__(
@@ -134,9 +183,11 @@ class SubjectAdjudicatorLLMClient:
         client: OpenAI | None = None,
         *,
         model: str | None = None,
+        classify_model: str | None = None,
     ) -> None:
         self._client = client
         self.model = model or self.MODEL
+        self.classify_model = classify_model or self.CLASSIFY_MODEL
 
     @property
     def client(self) -> OpenAI:
@@ -182,7 +233,7 @@ class SubjectAdjudicatorLLMClient:
             temperature=self.TEMPERATURE,
         )
         if usage is not None:
-            usage.add_chat(response.usage)
+            usage.add_chat(response.usage, role="merge_judge", model=self.model)
         data = _parse_json_payload(response.choices[0].message.content or "")
         match = AdjudicationPayload.model_validate(data).match
         # Same guard as InfoWebsiteNameMatcher.pick_name: a name the model
@@ -198,12 +249,17 @@ class SubjectAdjudicatorLLMClient:
         context: str | None = None,
         usage: LlmUsage | None = None,
     ) -> ClassificationPayload:
-        """Canonical name + category for a term with no existing subject."""
+        """Category (and a canonical name the resolver ignores) for a term.
+
+        The extractor names subjects; the resolver calls this only when it was
+        given no category. `canonical_name` is still returned for callers and
+        tests that want the classifier's opinion, but nothing renames a subject.
+        """
         asked = f"Term: {term}"
         if context:
             asked += f"\nContext: {context}"
         response = self.client.chat.completions.create(
-            model=self.model,
+            model=self.classify_model,
             messages=[
                 {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
                 {"role": "user", "content": asked},
@@ -211,6 +267,8 @@ class SubjectAdjudicatorLLMClient:
             temperature=self.TEMPERATURE,
         )
         if usage is not None:
-            usage.add_chat(response.usage)
+            usage.add_chat(
+                response.usage, role="classify_amenity_or_rule", model=self.classify_model
+            )
         data = _parse_json_payload(response.choices[0].message.content or "")
         return ClassificationPayload.model_validate(data)

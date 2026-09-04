@@ -18,6 +18,7 @@ default:
     @just --list
 
 # Slugify a title, check out that branch, push to origin
+[windows]
 branch name:
     #!powershell
     $ErrorActionPreference = 'Stop'
@@ -31,9 +32,27 @@ branch name:
     git checkout -b $branch
     git push -u origin $branch
 
+# Slugify a title, check out that branch, push to origin
+[unix]
+branch name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    raw={{ quote(name) }}
+    branch="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^a-z0-9/_-]+#-#g; s#-{2,}#-#g; s#^-+##; s#-+$##; s#^/+##; s#/+$##')"
+    [[ -n "$branch" ]] || { echo "Could not make a git branch name from: $raw" >&2; exit 1; }
+    git check-ref-format --branch "$branch" >/dev/null || { echo "Invalid branch name: $branch" >&2; exit 1; }
+    git checkout -b "$branch"
+    git push -u origin "$branch"
+
 # Push the current branch, open a PR into main, then switch back to main
+[windows]
 pr *title:
     powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/open_pr.ps1 {{ if title == "" { "" } else { "-Title " + quote(title) } }}
+
+# Push the current branch, open a PR into main, then switch back to main
+[unix]
+pr *title:
+    bash scripts/open_pr.sh {{ if title == "" { "" } else { quote(title) } }}
 
 # info-site rate cards → accommodation_types + list_prices
 scrape-prices:
@@ -47,12 +66,12 @@ scrape-sites:
 scrape-availability *args:
     uv run python source/scraper/populate_availability.py {{ trim_start_match(args, "-- ") }}
 
-# Google Place Details → reviews + claims (newest). Seed: just populate-reviews -- --most-relevant
-populate-reviews *args:
+# Google Place Details → reviews + claims (newest). Seed: just scrape-reviews -- --most-relevant
+scrape-reviews *args:
     uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
 
 # info-site static pages -> campsite_rules (site-level rules + amenities; --site N)
-ingest-rules *args:
+scrape-rules *args:
     uv run python -m source.scraper.rules_ingest.ingest {{ trim_start_match(args, "-- ") }}
 
 # Delete availability rows; keeps types, rules and prices (--types, --site N)

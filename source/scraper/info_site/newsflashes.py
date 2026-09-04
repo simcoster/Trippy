@@ -7,11 +7,12 @@ the notices job can be wired later.
 from __future__ import annotations
 
 import hashlib
-import ssl
 from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
+
+from source.scraper.tls import ssl_context
 
 from .parse import parse_whats_new, parse_wp_post_id
 
@@ -47,20 +48,13 @@ WHERE site_id = %(site_id)s
 """
 
 
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
-
-
 def http_client(*, referer: str | None = None) -> httpx.Client:
     headers = {"User-Agent": USER_AGENT}
     if referer:
         headers["Referer"] = referer
     return httpx.Client(
         timeout=45.0,
-        verify=_ssl_context(),
+        verify=ssl_context(),
         follow_redirects=True,
         headers=headers,
     )

@@ -10,7 +10,6 @@ from source.scraper.subjects.resolve import (
     MATCH_MAX_DISTANCE,
     REJECT_FAR,
     REJECT_OPPOSED,
-    REJECT_PREDICATE,
     Candidate,
     ResolutionTrace,
     SubjectRef,
@@ -169,14 +168,21 @@ def test_no_nearby_candidates_skips_adjudication_entirely():
     adjudicator.classify.assert_called_once()
 
 
-def test_rejected_match_inserts_the_canonical_name_and_keeps_the_term_as_alias():
+def test_rejected_match_inserts_the_term_itself_and_never_renames_it():
+    """The extractor names subjects. The classifier's name is ignored; only its
+    category is used, and only because none was given here.
+
+    Renaming on insert was measured turning `dogs_entry_time` ("from 16:00")
+    into `last_dogs_entry_time`; a wrong name on a real fact is as bad as a
+    wrong merge.
+    """
     cursor = FakeCursor(
         nearest=[(7, "dogs_allowed", 2, CLOSE)],
-        inserted=(42, "last_dogs_entry_time", 2),
+        inserted=(42, "last_dog_entry_hour", 2),
     )
     embedder = make_embedder()
     adjudicator = make_adjudicator(
-        match=None, category=2, canonical_name="last_dogs_entry_time"
+        match=None, category=2, canonical_name="last_dogs_entry_time"  # ignored
     )
 
     ref = resolve_subject(
@@ -187,43 +193,19 @@ def test_rejected_match_inserts_the_canonical_name_and_keeps_the_term_as_alias()
         verbose=False,
     )
 
-    assert ref == SubjectRef(42, "last_dogs_entry_time", 2, None)
+    assert ref == SubjectRef(42, "last_dog_entry_hour", 2, None)
     inserts = cursor.sql_matching("INSERT")
     assert len(inserts) == 1
     params = inserts[0][1]
-    assert params["name"] == "last_dogs_entry_time"
+    assert params["name"] == "last_dog_entry_hour"
     assert params["category"] == 2
-    assert params["aliases"] == ["last_dogs_entry_time", "last_dog_entry_hour"]
-    # The probe embeds the term, the stored vector embeds the canonical name, so
-    # the row does not drift as more surface forms attach to it.
+    assert params["aliases"] == ["last_dog_entry_hour"]
+    # One embedding: the probe that ran the neighbour search is stored as the
+    # row's vector, since the term is also the name.
     assert [c.args[0] for c in embedder.embed.call_args_list] == [
         ["last_dog_entry_hour"],
-        ["last_dogs_entry_time"],
     ]
-
-
-def test_canonical_name_collision_appends_an_alias_rather_than_inserting():
-    """5-NN can miss a subject the classifier then names exactly."""
-    cursor = FakeCursor(
-        nearest=[],
-        name_hit=(7, "shower", 1),
-    )
-    adjudicator = make_adjudicator(match=None, category=1, canonical_name="shower")
-
-    ref = resolve_subject(
-        make_conn(cursor),
-        "hot_water_showers_block",
-        embedder=make_embedder(),
-        adjudicator=adjudicator,
-        verbose=False,
-    )
-
-    assert ref == SubjectRef(7, "shower", 1, None)
-    assert not cursor.sql_matching("INSERT")
-    assert cursor.sql_matching("array_append")[0][1] == {
-        "id": 7,
-        "alias": "hot_water_showers_block",
-    }
+    adjudicator.classify.assert_called_once()
 
 
 def test_negative_term_resolves_positively_and_reports_the_implied_polarity():
@@ -293,8 +275,14 @@ def test_cache_short_circuits_a_repeated_term():
     assert len(cursor.sql_matching("aliases @> ARRAY[%s]")) == 1
 
 
-def test_a_candidate_with_a_different_predicate_is_never_offered():
-    """The first live run merged barbecue_allowed onto barbecue and lost a fact."""
+def test_a_candidate_with_a_different_predicate_is_offered_and_the_judge_rejects_it():
+    """A permission and a price about one noun are two subjects.
+
+    A suffix list used to keep this pair from the judge altogether; that gate
+    fragmented `late_check_out_*` and was removed. Now the pair is offered, the
+    judge says no, and the rejected neighbour is handed to the classifier so the
+    new name is chosen to stay clear of it.
+    """
     cursor = FakeCursor(
         nearest=[(7, "late_check_out_available", 2, CLOSE)],
         inserted=(50, "late_check_out_fee", 2),
@@ -311,8 +299,11 @@ def test_a_candidate_with_a_different_predicate_is_never_offered():
         verbose=False,
     )
 
-    adjudicator.pick_match.assert_not_called()
-    assert cursor.sql_matching("INSERT")
+    adjudicator.pick_match.assert_called_once()
+    assert adjudicator.pick_match.call_args.args[1] == ["late_check_out_available"]
+    # No category was given, so the classifier is asked for one -- and only that.
+    adjudicator.classify.assert_called_once()
+    assert cursor.sql_matching("INSERT")[0][1]["name"] == "late_check_out_fee"
 
 
 def test_candidates_sharing_the_predicate_still_reach_the_adjudicator():
@@ -430,7 +421,7 @@ def test_trace_records_every_candidate_and_why_it_was_dropped():
     cursor = FakeCursor(
         nearest=[
             (7, "shower", 1, CLOSE),  # offered
-            (8, "shower_allowed", 1, CLOSE),  # predicate
+            (8, "shower_allowed", 1, CLOSE),  # offered too: predicates are the judge's call
             (9, "toilets", 2, CLOSE),  # excluded by the query itself
             (10, "far_thing", 1, FAR),  # distance
         ],
@@ -451,36 +442,48 @@ def test_trace_records_every_candidate_and_why_it_was_dropped():
     assert trace.category == 1
     reasons = {c.name: c.rejected_for for c in trace.candidates}
     assert reasons["shower"] is None
-    assert reasons["shower_allowed"] == REJECT_PREDICATE
+    assert reasons["shower_allowed"] is None
     assert reasons["far_thing"] == REJECT_FAR
     # The rule was never fetched, so it is not in the trace at all.
     assert "toilets" not in reasons
-    assert [c.name for c in trace.offered] == ["shower"]
+    assert [c.name for c in trace.offered] == ["shower", "shower_allowed"]
     assert trace.outcome == "ADJUDICATOR merged into 'shower'."
+    assert trace.kind == "merged"
     assert trace.subject_name == "shower"
 
 
-def test_trace_marks_a_same_category_predicate_mismatch():
+def test_a_predicate_difference_is_the_judges_call_not_a_gates():
+    """`barbecue_allowed` vs `barbecue` used to be blocked by a suffix list.
+
+    Now the pair reaches the judge, which rejects it, and the term is inserted
+    under its own name. The extractor supplied the category, so the classifier
+    is not consulted at all.
+    """
     cursor = FakeCursor(
         nearest=[(7, "barbecue", 1, CLOSE)],
         inserted=(63, "barbecue_allowed", 1),
+    )
+    adjudicator = make_adjudicator(
+        match=None, category=1, canonical_name="barbecue_allowed"
     )
     sink: list[ResolutionTrace] = []
     resolve_subject(
         make_conn(cursor),
         "barbecue_allowed",
         embedder=make_embedder(),
-        adjudicator=make_adjudicator(
-            match=None, category=1, canonical_name="barbecue_allowed"
-        ),
+        adjudicator=adjudicator,
         category=1,
         trace_sink=sink,
         verbose=False,
     )
 
     (trace,) = sink
-    assert trace.candidates[0].rejected_for == REJECT_PREDICATE
-    assert trace.offered == []
+    assert trace.candidates[0].rejected_for is None
+    assert [c.name for c in trace.offered] == ["barbecue"]
+    adjudicator.pick_match.assert_called_once()
+    adjudicator.classify.assert_not_called()
+    assert trace.kind == "inserted"
+    assert "ADJUDICATOR rejected all." in trace.outcome
 
 
 def test_trace_records_an_alias_hit_with_no_candidates():
@@ -522,7 +525,7 @@ def test_format_trace_reads_as_the_story_of_one_decision():
         category=1,
         candidates=[
             Candidate(1, "air_conditioning", -0.94, 1),
-            Candidate(2, "heating", -0.80, 1, REJECT_PREDICATE),
+            Candidate(2, "heating", -0.70, 1, REJECT_FAR),
         ],
         outcome="ADJUDICATOR merged into 'air_conditioning'.",
     )
@@ -531,7 +534,7 @@ def test_format_trace_reads_as_the_story_of_one_decision():
     assert "'air_conoditioning' from extractor (amenity)." in line
     assert "no alias match. ran NN, top 2:" in line
     assert "air_conditioning -0.940" in line
-    assert "heating -0.800[predicate]" in line
+    assert "heating -0.700[far]" in line
     assert "considered 1." in line
     assert "ADJUDICATOR merged into 'air_conditioning'." in line
     assert "\n" not in line

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from openai import OpenAI
@@ -23,37 +24,62 @@ You are given the section title and its text. Emit one statement per distinct fa
 
 Rules:
 - Output valid JSON only, without markdown wrappers.
-- subject: a lower snake_case English label naming the predicate.
+- subject: a lower snake_case English label with ONE canonical shape:
+    <topic>[_<scope>]_<predicate>      for a rule
+    <thing>[_in_<place>]               for an amenity: a bare noun, no predicate.
+                                       Whether it is provided is `polarity`.
+  topic / thing names the matter in as few words as possible, and every
+  statement about the same matter in this section REUSES it verbatim:
+  late_check_out throughout, never late_stay or late_departure on the next line.
+- predicate (rules only) is the LAST part of the name and is one of exactly:
+    allowed       may a guest do it                       -> polarity
+    required      must a guest do it, or pay it           -> polarity
+    time          the hour something happens or ends      -> qualifier hour_of_day
+    fee_ils       what it costs                           -> qualifier ils
+    fee_percent   the cost as a share of another price    -> qualifier percent
+    min_age  max_age  min_nights  max_nights  max_occupancy  count
+  Never coin another predicate. Map every synonym onto these:
+    available / possible / permitted / an option  -> allowed
+    applies / charged / payable / subject to fee   -> required
+    until / by / no later than / deadline          -> time
+  A range is two statements whose scope says which end: <topic>_start_time and
+  <topic>_end_time. "until 17:00" is <topic>_end_time.
+- scope is the condition under which the rule holds. Keep it short, put it
+  BETWEEN topic and predicate, and phrase it identically every time it recurs:
+  on_saturday_evening, in_accommodation_units, for_dogs. The unconditional rule
+  and a conditional variant are TWO subjects, both emitted when both are stated:
+    late_check_out_allowed                       (in general)
+    late_check_out_on_saturday_evening_allowed   (the Saturday variant)
+- An amenity that is part of another amenity names the part, then the container:
+  gas_in_field_kitchen, hot_water_in_showers, lighting_in_tents. The container
+  is its own subject. One list item can yield both, with different polarities:
+    "מטבח שדה (1) בשלב הזה בלי גז"
+      -> field_kitchen         / amenity / true  / 1    / count
+      -> gas_in_field_kitchen  / amenity / false / null / none
 - ALWAYS phrase the subject POSITIVELY. Negation goes in `polarity`, never in the
   name. Never emit not_/no_/cant_/cannot_/without_/_forbidden/_banned subjects.
-  - "הכניסה לכלבים אסורה"      -> subject "dogs_allowed", polarity false
-  - "יש להצטייד במגבות"        -> subject "towels_included", polarity false
-  - "כלבים חייבים מחסום"       -> subject "dogs_must_wear_a_muzzle", polarity true
+  - "הכניסה לכלבים אסורה"      -> dogs_allowed / rule / false
+  - "יש להצטייד במגבות"        -> towels / amenity / false
+  - "כלבים חייבים מחסום"       -> muzzle_for_dogs_required / rule / true
+- Ignore hedges about time ("for now", "at this stage", "currently"): polarity
+  states what holds today.
 - category: "amenity" for something the site provides or does not provide
   (shower, refrigerator, electric_hookup, towels); "rule" for something a guest
   may, must or must not do, or a limit on a stay (dogs_allowed, check_out_time,
-  min_weekend_nights, adult_min_age). One sentence can yield both:
+  weekend_min_nights, adult_min_age). One sentence can yield both:
   "ניתן להדליק מנגל בציוד עצמי" -> barbecue_allowed (rule, true)
-                                 + barbecue_equipment_included (amenity, false)
+                                 + barbecue_equipment (amenity, false)
 - polarity: true when the thing is allowed or provided, false when it is forbidden
   or explicitly not provided, null when the statement is purely a quantity.
 - Every statement must carry a polarity OR a qualifier. One with neither says
   nothing and is discarded. When a fact has no number, name the thing being
   asserted and answer it with polarity:
   "מרכז שירות למבקר / שעות פתיחה: על פי צורך"
-    -> visitor_service_center        / amenity / true  / null / none
-    -> service_center_regular_hours  / rule    / false / null / none
+    -> visitor_service_center               / amenity / true  / null / none
+    -> visitor_service_center_regular_hours_allowed / rule / false / null / none
   (opening "as needed" means it does NOT keep regular hours)
-- Direction belongs in the subject name, not in a separate field:
-  min_weekend_nights, max_occupancy, check_in_time, check_out_time,
-  latest_arrival_time, last_dogs_entry_time, pool_min_age, adult_min_age.
 - qualifier: the number the statement carries, or null. Write a time of day as a
   decimal hour: "20:30" -> 20.5, "12:00" -> 12.
-- A RANGE is two statements with two subjects, never one. Only one number can be
-  stored per subject, so put the end of the range in the name:
-  "חלוקת מזרנים בין השעות 15:00-20:00"
-    -> mattress_pickup_start_time / rule / null / 15 / hour_of_day
-    -> mattress_pickup_end_time   / rule / null / 20 / hour_of_day
   Never emit the same subject twice in one section — the second one is discarded.
 - qualifier_unit: one of
   none, count, hour_of_day, nights, days, years, ils, meters, percent.
@@ -69,19 +95,33 @@ Rules:
 
 Examples:
 - "הכניסה לחניון הלילה החל מהשעה 15:00 עד השעה 20:30 לכל המאוחר"
-  -> check_in_time / rule / null / 15 / hour_of_day
-  -> latest_arrival_time / rule / null / 20.5 / hour_of_day
+  -> check_in_start_time / rule / null / 15   / hour_of_day
+  -> check_in_end_time   / rule / null / 20.5 / hour_of_day
 - "יש לפנות את האוהלים עד השעה 12:00 ביום העזיבה"
   -> check_out_time / rule / null / 12 / hour_of_day
+- "לנים המבקשים להישאר באתר לאחר השעה 12:00 ועד לסיום שעות הפעילות בשעה 17:00
+   נדרשים לתשלום של 50% מדמי כניסת יום לאתר"
+  -> late_check_out_allowed      / rule / true / null / none
+  -> late_check_out_end_time     / rule / null / 17   / hour_of_day
+  -> late_check_out_fee_percent  / rule / null / 50   / percent
+- "יציאה מאוחרת במוצאי שבת וחג לאחר שעת סגירת האתר בתוספת תשלום"
+  -> late_check_out_on_saturday_evening_allowed      / rule / true / null / none
+  -> late_check_out_on_saturday_evening_fee_required / rule / true / null / none
+- "ביחידות האירוח תתאפשר יציאה מאוחרת בתוספת תשלום ועל בסיס מקום פנוי"
+  -> late_check_out_in_accommodation_units_allowed      / rule / true / null / none
+  -> late_check_out_in_accommodation_units_fee_required / rule / true / null / none
+- "חלוקת מזרנים בין השעות 15:00-20:00"
+  -> mattress_pickup_start_time / rule / null / 15 / hour_of_day
+  -> mattress_pickup_end_time   / rule / null / 20 / hour_of_day
 - "מותנה במינימום 2 לילות" (weekend rate)
-  -> min_weekend_nights / rule / null / 2 / nights
+  -> weekend_min_nights / rule / null / 2 / nights
 - "גיל 14 ומעלה" (adult rate)
   -> adult_min_age / rule / null / 14 / years
 - "ניתן להדליק מצלה (מנגל) בציוד עצמי"
-  -> barbecue_allowed / rule / true / null / none
-  -> barbecue_equipment_included / amenity / false / null / none
+  -> barbecue_allowed   / rule    / true  / null / none
+  -> barbecue_equipment / amenity / false / null / none
 - "החניון אינו מותאם לציבור שומרי השבת"
-  -> suitable_for_shabbat_observers / rule / false / null / none
+  -> shabbat_observance_suitable_allowed / rule / false / null / none
 
 Schema:
 {
@@ -155,8 +195,17 @@ class RuleExtractorLLMClient:
         *,
         section_title: str,
         usage: LlmUsage | None = None,
+        progress: Callable[[int], None] | None = None,
     ) -> RuleExtract:
-        response = self.client.chat.completions.create(
+        """Extract one section's statements.
+
+        The reply is streamed so a caller can show life during the 30-90s a
+        dense section takes; `progress` is called with the running chunk count
+        as deltas arrive. The JSON is still parsed only once it is complete.
+        Token counts arrive on a final, choice-less chunk, and only because
+        `stream_options` asks for them.
+        """
+        stream = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": self.system_prompt},
@@ -167,16 +216,36 @@ class RuleExtractorLLMClient:
             ],
             temperature=self.TEMPERATURE,
             max_tokens=self.MAX_TOKENS,
+            stream=True,
+            stream_options={"include_usage": True},
         )
+        parts: list[str] = []
+        finish_reason: str | None = None
+        final_usage: Any | None = None
+        chunks = 0
+        for chunk in stream:
+            if getattr(chunk, "usage", None) is not None:
+                final_usage = chunk.usage
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            delta = getattr(choice, "delta", None)
+            content = getattr(delta, "content", None) if delta is not None else None
+            if content:
+                parts.append(content)
+            if getattr(choice, "finish_reason", None) is not None:
+                finish_reason = choice.finish_reason
+            chunks += 1
+            if progress is not None:
+                progress(chunks)
         if usage is not None:
-            usage.add_chat(response.usage)
-        choice = response.choices[0]
-        if getattr(choice, "finish_reason", None) == "length":
+            usage.add_chat(final_usage, role="rules_extract", model=self.model)
+        if finish_reason == "length":
             # Say what actually went wrong. Truncated JSON surfaces as a parse
             # error otherwise, which sends you looking in the wrong place.
             raise ValueError(
                 f"reply truncated at max_tokens={self.MAX_TOKENS} for section "
                 f"{section_title!r}; the section needs splitting or a bigger cap"
             )
-        data = _coerce_payload(choice.message.content or "")
+        data = _coerce_payload("".join(parts))
         return RuleExtract.model_validate(data)

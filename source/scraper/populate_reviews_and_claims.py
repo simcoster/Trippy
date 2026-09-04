@@ -15,7 +15,6 @@ import argparse
 import hashlib
 import json
 import os
-import ssl
 import sys
 import time
 from datetime import datetime, timezone
@@ -34,7 +33,9 @@ from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
+    record_scrape_cost,
 )
+from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -205,13 +206,6 @@ def database_url(config: dict | None = None) -> str:
     if not url:
         url = "postgresql://trippy:trippy@localhost:5432/trippy"
     return url.replace("@db:", "@localhost:")
-
-
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
 
 
 def google_api_key() -> str:
@@ -419,7 +413,7 @@ def judge_personal_visit(
         log(f"    visit gate call failed ({exc}); splitting anyway")
         return True, None
     if usage is not None:
-        usage.add_chat(response.usage)
+        usage.add_chat(response.usage, role="review_visit_gate", model=model)
     content = (response.choices[0].message.content or "").strip()
     try:
         parsed = _parse_json_payload(content)
@@ -482,7 +476,7 @@ def split_one_review(
         ],
     )
     if usage is not None:
-        usage.add_chat(response.usage)
+        usage.add_chat(response.usage, role="claim_split", model=model)
     parsed = _parse_json_payload((response.choices[0].message.content or "").strip())
     claims = parsed.get("claims")
     if not isinstance(claims, list):
@@ -747,8 +741,12 @@ def refresh_google_reviews_for_campsite(
     client: httpx.Client,
     api_key: str,
     populate_fn: Any | None = None,
+    usage: LlmUsage | None = None,
 ) -> dict[str, Any]:
-    """Fetch Place Details reviews and ingest. Default sort is newest."""
+    """Fetch Place Details reviews and ingest. Default sort is newest.
+
+    `usage`, when given, collects the LLM calls of every ingest for the run.
+    """
     place_id = site.get("google_place_id")
     campsite_id = int(site["id"])
     name = str(site.get("name") or "")
@@ -771,11 +769,15 @@ def refresh_google_reviews_for_campsite(
             continue
         n = len(payload["reviews"])
         log(f"    {n} review(s)")
+        # Forwarded only when given, so the call stays exactly what the
+        # populate_fn tests expect.
+        extra = {"usage": usage} if usage is not None else {}
         result = ingest(
             campsite_id,
             payload,
             conn=conn,
             place=name,
+            **extra,
         )
         ingested.append({"reviews_sort": sort, **result})
     return {"campsite_id": campsite_id, "sorts": ingested}
@@ -813,15 +815,20 @@ def populate_google_reviews(
     limit: int | None = None,
     pause_seconds: float = DEFAULT_PAUSE_SECONDS,
     populate_fn: Any | None = None,
+    usage: LlmUsage | None = None,
 ) -> dict[str, Any]:
-    """Fetch Place Details for each campsite with google_place_id and ingest."""
+    """Fetch Place Details for each campsite with google_place_id and ingest.
+
+    `usage`, when given, accumulates every LLM call across all campsites so the
+    CLI can report one cost for the run.
+    """
     own_conn = conn is None
     own_client = client is None
     if own_conn:
         config = load_config() if CONFIG_PATH.exists() else {}
         conn = psycopg.connect(database_url(config))
     if own_client:
-        client = httpx.Client(verify=_ssl_context(), timeout=30.0)
+        client = httpx.Client(verify=ssl_context(), timeout=30.0)
     key = api_key if api_key is not None else google_api_key()
 
     results: list[dict] = []
@@ -845,6 +852,7 @@ def populate_google_reviews(
                     client=client,
                     api_key=key,
                     populate_fn=populate_fn,
+                    usage=usage,
                 )
             )
         conn.commit()
@@ -910,12 +918,20 @@ def main() -> None:
         if campsite_id is None and args.name:
             campsite_id, db_name = lookup_campsite_id(conn, args.name)
             log(f"Campsite {campsite_id}: {db_name}")
+        usage = LlmUsage()
         populate_google_reviews(
             conn=conn,
             campsite_id=campsite_id,
             most_relevant=args.most_relevant,
             limit=args.limit,
+            usage=usage,
         )
+    # Recorded here, not in the library function: tests drive that with mocks.
+    if usage.chat_calls or usage.embed_calls:
+        log(usage.summary(prefix="Reviews scrape total: "))
+    written = record_scrape_cost("scrape-reviews", usage)
+    if written:
+        log(f"cost report appended to {written}")
 
 
 if __name__ == "__main__":

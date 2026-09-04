@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import ssl
 import sys
 import time
 from typing import Any
@@ -17,6 +16,8 @@ from typing import Any
 import httpx
 import psycopg
 from dotenv import load_dotenv
+
+from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -41,13 +42,6 @@ SET google_place_id = %(google_place_id)s
 WHERE id = %(id)s
 RETURNING id, name, google_place_id
 """
-
-
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if hasattr(ssl, "VERIFY_X509_STRICT"):
-        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    return ctx
 
 
 def database_url() -> str:
@@ -163,7 +157,7 @@ def populate_google_place_ids(
     if own_conn:
         conn = psycopg.connect(database_url())
     if own_client:
-        client = httpx.Client(verify=_ssl_context(), timeout=30.0)
+        client = httpx.Client(verify=ssl_context(), timeout=30.0)
     key = api_key if api_key is not None else google_api_key()
 
     updated: list[dict] = []

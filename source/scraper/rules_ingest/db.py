@@ -40,6 +40,22 @@ class ResolvedRule:
     evidence_span: str | None = None
     source_url: str | None = None
     confidence: float | None = None
+    # Where the statement came from, for the collision report: the label the
+    # extractor gave it and the page section it was read from.
+    term: str | None = None
+    section_title: str | None = None
+
+
+@dataclass(frozen=True)
+class DroppedRule:
+    """A statement the upsert refused: its subject already had a row in the scope."""
+
+    # "CONFLICTING" when polarity or qualifier disagree with the kept row,
+    # otherwise "duplicate".
+    label: str
+    campsite_id: int
+    kept: ResolvedRule
+    dropped: ResolvedRule
 
 
 def upsert_campsite_rules(
@@ -49,8 +65,13 @@ def upsert_campsite_rules(
     rules: list[ResolvedRule],
     accommodation_type_id: int | None = None,
     table: str = "campsite_rules",
+    dropped_sink: list[DroppedRule] | None = None,
 ) -> int:
     """Write rules for one scope. Returns the number of statements written.
+
+    Every statement skipped because its subject already had a row is appended to
+    `dropped_sink` when one is given, so the caller can report collisions with
+    both phrasings once the page is done.
 
     Idempotent on (campsite_id, accommodation_type_id, subject_id), which is a
     UNIQUE NULLS NOT DISTINCT constraint — without that, site-level rows (NULL
@@ -79,6 +100,8 @@ def upsert_campsite_rules(
                 f" (kept polarity={first.polarity} qualifier={first.qualifier},"
                 f" dropped polarity={rule.polarity} qualifier={rule.qualifier})"
             )
+            if dropped_sink is not None:
+                dropped_sink.append(DroppedRule(label, campsite_id, first, rule))
             continue
         seen[rule.subject_id] = rule
         cur.execute(

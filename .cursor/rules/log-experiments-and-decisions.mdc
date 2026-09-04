@@ -1,0 +1,19 @@
+---
+description: A design choice made after an experiment is logged in design.md with its reason, and the experiment itself in docs/experiments.md
+alwaysApply: true
+---
+
+# Experiments are logged; decisions cite them and say why
+
+When a design choice rests on an experiment — switching a model, keeping or removing a guard, changing a prompt, picking a threshold — two things are written in the same change as the code:
+
+1. **`docs/design.md`** — the decision *and its reason*, in the section describing the mechanism it affects. Not "the judge runs on the 235B" but "the judge runs on the 235B because the 30B merged 4 of 6 direction pairs the 235B kept apart (experiments.md 2026-09-04 §5)".
+2. **`docs/experiments.md`** — the experiment: the question, the setup (schema, data, models, prompts, and how production was kept untouched), the result with numbers, the cost, and the decision it led to. Dates newest first; within a date, in the order run. Entries are never edited afterwards — a re-run is a new entry.
+
+```markdown
+### 5. Is the over-merge a prompt problem or a model-size problem?
+**Question.** … **Setup.** … 52 judge calls, 83 s. No writes.
+**Result.** | 30B current | 4/6 wrong | … **Decision.** Judge → 235B. design.md "…".
+```
+
+`docs/PLAN.md` still gets its dated progress entry. experiments.md is where the evidence lives so the next person can re-run it instead of re-arguing it.
