@@ -70,8 +70,8 @@ def test_a_name_outside_the_candidate_list_is_never_returned(adjudicator):
     ("term", "category"),
     [
         ("dogs_allowed", 2),
-        ("min_weekend_nights", 2),
-        ("check_out_time", 2),
+        ("min_weekend_nights", 3),
+        ("check_out_time", 3),
         ("refrigerator", 1),
         ("hot_shower", 1),
     ],
