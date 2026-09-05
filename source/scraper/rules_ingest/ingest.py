@@ -36,6 +36,11 @@ from source.scraper.rules_ingest.db import (
     ResolvedRule,
     upsert_campsite_rules,
 )
+from source.scraper.rules_ingest.explain import (
+    ConflictExplainerLLMClient,
+    ConflictExplanation,
+    explain_conflicts,
+)
 from source.scraper.rules_ingest.fetch import fetch_page_html
 from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
 from source.scraper.rules_ingest.report import SiteRun, write_run_report
@@ -52,6 +57,7 @@ from source.scraper.subjects.resolve import (
     SubjectRef,
     SubjectStore,
     alias_overflow,
+    format_states,
     resolve_subject,
 )
 
@@ -81,6 +87,9 @@ class SiteReport:
 
     drops: list[DroppedRule] = field(default_factory=list)
     traces: list[ResolutionTrace] = field(default_factory=list)
+    # The explainer's diagnosis per collision, keyed by index into `drops`.
+    # Advisory; filled by `explain_conflicts` after the page is done.
+    explanations: dict[int, ConflictExplanation] = field(default_factory=dict)
 
     def render(self) -> str:
         # A term is traced the first time it is resolved; later repeats come
@@ -124,7 +133,7 @@ class SiteReport:
         if not self.drops:
             return ["    collisions on this page: none"]
         lines = [f"    collisions on this page: {len(self.drops)}"]
-        for drop in self.drops:
+        for index, drop in enumerate(self.drops):
             sid = drop.kept.subject_id
             lines.append(
                 f"    {drop.label} on subject #{sid} {names.get(sid, '?')!r} "
@@ -133,6 +142,9 @@ class SiteReport:
             for role, rule in (("kept   ", drop.kept), ("dropped", drop.dropped)):
                 trace = first_trace.get(rule.term) if rule.term else None
                 lines.extend(_describe_side(role, rule, trace))
+            explanation = self.explanations.get(index)
+            if explanation is not None:
+                lines.append(f"      explainer: {explanation.one_line()}")
         return lines
 
 
@@ -214,8 +226,13 @@ def rules_from_sections(
     cache: dict[str, SubjectRef] | None = None,
     usage: LlmUsage | None = None,
     trace_sink: list[ResolutionTrace] | None = None,
+    campsite_id: int | None = None,
 ) -> list[ResolvedRule]:
-    """Extract each section, then resolve every subject to a subject_vectors id."""
+    """Extract each section, then resolve every subject to a subject_vectors id.
+
+    `campsite_id` is the row being written, so the judge can tell a candidate's
+    statements from this page apart from those on other campsites.
+    """
     resolved: list[ResolvedRule] = []
     shared_cache = cache if cache is not None else {}
     for section in sections:
@@ -269,6 +286,7 @@ def rules_from_sections(
             cache=shared_cache,
             usage=resolve_usage,
             trace_sink=trace_sink,
+            campsite_id=campsite_id,
         )
         resolved.extend(rules)
         print(
@@ -304,6 +322,7 @@ def _resolve_statements(
     cache: dict[str, SubjectRef],
     usage: LlmUsage,
     trace_sink: list[ResolutionTrace] | None,
+    campsite_id: int | None = None,
 ) -> tuple[list[ResolvedRule], int]:
     """Resolve one section's statements to subject ids.
 
@@ -333,6 +352,12 @@ def _resolve_statements(
             # later sameness judgement needs; "toilets" means one thing in
             # a site amenity list and another inside a room description.
             context=_statement_context(section, statement),
+            # What the statement asserts, so the judge can see that "30" and
+            # "80" from one page are two facts.
+            states=format_states(
+                statement.polarity, statement.qualifier, statement.qualifier_unit
+            ),
+            campsite_id=campsite_id,
             store=store,
             cache=cache,
             usage=usage,
@@ -449,6 +474,7 @@ def _ingest_scope(
         cache=cache,
         usage=usage,
         trace_sink=report.traces if report is not None else None,
+        campsite_id=campsite_id,
     )
     if not rules:
         print("    no statements extracted")
@@ -492,6 +518,7 @@ def run(
     extractor = RuleExtractorLLMClient()
     embedder = EmbeddingLLMClient()
     adjudicator = SubjectAdjudicatorLLMClient()
+    explainer = ConflictExplainerLLMClient()
     usage = usage if usage is not None else LlmUsage()
     total = 0
     run_started = time.monotonic()
@@ -540,6 +567,9 @@ def run(
                     f"{time.monotonic() - site_started:.1f}s: {exc}"
                 )
             outcome.seconds = time.monotonic() - site_started
+            # Every collision is something extracted or merged wrongly; ask the
+            # explainer which, so the report can say so under each one.
+            explain_conflicts(report, explainer, usage=usage)
             # Printed after a rollback too: the over-merge behind a collision
             # is still worth seeing even when nothing was written.
             print(report.render())

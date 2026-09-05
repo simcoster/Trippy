@@ -395,6 +395,37 @@ calls grow with the vocabulary, not with ingest volume, so a full re-population
 is cents. The block was added as well. (experiments.md 2026-09-04 §5; the guard
 decision above is §4.)
 
+**The judge sees what each side states, and its match is gated on its own
+confidence.** With both original sentences already in view, the 235B merged a
+30-person group minimum into an 80-person one, a site-wide `electric_hookup`
+into the caravan-pitch hookup, and a Friday 16:00 closing time into the weekday
+17:00 — three for three, systematic. Shown one `states:` line per side (the
+term's polarity or number from its statement; a candidate's from its existing
+`campsite_rules` rows, the current page marked "same page") plus one prompt
+sentence — two statements from one page that state different numbers are two
+facts; across campsites a different number is normal — it rejected all three,
+and none of the true merges with differing counts (1 vs 4 carts, 16 vs 100
+mattresses) moved. Asked for a `confidence` as well, every right answer in 87
+probed calls came back at 0.95 and every wrong merge at 0.30–0.85, so
+`pick_match` returns a match only at `MATCH_MIN_CONFIDENCE` (0.9) or above; the
+one true merge below it, `picnic_table` → `picnic_tables_and_benches` at 0.80,
+is the missed merge this project tolerates. A reply without a confidence is
+accepted as before. The trace records the confidence on a merge, and a match
+the gate refused reads `ADJUDICATOR said 'x' at confidence 0.30 < 0.9: rejected`.
+(experiments.md 2026-09-04 §10, §12, §14; `test_subject_judge_confidence.py`.)
+
+**Every upsert collision is explained, advisorily.** A collision means the
+extractor or the judge got something wrong; `rules_ingest/explain.py` hands both
+sides — names, sections, values, sentences, resolver outcome — to the 235B and
+asks for the cause (extractor wrong name / wrong value / hallucination, judge
+over-merge, true duplicate), which side is right and the fix. Probed cold it
+got every judge-side collision right and one of eight extractor-side ones,
+because it did not know that an alias hit involves no judge, the naming shape,
+or that הונגשו means "made accessible"; its prompt now states all three. The
+answer is printed under the collision in the terminal summary and in the run
+report, tagged `conflict_explainer` in the cost log, and nothing acts on it.
+(experiments.md 2026-09-04 §15; `test_rules_conflict_explainer.py`.)
+
 **The classifier stays on the 30B.** Moving it with the judge broke a pinned
 test: asked for the category of a bare `dogs_allowed`, the 235B answered
 "amenity" 9 times in 10 on one run and "rule" 4 of 4 on another — unstable, not
@@ -428,6 +459,21 @@ written is logged as CONFLICTING rather than as a quiet duplicate.
 
 Word order is likewise not a new subject: `child_min_age` and `min_child_age`
 merge.
+
+### A property stated about a list goes into every name on it
+
+`הונגשו בחניון הלילה: חניה, שירותים, מקלחות, …` says these were made
+accessible. The extractor used to emit the bare nouns; each alias-hit the counted
+amenity from the list above it and was refused at the upsert, and the
+accessibility fact was gone. The prompt now carries the rule with a worked
+example — `accessible_parking`, `accessible_toilets`, `accessible_showers` … as
+amenities, never the bare noun — and held on two re-runs with the neighbouring
+sections unchanged (experiments.md 2026-09-04 §11, §13).
+`test_rules_extraction_accessibility.py` pins it. The same sentence's
+`שתי חושות` (two huts) was misread as a fountain and as senses — a translation
+error, not a naming one — so the prompt carries a glossary line: חושה is a hut,
+an accommodation unit, and `שתי חושות` in an accessibility list is
+`accessible_huts`.
 
 ### Every statement must assert something
 
