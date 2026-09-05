@@ -46,9 +46,9 @@ CAUSES = (
     "other",
 )
 
-EXPLAIN_SYSTEM_PROMPT = """You review a campsite-rules ingestion pipeline and explain one collision.
-
-How the pipeline works:
+# Shared with the conflict resolver: what the model must know about the pipeline
+# before it can tell an extractor error from a judge error.
+PIPELINE_MECHANICS = """How the pipeline works:
 - An extractor reads a Hebrew section of a campsite page and emits statements: a
   snake_case English subject name, a polarity (true/false) or a number with a unit,
   and the sentence it read (verbatim). Subject names have ONE shape:
@@ -78,7 +78,12 @@ So: an alias hit on a bare name that should have carried a qualifying word is an
 EXTRACTOR error (the judge never ran); a merge of two names that differ by a
 scope or qualifying word is a JUDGE error; a statement whose sentence does not
 contain the thing named is a hallucination (חושה / חושות is a hut, an
-accommodation unit -- not senses, not a fountain).
+accommodation unit -- not senses, not a fountain)."""
+
+EXPLAIN_SYSTEM_PROMPT = (
+    "You review a campsite-rules ingestion pipeline and explain one collision.\n\n"
+    + PIPELINE_MECHANICS
+    + """
 
 Output valid JSON only:
 {
@@ -90,6 +95,7 @@ Output valid JSON only:
          shape above
 }
 """
+)
 
 
 class ConflictExplanationPayload(BaseModel):

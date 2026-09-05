@@ -294,6 +294,71 @@ class CampsiteRule(Base):
     subject: Mapped[SubjectVector] = relationship()
 
 
+
+class ConflictCase(Base):
+    """One upsert collision, filed for a person to review.
+
+    Two statements from one page landed on one subject and the second was
+    refused. Both sides are copied here verbatim -- names, values, sentences,
+    how the resolver placed each -- with the model's diagnosis and the one
+    action it may take: `rename_new`, giving the new statement its own subject
+    and undoing the merge that folded it in. Every other outcome is `none`,
+    which leaves the row `open`. `applied` says whether `rename_new` was carried
+    out, and `applied_subject_id` names the subject it created or reused.
+    See docs/design.md "Conflicts are filed, and one action is automatic".
+    """
+
+    __tablename__ = "conflict_cases"
+    __table_args__ = (
+        Index("conflict_cases_status_idx", "status"),
+        Index("conflict_cases_run_at_idx", "run_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    campsite_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    # The subject both statements landed on.
+    subject_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("subject_vectors.id", ondelete="RESTRICT"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(Text, nullable=False)  # CONFLICTING | duplicate
+
+    kept_term: Mapped[str | None] = mapped_column(Text)
+    kept_section: Mapped[str | None] = mapped_column(Text)
+    kept_polarity: Mapped[bool | None] = mapped_column(Boolean)
+    kept_qualifier: Mapped[Decimal | None] = mapped_column(Numeric)
+    kept_qualifier_unit: Mapped[int | None] = mapped_column(SmallInteger)
+    kept_evidence: Mapped[str | None] = mapped_column(Text)
+    kept_resolution: Mapped[str | None] = mapped_column(Text)
+
+    new_term: Mapped[str | None] = mapped_column(Text)
+    new_section: Mapped[str | None] = mapped_column(Text)
+    new_polarity: Mapped[bool | None] = mapped_column(Boolean)
+    new_qualifier: Mapped[Decimal | None] = mapped_column(Numeric)
+    new_qualifier_unit: Mapped[int | None] = mapped_column(SmallInteger)
+    new_evidence: Mapped[str | None] = mapped_column(Text)
+    new_resolution: Mapped[str | None] = mapped_column(Text)
+
+    cause: Mapped[str | None] = mapped_column(Text)
+    which_is_right: Mapped[str | None] = mapped_column(Text)
+    explanation: Mapped[str | None] = mapped_column(Text)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    action: Mapped[str] = mapped_column(Text, nullable=False, default="none")
+    new_name: Mapped[str | None] = mapped_column(Text)
+    applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    applied_subject_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("subject_vectors.id", ondelete="SET NULL")
+    )
+    # open | applied | reviewed -- a person moves open to reviewed.
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    review_note: Mapped[str | None] = mapped_column(Text)
+
 class Notice(Base):
     """Ephemeral official-site notices (outages, temporary closures).
 

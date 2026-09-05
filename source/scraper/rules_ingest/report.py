@@ -10,8 +10,9 @@ worth re-reading afterwards, for every page the run touched:
 - which statements the upsert refused because their subject already had a row
   in that scope, with both phrasings;
 - which terms the resolver dropped outright;
-- under each collision, the explainer's diagnosis (extractor or judge, which
-  side is right, what the names should have been) — advisory;
+- under each collision, the resolver's diagnosis (extractor or judge, which
+  side is right) and what was done: a wrong merge undone by giving the new
+  statement its own subject, or the case filed as open in `conflict_cases`;
 - what the run cost, by role and model.
 
 One file per run under `reports/rules_ingest/` (git-ignored, like the cost
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from source.scraper.rules_ingest.db import DroppedRule, ResolvedRule
     from source.scraper.rules_ingest.explain import ConflictExplanation
     from source.scraper.rules_ingest.ingest import SiteReport
+    from source.scraper.rules_ingest.resolve_conflicts import ConflictResolution
 
 REPORT_DIR_ENV = "RULES_REPORT_DIR"
 DEFAULT_REPORT_DIR = Path("reports") / "rules_ingest"
@@ -81,6 +83,8 @@ def render_run_report(
     for run in runs:
         kinds.update(t.kind or "?" for t in _first_traces(run.report).values())
     failed = [r for r in runs if r.error]
+    filed = sum(len(r.report.resolutions) for r in runs)
+    applied = sum(1 for r in runs for x in r.report.resolutions.values() if x.applied)
 
     lines = [f"# scrape-rules — {started_at:%Y-%m-%d %H:%M:%S}", ""]
     pages = f"- pages: {len(runs)}"
@@ -90,6 +94,7 @@ def render_run_report(
         pages,
         f"- rules upserted: {sum(r.written for r in runs)}",
         f"- terms resolved: {sum(kinds.values())} ({_kinds(kinds)})",
+        f"- conflicts: {filed} filed for review, {applied} resolved by undoing a merge",
         f"- duration: {_duration(seconds)}",
         f"- cost: ${usage.cost_usd:.4f} "
         f"({usage.chat_calls} chat / {usage.embed_calls} embed calls)",
@@ -159,7 +164,10 @@ def _site_section(run: SiteRun) -> list[str]:
         )
         lines.append("")
         for index, drop in enumerate(drops):
-            lines += _drop_lines(drop, first, run.report.explanations.get(index))
+            lines += _drop_lines(
+                drop, first, run.report.explanations.get(index),
+                run.report.resolutions.get(index),
+            )
     else:
         lines.append("none")
     lines.append("")
@@ -177,6 +185,7 @@ def _drop_lines(
     drop: DroppedRule,
     first: dict[str, ResolutionTrace],
     explanation: ConflictExplanation | None = None,
+    resolution: ConflictResolution | None = None,
 ) -> list[str]:
     name = first.get(drop.kept.term or "")
     subject = name.subject_name if name is not None else f"#{drop.kept.subject_id}"
@@ -194,6 +203,8 @@ def _drop_lines(
             f"- **explainer:** `{explanation.cause}`, right: {explanation.which_is_right}. "
             f"{explanation.explanation}  \n  Fix: {explanation.fix}"
         )
+    if resolution is not None:
+        lines.append(f"- **resolution:** {resolution.one_line()}")
     lines.append("")
     return lines
 

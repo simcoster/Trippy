@@ -465,6 +465,37 @@ written is logged as CONFLICTING rather than as a quiet duplicate.
 Word order is likewise not a new subject: `child_min_age` and `min_child_age`
 merge.
 
+### Conflicts are filed, and one action is automatic
+
+An upsert collision -- two statements from one page on one subject -- always
+marks an upstream error, and the run report alone let it scroll past. Every
+collision is now diagnosed by the 235B and written to `conflict_cases`
+(migration `031`): both sides verbatim (names, sections, values, sentences, how
+the resolver placed each), the cause, which side is right, the explanation, and
+the action taken. `status` is `open` until a person marks it `reviewed`.
+
+The resolver may take exactly one action on its own, `rename_new`: the new
+statement was a different fact folded into the old subject -- a judge
+over-merge, or an alias hit on a bare name missing its qualifying word -- so it
+gets its own subject, the alias the merge created is released from the old one
+(never its canonical `aliases[1]`), and the statement is written. The old
+subject and the kept row are never touched; if a subject of the new name already
+exists the statement joins it. Everything else is `none`: a true duplicate, a
+hallucination, a rate-specific line, or a kept row that is itself wrong -- filed,
+not fixed.
+
+Why only that one. Probed on the 14 distinct collisions of three runs
+(experiments.md 2026-09-05 §16-§17), the model diagnosed 25 of 26 correctly and,
+whenever the collision really was two facts, chose `rename_new` with a usable
+name; offered four other actions (drop, rename the old subject, move the kept
+row, add a count) it never chose the two that recover a misfiled kept row and
+named badly in 6 of 22 cases. Its confidence said 0.95 on right and wrong alike,
+so nothing gates on it; the field is recorded. `validate` allows a name that is
+already an alias of the old subject (that is the merge being undone) and refuses
+only the old subject's own name. Resolution runs after the page's own commit,
+in its own transaction. `test_rules_conflict_resolver.py`,
+`test_conflict_cases_db.py`.
+
 ### A property stated about a list goes into every name on it
 
 `הונגשו בחניון הלילה: חניה, שירותים, מקלחות, …` says these were made
