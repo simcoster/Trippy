@@ -95,7 +95,12 @@ writes per-unit amenities as `campsite_rules` rows carrying the type's id, which
 is what migration `027` backfilled and what the enrichment path writes from here
 on. The info-page ingest still only writes site-level rows: the info page's
 `אפשרויות לינה` panel is a second, weaker source for per-unit data, so
-`sections.parse_sections` drops it on purpose.
+`sections.parse_sections` drops it on purpose. The rate-card notes
+(`הערות למחירון`) are parsed but parked at the ingest (`PARKED_SECTION_TITLES`):
+every note is about one rate, the extractor drops the rate label, and the facts
+landed as campsite-wide rules — `child_min_age 5`, `weekend_min_nights 2`,
+`mattresses 4`. They come back when statements carry a referent that can route
+them to an accommodation type (PLAN 2026-09-05 "Referent field").
 
 A subject the extractor puts in both the included and not-included list for one
 unit collides on `campsite_rules_scope_subject_key`. `write_unit_amenities`

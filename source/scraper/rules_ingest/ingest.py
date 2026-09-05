@@ -72,6 +72,19 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.json"
 DEFAULT_LIMIT = 2
 DEFAULT_PAUSE_SECONDS = 0.5
 
+# Sections the parser returns but the ingest does not extract. The rate-card
+# notes are per-rate by construction ("בונגלו עם מזגן סופי שבוע וחגים: מותנה
+# במינימום 2 לילות") and the extractor drops the rate label, so their facts
+# landed as campsite-wide rules: `child_min_age 5`, `weekend_min_nights 2`,
+# `mattresses 4`. Parked until statements carry a referent that can route them
+# to an accommodation type (PLAN 2026-09-05 "Referent field").
+PARKED_SECTION_TITLES = ("הערות למחירון",)
+
+
+def sections_to_extract(sections: list[Section]) -> list[Section]:
+    """The parsed sections minus the parked ones."""
+    return [s for s in sections if s.title not in PARKED_SECTION_TITLES]
+
 
 @dataclass
 class SiteReport:
@@ -402,8 +415,12 @@ def ingest_site(
     usage: LlmUsage | None = None,
     report: SiteReport | None = None,
 ) -> int:
-    sections = parse_sections(html, source_url=site["url"])
+    parsed = parse_sections(html, source_url=site["url"])
+    sections = sections_to_extract(parsed)
+    parked = [s.title for s in parsed if s not in sections]
     print(f"    {len(sections)} section(s): {', '.join(s.title for s in sections)}")
+    if parked:
+        print(f"    parked, not extracted: {', '.join(parked)}")
     if not sections:
         return 0
 
