@@ -11,6 +11,9 @@ class AdjudicationPayload(BaseModel):
     """Which of the nearest candidates, if any, is the same subject."""
 
     match: str | None = None
+    # How sure the judge is of THIS answer, 0..1. None when the model omitted it
+    # (never seen in 87 probed calls); the caller decides what None means.
+    confidence: float | None = None
 
     @field_validator("match", mode="before")
     @classmethod
@@ -18,6 +21,17 @@ class AdjudicationPayload(BaseModel):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, value: object) -> float | None:
+        if value is None or value == "":
+            return None
+        try:
+            number = float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+        return min(1.0, max(0.0, number))
 
 
 class ClassificationPayload(BaseModel):

@@ -10,6 +10,8 @@ worth re-reading afterwards, for every page the run touched:
 - which statements the upsert refused because their subject already had a row
   in that scope, with both phrasings;
 - which terms the resolver dropped outright;
+- under each collision, the explainer's diagnosis (extractor or judge, which
+  side is right, what the names should have been) — advisory;
 - what the run cost, by role and model.
 
 One file per run under `reports/rules_ingest/` (git-ignored, like the cost
@@ -31,6 +33,7 @@ from source.scraper.subjects.resolve import ResolutionTrace, category_label
 
 if TYPE_CHECKING:
     from source.scraper.rules_ingest.db import DroppedRule, ResolvedRule
+    from source.scraper.rules_ingest.explain import ConflictExplanation
     from source.scraper.rules_ingest.ingest import SiteReport
 
 REPORT_DIR_ENV = "RULES_REPORT_DIR"
@@ -155,8 +158,8 @@ def _site_section(run: SiteRun) -> list[str]:
             "the page says."
         )
         lines.append("")
-        for drop in drops:
-            lines += _drop_lines(drop, first)
+        for index, drop in enumerate(drops):
+            lines += _drop_lines(drop, first, run.report.explanations.get(index))
     else:
         lines.append("none")
     lines.append("")
@@ -170,7 +173,11 @@ def _site_section(run: SiteRun) -> list[str]:
     return lines
 
 
-def _drop_lines(drop: DroppedRule, first: dict[str, ResolutionTrace]) -> list[str]:
+def _drop_lines(
+    drop: DroppedRule,
+    first: dict[str, ResolutionTrace],
+    explanation: ConflictExplanation | None = None,
+) -> list[str]:
     name = first.get(drop.kept.term or "")
     subject = name.subject_name if name is not None else f"#{drop.kept.subject_id}"
     lines = [f"**{drop.label}** on `{subject}` (campsite {drop.campsite_id})", ""]
@@ -181,6 +188,11 @@ def _drop_lines(drop: DroppedRule, first: dict[str, ResolutionTrace]) -> list[st
         lines.append(
             f"- **{role}:** `{rule.term}`{where} → {_value(rule)}  "
             f"\n  “{_cell(rule.evidence_span)}”  \n  {how}"
+        )
+    if explanation is not None:
+        lines.append(
+            f"- **explainer:** `{explanation.cause}`, right: {explanation.which_is_right}. "
+            f"{explanation.explanation}  \n  Fix: {explanation.fix}"
         )
     lines.append("")
     return lines

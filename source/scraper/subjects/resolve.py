@@ -40,9 +40,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from db.models import SubjectCategory
+from db.models import QualifierUnit, SubjectCategory
 from source.scraper.amenity_enrichment.llm import EmbeddingLLMClient, LlmUsage
-from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
+from source.scraper.subjects.llm import (
+    MATCH_MIN_CONFIDENCE,
+    Judgement,
+    SubjectAdjudicatorLLMClient,
+)
 from source.scraper.subjects.naming import (
     normalize_alias,
     opposed,
@@ -88,9 +92,13 @@ class SubjectStore:
 
     table: str = "subject_vectors"
     has_context: bool = True
+    # Where a candidate's existing statements are read from, so the judge can
+    # be shown what each side states.
+    rules_table: str = "campsite_rules"
 
     def __post_init__(self) -> None:
         ensure_table_name(self.table)
+        ensure_table_name(self.rules_table)
 
 
 DEFAULT_STORE = SubjectStore()
@@ -176,6 +184,24 @@ def vector_literal(values: list[float]) -> str:
     return "[" + ",".join(f"{x:.8f}" for x in values) + "]"
 
 
+def format_states(
+    polarity: bool | None, qualifier: object, qualifier_unit: int | None
+) -> str | None:
+    """What a statement asserts, as the judge is shown it: "polarity=true
+    qualifier=30 count". None when it asserts nothing."""
+    parts = []
+    if polarity is not None:
+        parts.append(f"polarity={str(bool(polarity)).lower()}")
+    if qualifier is not None:
+        try:
+            unit = QualifierUnit(int(qualifier_unit or 0)).name.lower()
+        except ValueError:
+            unit = str(qualifier_unit)
+        number = f"{float(qualifier):g}"
+        parts.append(f"qualifier={number}" + (f" {unit}" if unit != "none" else ""))
+    return " ".join(parts) or None
+
+
 def resolve_subject(
     conn,
     term: str,
@@ -184,6 +210,8 @@ def resolve_subject(
     adjudicator: SubjectAdjudicatorLLMClient,
     category: int | None = None,
     context: str | None = None,
+    states: str | None = None,
+    campsite_id: int | None = None,
     store: SubjectStore = DEFAULT_STORE,
     cache: dict[str, SubjectRef] | None = None,
     usage: LlmUsage | None = None,
@@ -191,6 +219,11 @@ def resolve_subject(
     verbose: bool = True,
 ) -> SubjectRef | None:
     """Return the subject this term names, creating it if it is genuinely new.
+
+    `states` is what the statement asserts ("qualifier=30 count"); together
+    with each candidate's existing rows it is shown to the judge, which is what
+    stopped a 30-person minimum merging into an 80-person one. `campsite_id`
+    marks which of a candidate's rows come from the page being read.
 
     `category` is what the extractor read off the sentence — it has context a
     bare term does not, so it beats the classifier's guess and keeps rules and
@@ -228,6 +261,8 @@ def resolve_subject(
         adjudicator=adjudicator,
         category=category,
         context=context,
+        states=states,
+        campsite_id=campsite_id,
         store=store,
         usage=usage,
         trace=trace,
@@ -261,6 +296,8 @@ def _resolve_positive(
     adjudicator: SubjectAdjudicatorLLMClient,
     category: int | None,
     context: str | None,
+    states: str | None,
+    campsite_id: int | None,
     store: SubjectStore,
     usage: LlmUsage | None,
     trace: ResolutionTrace,
@@ -282,18 +319,28 @@ def _resolve_positive(
     offered = trace.offered
 
     matched = None
+    judgements: list[Judgement] = []
     if offered:
         matched = adjudicator.pick_match(
             key,
             [c.name for c in offered],
             term_context=context,
             candidate_contexts={c.name: c.context for c in offered if c.context},
+            term_states=states,
+            candidate_states=_candidate_states(conn, offered, campsite_id, store),
             usage=usage,
+            judgement_sink=judgements,
         )
+    judgement = judgements[-1] if judgements else None
     if matched is not None:
         winner = next(c for c in offered if c.name == matched)
         _append_alias(conn, winner.id, key, store)
-        trace.outcome = f"ADJUDICATOR merged into {matched!r}."
+        sure = (
+            f" (confidence {judgement.confidence:.2f})"
+            if judgement is not None and judgement.confidence is not None
+            else ""
+        )
+        trace.outcome = f"ADJUDICATOR merged into {matched!r}{sure}."
         trace.kind = "merged"
         trace.subject_id, trace.subject_name = winner.id, winner.name
         return SubjectRef(winner.id, winner.name, winner.category)
@@ -308,7 +355,14 @@ def _resolve_positive(
     else:
         payload = adjudicator.classify(key, context=context, usage=usage)
         resolved_category = int(payload.category)
-    verdict = "ADJUDICATOR rejected all." if offered else "nothing near enough to ask."
+    if judgement is not None and judgement.match is not None:
+        # Answered a name but below the confidence gate: the merge did not happen.
+        verdict = (
+            f"ADJUDICATOR said {judgement.match!r} at confidence "
+            f"{judgement.confidence:.2f} < {MATCH_MIN_CONFIDENCE}: rejected."
+        )
+    else:
+        verdict = "ADJUDICATOR rejected all." if offered else "nothing near enough to ask."
 
     # The term is the name, so the probe that ran the neighbour search is the
     # row's vector: no second embedding, and the alias key can never collide
@@ -349,6 +403,55 @@ def _judge_candidate(
         rejected_for=reason,
         context=context,
     )
+
+
+# A candidate with rows on many campsites is summarised: the first few, then a count.
+STATES_SHOWN = 4
+
+
+def _candidate_states(
+    conn, offered: list[Candidate], campsite_id: int | None, store: SubjectStore
+) -> dict[str, str | None]:
+    """What each offered candidate's existing rows assert, per campsite.
+
+    The page being read is marked "(same page)": two statements from one page
+    that state different numbers are two facts, where a different number on
+    another campsite is normal.
+    """
+    if not offered:
+        return {}
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT subject_id, campsite_id, polarity, qualifier, qualifier_unit
+            FROM {store.rules_table}
+            WHERE subject_id = ANY(%s)
+            ORDER BY subject_id, campsite_id
+            """,
+            ([c.id for c in offered],),
+        )
+        rows = cur.fetchall()
+    by_id: dict[int, list[str]] = {}
+    # The page being read first: it is the entry that decides "two facts from
+    # one page", and must not fall into the "+N more" tail.
+    for subject_id, row_campsite, polarity, qualifier, unit in sorted(
+        rows, key=lambda r: (r[1] != campsite_id, r[1])
+    ):
+        states = format_states(polarity, qualifier, unit)
+        if states is None:
+            continue
+        where = "same page" if row_campsite == campsite_id else f"campsite {row_campsite}"
+        by_id.setdefault(int(subject_id), []).append(f"{states} ({where})")
+    out: dict[str, str | None] = {}
+    for c in offered:
+        entries = by_id.get(c.id, [])
+        if not entries:
+            continue
+        shown = "; ".join(entries[:STATES_SHOWN])
+        if len(entries) > STATES_SHOWN:
+            shown += f"; +{len(entries) - STATES_SHOWN} more"
+        out[c.name] = shown
+    return out
 
 
 def _select_by_alias(conn, key: str, store: SubjectStore) -> SubjectRef | None:

@@ -14,6 +14,8 @@ than by ingest volume.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from openai import OpenAI
 
 from source.scraper.amenity_enrichment.llm import (
@@ -83,6 +85,10 @@ Rules:
 - Context lines quote the sentence each subject was first read from. Use them:
   two subjects whose names look alike but whose contexts describe different
   things (a communal block vs something inside a room) are NOT the same subject.
+- Each side may carry a `states:` line -- the polarity or number it asserts. Two
+  statements read from ONE page that state different numbers, or opposite
+  polarities, are two facts and never one subject. Across different campsites
+  a different number is normal (one site has 1 freezer, another 2).
 
 Examples:
 - term "air_conoditioning", candidates ["air_conditioner", ...] -> {"match": "air_conditioner"}
@@ -110,7 +116,8 @@ Examples:
 - term "late_check_out_fee", candidates ["late_check_out_available", ...] -> {"match": null}
 
 Schema:
-{"match": "<one of the candidate strings>" | null}
+{"match": "<one of the candidate strings>" | null,
+ "confidence": <number 0..1: how sure you are of THIS answer, match or null>}
 """
 
 CLASSIFY_SYSTEM_PROMPT = """You name a new campsite subject and say what kind it is.
@@ -161,6 +168,22 @@ Schema:
 """
 
 
+# A match below this is treated as "no match". Measured on 87 judge calls
+# (experiments.md 2026-09-04 §12, §14): right answers 0.95 (once 1.0), wrong
+# merges 0.30-0.85, one true merge at 0.80 (`picnic_table` vs
+# `picnic_tables_and_benches`) -- the missed merge the project tolerates.
+MATCH_MIN_CONFIDENCE = 0.9
+
+
+@dataclass(frozen=True)
+class Judgement:
+    """What the judge answered, how sure it was, and whether the gate let it through."""
+
+    match: str | None
+    confidence: float | None
+    accepted: bool
+
+
 # TODO(rename): Adjudicator -> MergeJudge across all files, keeping each
 # occurrence's letter case: SubjectAdjudicatorLLMClient -> SubjectMergeJudgeLLMClient,
 # ADJUDICATE_SYSTEM_PROMPT -> MERGE_JUDGE_SYSTEM_PROMPT, `adjudicator` -> `merge_judge`,
@@ -204,25 +227,45 @@ class SubjectAdjudicatorLLMClient:
         *,
         term_context: str | None = None,
         candidate_contexts: dict[str, str | None] | None = None,
+        term_states: str | None = None,
+        candidate_states: dict[str, str | None] | None = None,
         usage: LlmUsage | None = None,
+        judgement_sink: list[Judgement] | None = None,
     ) -> str | None:
         """Return a candidate name, or None. Never returns a name not offered.
 
         `term_context` and `candidate_contexts` are the sentences the subjects
         were read from. Names alone cannot separate a communal toilet block from
         a room's own bathroom; the contexts can.
+
+        `term_states` and `candidate_states` are what each side asserts --
+        "qualifier=30 count", "polarity=true" -- the term's from its statement,
+        a candidate's from its existing rows. With both sentences already in
+        view the judge still merged a 30-person minimum into an 80-person one;
+        shown the numbers it did not (experiments.md 2026-09-04 §10, §14).
+
+        A match is returned only when the judge's own confidence is at least
+        MATCH_MIN_CONFIDENCE: every wrong merge in 87 probed calls came back
+        below 0.9 and every right answer at 0.95, so the gate only ever turns a
+        merge into an insert -- the tolerable failure. A reply without a
+        confidence is accepted as before. `judgement_sink` receives the raw
+        answer, confidence and whether it was accepted, for the trace.
         """
         if not candidates:
             return None
         contexts = candidate_contexts or {}
+        states = candidate_states or {}
         listed = "\n".join(
             f"- {name}"
             + (f"\n    context: {contexts[name]}" if contexts.get(name) else "")
+            + (f"\n    states: {states[name]}" if states.get(name) else "")
             for name in candidates
         )
         asked = f"Term: {term}"
         if term_context:
             asked += f"\n    context: {term_context}"
+        if term_states:
+            asked += f"\n    states: {term_states}"
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -237,12 +280,19 @@ class SubjectAdjudicatorLLMClient:
         if usage is not None:
             usage.add_chat(response.usage, role="merge_judge", model=self.model)
         data = _parse_json_payload(response.choices[0].message.content or "")
-        match = AdjudicationPayload.model_validate(data).match
+        payload = AdjudicationPayload.model_validate(data)
+        match = payload.match
         # Same guard as InfoWebsiteNameMatcher.pick_name: a name the model
         # invented is not a match, however confident it sounds.
         if match is None or match not in candidates:
-            return None
-        return match
+            match = None
+        confidence = payload.confidence
+        accepted = match is not None and (
+            confidence is None or confidence >= MATCH_MIN_CONFIDENCE
+        )
+        if judgement_sink is not None:
+            judgement_sink.append(Judgement(match, confidence, accepted))
+        return match if accepted else None
 
     def classify(
         self,

@@ -60,6 +60,18 @@ Rules:
     "מטבח שדה (1) בשלב הזה בלי גז"
       -> field_kitchen         / amenity / true  / 1    / count
       -> gas_in_field_kitchen  / amenity / false / null / none
+- A property stated about a whole list belongs in EVERY name on it. "הונגשו X, Y, Z"
+  says X, Y and Z were made accessible: emit accessible_x, accessible_y, accessible_z
+  (amenity, true), never the bare x, y, z -- the bare noun is a different subject,
+  one the amenity list already states with its count.
+    "הונגשו בחניון הלילה: חניה, שירותים, מקלחות, פינת פיקניק"
+      -> accessible_parking      / amenity / true / null / none
+      -> accessible_toilets      / amenity / true / null / none
+      -> accessible_showers      / amenity / true / null / none
+      -> accessible_picnic_area  / amenity / true / null / none
+- Glossary: חושה (plural חושות) is a hut -- a simple roofed accommodation unit --
+  never senses and never a fountain. "שתי חושות" in an accessibility list is
+  accessible_huts / amenity / true / null / none.
 - ALWAYS phrase the subject POSITIVELY. Negation goes in `polarity`, never in the
   name. Never emit not_/no_/cant_/cannot_/without_/_forbidden/_banned subjects.
   - "הכניסה לכלבים אסורה"      -> dogs_allowed / boolean_rule / false

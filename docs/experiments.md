@@ -302,3 +302,189 @@ which the judge merged once in a live run, was rejected all three times here.
 work, and the guard can only over-split (design.md "Antonyms are decided in
 code"). Noted that `opposed()` also fires when both names contain both words;
 left as is, since every such pair seen so far should indeed stay apart.
+
+### 10. Show the judge what each side states (values), not only the sentences
+
+**Question.** The three bad merges in the 19:55 five-page run —
+`family_and_friends_group_min_occupancy` (30) → `group_min_occupancy` (80),
+`electric_hookup` (site list, "נקודות חשמל") → `electric_hookup_in_caravan_pitch`,
+`visitor_service_center_summer_friday_opening_end_time` (16:00) → the weekday
+`…_summer_opening_end_time` (17:00) — all happened with both original
+sentences already in front of the judge. Does adding what each side *states*
+(the term's polarity/qualifier, the candidate's existing rows) change its
+answer, without breaking true merges whose numbers legitimately differ?
+
+**Setup.** `temp/judge_values_probe.py`: the judge's exact message format plus
+one `states:` line per side; three variants — today (names + contexts),
+`+values`, `+values+rule` (one added system-prompt sentence: two statements
+from one page stating different numbers or opposite polarities are two facts;
+across campsites a different number is normal). 7 cases × 3 variants × 3
+calls = 63 judge calls on the 235B, $0.021, no writes. Controls: `freezer (1)`
+→ `freezers (2)`, `mattress (16)` → `mattresses (100)`, `rental_equipment` →
+`equipment_rental`, `rental_equipment_signature_required` → the commitment-letter
+subject (two candidates offered).
+
+**Result.**
+
+| variant | bad merges rejected / 9 | controls merged / 12 |
+|---|---|---|
+| today | 0 | 12 |
+| +values | 8 | 12 |
+| +values+rule | 9 | 12 |
+
+Today's presentation merged all three bad pairs 3/3 each — the instability seen
+earlier was not luck, these are systematic. With values the judge rejected the
+group minimum and the hookup 3/3 and the Friday time 2/3; with the one-line
+rule 9/9. No control moved: differing counts across campsites did not stop a
+single true merge, with or without the rule.
+
+**Decision.** Pending the user's call. Cost of adopting: the term's value is
+already in hand in `_resolve_statements`; a candidate's values need one query
+on `campsite_rules` per offered candidate (cache-and-alias misses only), with
+"same page" marked by campsite id.
+
+### 11. An accessibility rule in the extractor prompt
+
+**Question.** `הונגשו בחניון הלילה: חניה, שירותים, מקלחות, …` was extracted as
+bare `parking`, `toilets`, `showers` — the property the sentence is about was
+dropped, the bare names alias-hit the counted amenities and were refused at the
+upsert. Does a rule with a worked example fix it, and does it disturb the
+sections next to it?
+
+**Setup.** `temp/accessibility_prompt_probe.py`: `SYSTEM_PROMPT` with one bullet
+added after the part-of-container one — a property stated about a whole list
+belongs in every name; `הונגשו X, Y, Z` → `accessible_x`, `accessible_y`,
+`accessible_z`, never the bare nouns — plus the four-line example. Old vs new
+prompt on five sections: both Akhziv accessibility clauses, the Hurshat Tal
+amenity head (lighting, showers, toilets, `שירותי נכים (2)`, field kitchen),
+the group-booking section, the caravan pitch line. 10 extract calls, $0.007.
+
+**Result.** Both accessibility clauses: every subject now `accessible_*`
+(parking, toilets, showers, picnic_area, path_to_tent_area, trails), none
+bare. The other three sections are identical old vs new except `lighting` →
+`area_lighting` (naming drift the judge already merges). Counts, categories,
+the min/max pair and the caravan-pitch parts unchanged. One persistent misread
+unrelated to the rule: `שתי חושות` (two huts) became `drinking_water_fountain`
+under the old prompt and `accessible_sensory_trails` under the new — the model
+reads חושות as senses; the huts never come out right.
+
+**Decision.** Pending the user's call.
+
+### 12. Judge confidence: does it track correctness?
+
+**Question.** If the judge is asked for a `confidence` alongside `match`, is it
+lower on the answers we know are wrong — and does asking change the answers?
+
+**Setup.** `temp/judge_confidence_probe.py`: §10's 7 cases × 3 variants × 3
+calls, schema `{"match": …, "confidence": 0..1}`. 63 judge calls, $0.022, no
+writes.
+
+**Result.** Confidence separates right from wrong completely on this sample:
+
+| answers | n | confidence |
+|---|---|---|
+| right (match or null) | 52 | 0.95 every time |
+| wrong (all were merges) | 11 | mean 0.45, range 0.30–0.85 |
+
+A gate of "accept a match only at ≥ 0.9" would have rejected every wrong merge
+and kept every right one. Values are coarse — the model emits 0.3, 0.8, 0.85
+or 0.95 — and no wrong *null* occurred, so nothing is known about confidence
+on missed merges.
+
+Asking for confidence also *moved* the decisions relative to §10, same prompt
+otherwise: the Friday closing time was rejected 3/3 under "today" (merged 3/3
+in §10), while `electric_hookup` → `electric_hookup_in_caravan_pitch` merged
+2/3 with values and 3/3 with values + rule (rejected 3/3 in §10) — at
+confidence 0.3 each time. Any change to the output schema is a prompt change
+and reshuffles the borderline cases; the confidence is what stayed honest
+about them.
+
+**Decision.** Pending. Proposal: adopt values (§10) *and* the confidence field,
+and treat a match below 0.9 as null — in this project a missed merge is the
+tolerable failure, so a gate that only ever turns merges into inserts is the
+safe direction. Before fixing the threshold, run the field over the 24 merges
+of the 19:55 report to confirm true merges sit at 0.95.
+
+### 13. Extractor confidence is saturated
+
+**Question.** Same for the extractor: it already emits `confidence` per
+statement — does it dip on the statements we know are wrong?
+
+**Setup.** `temp/accessibility_confidence_probe.py`: §11's five sections, old
+and new prompt, twice each. 20 extract calls, $0.014, no writes.
+
+**Result.** 96 statements, every one at confidence 1.0 — including
+`drinking_water_fountain` / `accessible_drinking_fountains` read out of
+`שתי חושות` (two huts) both times. The accessibility rule held on both re-runs
+(all `accessible_*`, neighbours unchanged; `שירותי נכים (2)` came out
+`disabled_toilets` under the old prompt this time and `accessible_toilets`
+under the new — the drift the judge merges). Earlier live runs showed a 0.95
+and a 0.9 on ~300 statements; the signal is effectively constant.
+
+**Decision.** The extractor's confidence carries no information and should not
+be used for anything. The חושות misread needs a different cure — a glossary
+line in the prompt, since it is a translation error, not a judgement.
+
+### 14. The 24 real merges under the proposed judge presentation, gated at 0.9
+
+**Question.** §10 + §12 on the cases we chose. On every merge the 19:55 run
+actually made (21 right, 3 wrong), does "values + rule + confidence" keep the
+right ones above 0.9 and drop the wrong ones below?
+
+**Setup.** `temp/merge_confidence_24.py`: merges parsed from the run report;
+each term's value taken from the `campsite_rules` row it wrote on its page
+(the three CONFLICTING ones hard-coded from the report), each candidate's
+values from its rows on other campsites; one call each. 24 judge calls,
+$0.009, no writes.
+
+**Result.**
+
+| | kept (match ≥ 0.9) | not kept |
+|---|---|---|
+| 21 true merges | 20 | 1 — `picnic_table` (17) → `picnic_tables_and_benches` (200), match at 0.8 |
+| 3 bad merges | 0 | 3 — group minimum null 0.95, Friday time null 0.95, `electric_hookup` *match* at 0.3 |
+
+23 of 24 right. The gate did real work on one of the three: the caravan-pitch
+hookup was still answered "match", at 0.3, and only the threshold turned it
+into an insert. The one loss is a missed merge of a plural-vs-compound name,
+the tolerable direction. Counts that differ across campsites (1 vs 4 carts,
+3 vs 11 refrigerators, 16 vs 100 mattresses) did not disturb a single true
+merge.
+
+**Decision.** Pending the user's call; the evidence is now 87 calls with no
+true merge lost at ≥ 0.9 except the picnic table, and no wrong merge kept.
+
+### 15. Can the 235B explain a collision? (not implemented; a probe)
+
+**Question.** Every upsert collision in a run report marks something that was
+extracted or merged wrongly. If the two colliding statements — names, sections,
+values, sentences, resolver outcome — are handed to a model, does it diagnose
+the cause well enough to be worth wiring in?
+
+**Setup.** `temp/conflict_explainer_probe.py`: all 16 collision blocks from
+the 19:55 report to the 235B (the highest Qwen in the rate table), asked for a
+cause out of {extractor_wrong_name, extractor_wrong_value,
+extractor_hallucination, judge_over_merge, true_duplicate, other}, which side
+is right, an explanation and a fix. 16 calls, $0.003, no writes.
+
+**Result, against our own diagnosis.**
+
+| collisions | our cause | model | verdict |
+|---|---|---|---|
+| `group_min_occupancy` × 6 | judge over-merge | judge_over_merge, keep both, name the family-and-friends subject separately | right, all 6 |
+| Friday closing time | judge over-merge | judge_over_merge, two closing times | right |
+| `mattresses` (campsite 4) | extractor: unit-specific tent-rental line read as the site count | extractor_wrong_name, "mattresses included in family tent" | right — we had not spotted it |
+| `toilets` × 5 | extractor dropped "accessible" | judge_over_merge × 4 (no judge was involved: alias hit), extractor_wrong_name × 1; fixes propose `toilets_count` / `toilets_accessible` | half — sees two facts, misreads the mechanism, invents a `_count` subject the shape rules forbid |
+| `showers` × 2 | same | true_duplicate, "deduplicate" | wrong — the accessibility fact is lost |
+| `drinking_water_fountain` | hallucinated from `שתי חושות` | judge_over_merge, but notes the misattribution; fix suggests `sensory_stations` | half — spots the misread, then misreads חושות itself |
+
+9 of 16 right, 3 half, 4 wrong. Everything on the judge side was diagnosed
+correctly, including one we had missed. Everything on the extractor side was
+weak: the model does not know that "alias hit" means no judge ran, does not
+know the naming shape, and does not know הונגשו means "made accessible" —
+all of which the pipeline knows and could tell it.
+
+**Decision.** Pending. Promising for judge-side collisions as they stand; for
+extractor-side ones it would need the resolver mechanics, the subject shape
+rules and the accessibility rule in its prompt before its fixes can be
+trusted. Not implemented.
