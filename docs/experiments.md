@@ -488,3 +488,95 @@ all of which the pipeline knows and could tell it.
 extractor-side ones it would need the resolver mechanics, the subject shape
 rules and the accessibility rule in its prompt before its fixes can be
 trusted. Not implemented.
+
+## 2026-09-05
+
+### 16. A conflict resolver: explain, then choose an action (probe, nothing applied)
+
+**Question.** On top of explaining a collision (§15, now in production), can the
+235B choose what to DO about it from a closed set — drop the new statement,
+give it its own subject (overriding the merge), rename the old subject when at
+most 3 rows cite it, or add a detail to the kept row — and does it choose well?
+
+**Setup.** New module `rules_ingest/resolve_conflicts.py`: the explainer's
+pipeline mechanics (factored out as `explain.PIPELINE_MECHANICS`) plus the
+action set and the old subject's facts (name, aliases, rows citing it); code
+validates the answer — `rename_old` refused above 3 citing rows, names
+normalised, missing names fall back to the extractor's term, missing details
+turn `enrich_kept` into `drop_new`. Test set: every distinct collision in the
+last three run reports (16 + 2 + 25 collisions, 14 distinct once per-campsite
+repeats fold), each with a hand-decided expected action; two calls per case.
+`temp/conflict_resolver_probe.py`, 26 calls, $0.010, no writes. Reading the
+set showed a fifth action was needed: `reassign_kept` — the kept ROW is the
+misfiled one (a "leave by 23:00" stored as `check_out_time`; urinals stored as
+`accessible_toilets` 4) while the subject is right for other pages.
+
+**Result.** 16/26 on the strict scoring; 19/26 after two corrections that
+were ours, not the model's — the first `validate` refused a `new_name` that
+was already an alias of the old subject, which is exactly what overriding a
+merge looks like (fixed, tested); and `accessible_huts` for the hallucinated
+fountain is a better answer than the `drop_new` we expected.
+
+| case | expected | chosen (×2) | verdict |
+|---|---|---|---|
+| family-and-friends 30 vs groups 80 | rename_new | rename_new, no name → (old validate) drop_new | ours; right after fix |
+| bare `toilets` / `showers` from `הונגשו` | rename_new → `accessible_x` | rename_new → `toilets_accessible` / `showers_accessible` | action right, name wrong shape |
+| Friday 16:00 vs weekday 17:00 | rename_new | rename_new, right name | right |
+| Saturday-evening late checkout | rename_new | rename_new, right name | right |
+| tent-rental mattresses 4 vs 16 | drop_new / rename_new | rename_new → `mattresses_in_family_tent` | right |
+| `_friday_eve_hours` 8 vs `_end_time` 16 (summer, winter) | rename_old / rename_new | rename_new, right name | right; `rename_old` never chosen though 1 row cites it |
+| counted `accessible_toilets` vs uncounted | drop_new | once `…_in_overnight_area`, once enrich→drop_new | 1/2 |
+| fountain vs `שתי חושות` (two variants) | drop_new | `accessible_chosot`, drop_new, `drinking_water_fountains_accessible`, `accessible_huts` | 2/4 |
+| `check_out_time` 23 vs 9 | reassign_kept | rename_new → `check_out_tents_by_time` | wrong: it kept the misfiled 23:00 |
+| `accessible_toilets` 4 (urinals) vs `disabled_toilets` 2 | reassign_kept | rename_new → `disabled_toilets_count` | wrong, and a forbidden `_count` name |
+
+Two patterns. **The model always reaches for `rename_new`**: 22 of 26
+answers; `reassign_kept` 0 of 4 chances and `rename_old` 0 of 4, even where its
+own explanation says the kept row is the wrong one ("the sentence describes
+urinals"). **Names are the weak output**: 6 of the 22 new names break the
+shape the prompt states — a property as a suffix (`toilets_accessible`), a
+`_count` suffix, a transliteration (`accessible_chosot`), a predicate inside
+the topic (`check_out_time_of_tents_required`). Causes and explanations were
+right in 25 of 26.
+
+**Decision.** Pending. The action set is right (the fifth action earned its
+place); the prompt needs worked examples for `reassign_kept` and for the two
+naming shapes it broke, and a name check against the shape before an action
+is applied — or the extractor's own naming pass. Applying actions to the
+database is not built; the resolution is a proposal.
+
+### 17. Resolver confidence does not track correctness (unlike the judge's)
+
+**Question.** §12 showed the judge's self-reported confidence separating right
+from wrong answers completely. Does the resolver's?
+
+**Setup.** `resolve_conflicts.py` output schema gains `confidence` (kept in the
+module: the trace prints it, callers may gate on it). Same 14 cases × 2 as §16,
+after the `validate` fix. 26 calls, $0.010, no writes.
+
+**Result.**
+
+| answers | n | confidence |
+|---|---|---|
+| action right | 16 | 0.95 every time |
+| action wrong | 10 | 0.95 × 8, 0.85 × 2 |
+
+No usable gate: 8 of 10 wrong actions came back at the same 0.95 as every right
+one. The two 0.85s were `campsite_accessible_toilets` (for the uncounted
+duplicate) and one of the two `disabled_toilets_count`. The judge's wrong answers
+were borderline calls it half-knew were borderline; the resolver's wrong
+answers are confident misreadings — it is sure the 09:00 tent deadline is the
+special case and the 23:00 "leave by" is the check-out, sure that
+`toilets_accessible` and `disabled_toilets_count` are well-formed names.
+Consistency across the two calls was high: 12 of 14 cases got the same action
+and name twice; the fountain-vs-huts case gave `accessible_chosot` once and
+`accessible_huts` once.
+
+Same distribution as §16 otherwise: `rename_new` 24 of 26, `reassign_kept`
+and `rename_old` never; the group-minimum case is now right 2/2 with the
+`validate` fix; `accessible_huts` (scored wrong against our `drop_new`) is the
+better answer. Accepting it: 17/26.
+
+**Decision.** Keep the field (it costs nothing and the trace shows it) but do
+not gate on it. The lever is the prompt: worked examples for `reassign_kept`
+and for the naming shape, then a shape check on any proposed name.

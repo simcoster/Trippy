@@ -36,14 +36,15 @@ from source.scraper.rules_ingest.db import (
     ResolvedRule,
     upsert_campsite_rules,
 )
-from source.scraper.rules_ingest.explain import (
-    ConflictExplainerLLMClient,
-    ConflictExplanation,
-    explain_conflicts,
-)
+from source.scraper.rules_ingest.explain import ConflictExplanation
 from source.scraper.rules_ingest.fetch import fetch_page_html
 from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
 from source.scraper.rules_ingest.report import SiteRun, write_run_report
+from source.scraper.rules_ingest.resolve_conflicts import (
+    ConflictResolution,
+    ConflictResolverLLMClient,
+    resolve_page_conflicts,
+)
 from source.scraper.rules_ingest.sections import Section, parse_sections
 from source.scraper.rules_ingest.subcamps import (
     load_subcamps,
@@ -100,9 +101,11 @@ class SiteReport:
 
     drops: list[DroppedRule] = field(default_factory=list)
     traces: list[ResolutionTrace] = field(default_factory=list)
-    # The explainer's diagnosis per collision, keyed by index into `drops`.
-    # Advisory; filled by `explain_conflicts` after the page is done.
+    # Per collision, keyed by index into `drops`, filled after the page is
+    # done: the resolver's diagnosis (what the explainer used to give) and its
+    # full resolution -- the action, whether it was applied, the case id.
     explanations: dict[int, ConflictExplanation] = field(default_factory=dict)
+    resolutions: dict[int, ConflictResolution] = field(default_factory=dict)
 
     def render(self) -> str:
         # A term is traced the first time it is resolved; later repeats come
@@ -158,6 +161,9 @@ class SiteReport:
             explanation = self.explanations.get(index)
             if explanation is not None:
                 lines.append(f"      explainer: {explanation.one_line()}")
+            resolution = self.resolutions.get(index)
+            if resolution is not None:
+                lines.append(f"      resolution: {resolution.one_line()}")
         return lines
 
 
@@ -516,6 +522,7 @@ def run(
     site: int | None = None,
     usage: LlmUsage | None = None,
     runs: list[SiteRun] | None = None,
+    run_at: datetime | None = None,
 ) -> int:
     """Ingest up to `limit` campsites (or just `site`). Returns rules upserted.
 
@@ -523,6 +530,7 @@ def run(
     caller can report the run's cost; a fresh one is used when none is given.
     `runs` collects one `SiteRun` per page -- its report, rows written, time
     taken and any failure -- for the run report `main()` writes afterwards.
+    `run_at` stamps the conflict cases this run files.
     """
     campsites = fetch_campsites(config, limit=limit, site=site)
     if not campsites:
@@ -535,8 +543,9 @@ def run(
     extractor = RuleExtractorLLMClient()
     embedder = EmbeddingLLMClient()
     adjudicator = SubjectAdjudicatorLLMClient()
-    explainer = ConflictExplainerLLMClient()
+    resolver = ConflictResolverLLMClient()
     usage = usage if usage is not None else LlmUsage()
+    run_at = run_at or datetime.now().astimezone()
     total = 0
     run_started = time.monotonic()
 
@@ -584,9 +593,17 @@ def run(
                     f"{time.monotonic() - site_started:.1f}s: {exc}"
                 )
             outcome.seconds = time.monotonic() - site_started
-            # Every collision is something extracted or merged wrongly; ask the
-            # explainer which, so the report can say so under each one.
-            explain_conflicts(report, explainer, usage=usage)
+            # Every collision is something extracted or merged wrongly. Each is
+            # diagnosed and filed in conflict_cases; a wrong merge the model is
+            # sure of is undone on the spot (its own transaction).
+            try:
+                resolve_page_conflicts(
+                    conn, report, resolver, embedder=embedder, run_at=run_at, usage=usage
+                )
+                conn.commit()
+            except Exception as exc:  # noqa: BLE001 -- the page itself is already committed
+                conn.rollback()
+                print(f"    conflict resolution failed, rolled back: {exc}")
             # Printed after a rollback too: the over-merge behind a collision
             # is still worth seeing even when nothing was written.
             print(report.render())
@@ -630,7 +647,10 @@ def main(argv: list[str] | None = None) -> None:
     runs: list[SiteRun] = []
     started_at = datetime.now()
     started = time.monotonic()
-    run(config, limit=limit, site=args.site, usage=usage, runs=runs)
+    run(
+        config, limit=limit, site=args.site, usage=usage, runs=runs,
+        run_at=started_at.astimezone(),
+    )
     # Recorded here, not in run(): a test driving run() must not write reports/.
     written = record_scrape_cost("scrape-rules", usage)
     if written:
