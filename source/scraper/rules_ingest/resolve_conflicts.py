@@ -39,7 +39,7 @@ from source.scraper.amenity_enrichment.llm import (
     _parse_json_payload,
     make_nebius_openai_client,
 )
-from source.scraper.rules_ingest.db import upsert_campsite_rules
+from source.scraper.rules_ingest.db import ResolvedRule, upsert_campsite_rules
 from source.scraper.rules_ingest.explain import (
     PIPELINE_MECHANICS,
     ConflictExplanation,
@@ -484,3 +484,101 @@ def resolve_page_conflicts(
     if verbose:
         print(f" {len(report.drops)} filed, {applied} applied in {time.monotonic() - started:.1f}s")
     return applied
+
+
+# The two halves of this pair are one fact, and no model is needed to see it.
+# `ניתן להזמין מזרנים בתוספת תשלום` yields `mattress_rental` (amenity, true) and
+# `mattress_rental_allowed` (boolean_rule, true) from the same sentence: the
+# thing exists, and the thing is permitted. Measured over 18 sites, 5 rows of
+# 438 in exactly two subjects -- rare, but pure noise in the vocabulary.
+#
+# It is NOT the same as the pair the extractor prompt deliberately produces:
+# `ניתן להדליק מנגל בציוד עצמי` gives `barbecue_allowed` true AND
+# `barbecue_equipment` FALSE, which are two different facts. The polarities
+# differing is what tells them apart, so this only fires when they agree.
+DELETE_RULES_SQL = """
+DELETE FROM {table}
+WHERE campsite_id = %(campsite_id)s
+  AND accommodation_type_id IS NOT DISTINCT FROM %(accommodation_type_id)s
+  AND subject_id = ANY(%(subject_ids)s)
+"""
+
+SUBJECT_NAMES_SQL = """
+SELECT id, name FROM {subjects} WHERE id = ANY(%(ids)s)
+"""
+
+
+def redundant_permissions(
+    rules: list[ResolvedRule], names: dict[int, str]
+) -> list[tuple[int, str]]:
+    """The `X_allowed` statements this pass wrote that its own `X` already says.
+
+    Pure: the pass's statements in, the ones to delete out. Detection happens
+    here rather than in SQL for the same reason `upsert_campsite_rules` spots a
+    collision while writing -- what a pass did is known from the pass, and a
+    query would also see rows earlier runs wrote.
+    """
+    by_subject = {r.subject_id: r for r in rules}
+    by_name = {names[sid]: r for sid, r in by_subject.items() if sid in names}
+    out: list[tuple[int, str]] = []
+    for subject_id, rule in by_subject.items():
+        name = names.get(subject_id)
+        if name is None or not name.endswith("_allowed"):
+            continue
+        amenity = by_name.get(name[: -len("_allowed")])
+        if amenity is None:
+            continue
+        # A number is content the amenity does not carry, and a disagreeing
+        # polarity means these are two facts (barbecue_allowed / _equipment).
+        if rule.qualifier is not None or rule.polarity != amenity.polarity:
+            continue
+        out.append((subject_id, name))
+    return out
+
+
+def drop_redundant_permissions(
+    conn,
+    *,
+    campsite_id: int,
+    rules: list[ResolvedRule],
+    accommodation_type_id: int | None = None,
+    table: str = "campsite_rules",
+    subjects: str = "subject_vectors",
+    verbose: bool = True,
+) -> list[str]:
+    """Delete `X_allowed` where this pass's own `X` says the same thing.
+
+    Deterministic, so it runs before the model is asked anything: a permission
+    that merely restates its own amenity carries no information the amenity
+    does not already carry, and keeping the amenity keeps the bare-noun form
+    the vocabulary prefers.
+
+    Scoped to the statements this pass wrote, like the conflict resolver: a
+    sweep of the campsite would delete rows an earlier run wrote and a person
+    may since have accepted, and it would do so silently. The only query is the
+    subject-name lookup, which is enrichment -- the same role `subject_facts`
+    plays for a collision.
+    """
+    if not rules:
+        return []
+    ids = sorted({r.subject_id for r in rules})
+    with conn.cursor() as cur:
+        cur.execute(
+            SUBJECT_NAMES_SQL.format(subjects=ensure_table_name(subjects)), {"ids": ids}
+        )
+        names = {int(row[0]): row[1] for row in cur.fetchall()}
+        doomed = redundant_permissions(rules, names)
+        if not doomed:
+            return []
+        cur.execute(
+            DELETE_RULES_SQL.format(table=ensure_table_name(table)),
+            {
+                "campsite_id": campsite_id,
+                "accommodation_type_id": accommodation_type_id,
+                "subject_ids": [sid for sid, _ in doomed],
+            },
+        )
+    dropped = [name for _, name in doomed]
+    if verbose:
+        print(f"    dropped {len(dropped)} redundant permission(s): {', '.join(dropped)}")
+    return dropped

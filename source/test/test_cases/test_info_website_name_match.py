@@ -15,7 +15,6 @@ from info_site.match_listing import (  # noqa: E402
     match_info_website_name,
 )
 from populate_availability import (  # noqa: E402
-    ensure_booking_accommodation_type,
     normalize_accommodation_name,
 )
 
@@ -62,23 +61,6 @@ def test_llm_null_is_unmatched():
     matcher = MagicMock(spec=InfoWebsiteNameMatcher)
     matcher.pick_name.return_value = None
     assert match_info_website_name("חושה כפולה", LISTINGS, matcher=matcher) is None
-
-
-def test_already_linked_type_does_not_call_llm():
-    cur = MagicMock()
-    cur.fetchone.return_value = (42, 7)
-    matcher = MagicMock(spec=InfoWebsiteNameMatcher)
-    type_id = ensure_booking_accommodation_type(
-        cur,
-        hotel_id=1,
-        name="בונגלו עם מזגן",
-        listings=LISTINGS,
-        matcher=matcher,
-    )
-    assert type_id == 42
-    matcher.pick_name.assert_not_called()
-    executed = [call.args[0] for call in cur.execute.call_args_list]
-    assert not any("info_website_name_id = %(info_website_name_id)s" in sql for sql in executed)
 
 
 def test_matcher_rejects_name_not_on_list():

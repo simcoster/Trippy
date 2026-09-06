@@ -11,16 +11,42 @@ from source.scraper.amenity_enrichment.llm import (
     make_nebius_openai_client,
 )
 
-SYSTEM_PROMPT = """You match a Hebrew INPA booking lodging name to one parks.org.il rate-card name.
+SYSTEM_PROMPT = """You match one Hebrew lodging name to the campsite's list of lodging products.
 
 Output valid JSON only, no markdown:
 {"name": string | null}
 
 Rules:
-- "name" must be copied exactly from the provided rate-card names list, or null.
-- Pick the same lodging product (paraphrase, extra place suffix, and עמדה/עמדת count as the same).
-- If none of the rate-card names is that product, return null.
-- Never invent a name that is not in the list.
+- "name" must be copied EXACTLY from the candidate list, or null. Never invent one,
+  never repair a typo, never return a name that is not on the list.
+- Match the same lodging PRODUCT. These do not change the product:
+    a unit or room number      בונגלו עם מזגן מספר 42  =  בונגלו עם מזגן
+    singular vs plural         עמדות חניה  =  עמדת חניה
+    a rate word                לינה ב-, אמצע שבוע, סופי שבוע וחגים
+    a place suffix             ... - חניון צפוני
+- These DO change the product, and must never be matched to each other:
+    accessible vs not          חושה מונגשת  ≠  חושה
+    single vs double           חושה כפולה   ≠  חושה
+    equipped vs not            חדר צוות מאובזר  ≠  חדר צוות
+    a different structure      בונגלו  ≠  חושה  ≠  אוהל  ≠  קרוואן
+- When no candidate is that product, return null. A wrong match is worse than
+  none: it attaches prices or vacancies to something the guest will not get.
+
+Examples:
+  Name: בונגלו עם מזגן מספר 42
+  Candidates: 1. בונגלו עם מזגן  2. בונגלו מונגש עם מזגן
+  -> {"name": "בונגלו עם מזגן"}
+     (the number identifies one unit; "מונגש" would be a different product)
+
+  Name: לינה בחושה כפולה סופי שבוע וחגים
+  Candidates: 1. חושה  2. חושה כפולה  3. חושה עם מזגן שירותים ומקלחת
+  -> {"name": "חושה כפולה"}
+     (the rate words drop; "כפולה" is part of the product and must be kept)
+
+  Name: חדר צוות עץ
+  Candidates: 1. חושה  2. בונגלו עם מזגן  3. עמדת חניה לקרוואן פרטי
+  -> {"name": null}
+     (no candidate is this product, so nothing is picked)
 """
 
 
@@ -35,9 +61,17 @@ class InfoWebsiteNameMatcher:
         client: OpenAI | None = None,
         *,
         model: str | None = None,
+        system_prompt: str | None = None,
+        role: str = "listing_match",
     ) -> None:
         self.client = client or make_nebius_openai_client()
         self.model = model or self.MODEL
+        # The task is the same either way -- pick one name from a list or say
+        # null, never invent -- so the class serves both the rate-card names
+        # and the scraped accommodation types; only the framing and the cost
+        # role differ.
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
+        self.role = role
 
     def pick_name(
         self,
@@ -54,19 +88,20 @@ class InfoWebsiteNameMatcher:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.system_prompt},
                 {
                     "role": "user",
-                    "content": (
-                        f"Booking name: {booking_name}\n"
-                        f"Rate-card names:\n{numbered}"
-                    ),
+                    # Deliberately neutral: this class matches booking names to
+                    # rate-card names, rate-card labels to lodging products, and
+                    # booking names to accommodation types. Naming one side
+                    # "Rate-card" would be wrong for two of the three.
+                    "content": f"Name: {booking_name}\nCandidates:\n{numbered}",
                 },
             ],
             temperature=self.TEMPERATURE,
         )
         if usage is not None:
-            usage.add_chat(response.usage, role="listing_match", model=self.model)
+            usage.add_chat(response.usage, role=self.role, model=self.model)
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
         picked = data.get("name")

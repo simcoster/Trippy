@@ -364,8 +364,12 @@ Rules:
 - Count exact beds (e.g. double_bed, bunk_bed, single_bed). For pitches/parking spots with no beds, use 0.
 - room_count: number of connected rooms/units in this listing. Default 1.
   Example: "שתי חושות מחוברות עם דלת מקשרת שבכל חדר: ..." → room_count: 2
+  A count of beds is not a room count, and neither is a room's own number:
+  "חדרי צוות חדרים 3-4 / החדר כולל: 3 מיטות קומותיים" → room_count: 1
+  (one room holding 3 bunk beds; "3-4" numbers the rooms, it does not count them)
 - Infer accommodation_category from the type name (and text if needed). Allowed values:
-  room, cabin, tent, trailer_parking, tent_pitch, bungalow, dorm, other
+  room, cabin, hut, tent, trailer_parking, tent_pitch, bungalow, dorm, other
+  A `חושה` is a hut.
 - Times, minimum nights and pet policies are NOT yours. They are read from the same
   text by the rules pass and stored as rules, not columns.
 

@@ -26,6 +26,7 @@ from source.scraper.info_site.db import (
     maybe_fill_booking_hotel_id,
     snapshot_list_prices,
 )
+from source.scraper.info_site.match_listing import InfoWebsiteNameMatcher
 from source.scraper.info_site.parse import (
     parse_booking_hotel_id,
     parse_rate_table,
@@ -63,19 +64,26 @@ def database_url(config: dict) -> str:
     return url.replace("@db:", "@localhost:")
 
 
-def fetch_campsites(config: dict) -> list[dict]:
+def fetch_campsites(config: dict, *, site: int | None = None) -> list[dict]:
+    """The pages to scrape: one when `site` is given, else the first `limit`.
+
+    `--site` exists so `just scrape-info -- --site N` means the same site at
+    every step of the pipeline; without it the rooms step would run on one and
+    the prices step on twenty.
+    """
     limit = int(config.get("info_site", {}).get("limit_campsites", 2))
-    sql = """
+    # Subcamps have no page of their own; their parent's rate card covers them,
+    # and scraping a NULL url would fail.
+    where = "WHERE url IS NOT NULL" + (" AND id = %(site)s" if site else "")
+    sql = f"""
         SELECT id, name, url, booking_hotel_id
         FROM campsites
-        -- Subcamps have no page of their own; their parent's rate card covers
-        -- them, and scraping a NULL url would fail.
-        WHERE url IS NOT NULL
+        {where}
         ORDER BY id
-        LIMIT %s
+        LIMIT %(limit)s
     """
     with psycopg.connect(database_url(config)) as conn, conn.cursor() as cur:
-        cur.execute(sql, (limit,))
+        cur.execute(sql, {"site": site, "limit": 1 if site else limit})
         rows = cur.fetchall()
     return [
         {
@@ -107,10 +115,19 @@ def scrape_prices_for_site(
     *,
     classifier: RateCardClassifier,
     usage: LlmUsage | None = None,
+    matcher: InfoWebsiteNameMatcher | None = None,
+    unmatched_sink: list[str] | None = None,
 ) -> int:
     raw_rows = parse_rate_table(html)
     classified = classify_rows(raw_rows, classifier=classifier, usage=usage)
-    lodging = snapshot_list_prices(conn, site_id=site["id"], rows=classified)
+    lodging = snapshot_list_prices(
+        conn,
+        site_id=site["id"],
+        rows=classified,
+        matcher=matcher,
+        usage=usage,
+        unmatched_sink=unmatched_sink,
+    )
     hotel_id = parse_booking_hotel_id(html)
     with conn.cursor() as cur:
         filled = maybe_fill_booking_hotel_id(
@@ -126,12 +143,14 @@ def scrape_prices_for_site(
     return len(lodging)
 
 
-def run_prices(config: dict, *, usage: LlmUsage | None = None) -> int:
+def run_prices(
+    config: dict, *, usage: LlmUsage | None = None, site: int | None = None
+) -> int:
     """Scrape rate cards for the configured campsites. Returns rows stored.
 
     `usage` collects every LLM call so the caller can report the run's cost.
     """
-    campsites = fetch_campsites(config)
+    campsites = fetch_campsites(config, site=site)
     if not campsites:
         print("No campsites found")
         return 0
@@ -139,6 +158,8 @@ def run_prices(config: dict, *, usage: LlmUsage | None = None) -> int:
     pause_s = float(config.get("info_site", {}).get("request_pause_seconds", 0.5))
     classifier = RateCardClassifier()
     usage = usage if usage is not None else LlmUsage()
+    matcher = InfoWebsiteNameMatcher()
+    unmatched: list[str] = []
     total = 0
 
     print(f"Scraping list prices for {len(campsites)} campsite(s)")
@@ -153,7 +174,13 @@ def run_prices(config: dict, *, usage: LlmUsage | None = None) -> int:
                 print(f"    HTTP error: {exc}")
                 continue
             saved = scrape_prices_for_site(
-                conn, site, html, classifier=classifier, usage=usage
+                conn,
+                site,
+                html,
+                classifier=classifier,
+                usage=usage,
+                matcher=matcher,
+                unmatched_sink=unmatched,
             )
             conn.commit()
             total += saved
@@ -162,6 +189,10 @@ def run_prices(config: dict, *, usage: LlmUsage | None = None) -> int:
 
     print("-" * 60)
     print(f"Done. Stored {total} lodging list-price row(s).")
+    if unmatched:
+        print(f"{len(unmatched)} rate-card label(s) matched no lodging product:")
+        for name in sorted(set(unmatched)):
+            print(f"  {name}")
     if usage.chat_calls:
         print(usage.summary(prefix="Classify total: "))
     return total
@@ -169,6 +200,12 @@ def run_prices(config: dict, *, usage: LlmUsage | None = None) -> int:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Parks.org.il info-site scraper")
+    parser.add_argument(
+        "--site",
+        type=int,
+        default=None,
+        help="Scrape one campsite by id",
+    )
     parser.add_argument(
         "--prices",
         action="store_true",
@@ -178,7 +215,7 @@ def main(argv: list[str] | None = None) -> None:
     if not args.prices:
         parser.error("pass --prices (newsflashes are not wired yet)")
     usage = LlmUsage()
-    run_prices(load_config(), usage=usage)
+    run_prices(load_config(), usage=usage, site=args.site)
     written = record_scrape_cost("scrape-prices", usage)
     if written:
         print(f"cost report appended to {written}")

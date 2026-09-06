@@ -9,6 +9,11 @@ from pydantic import BaseModel, field_validator
 AccommodationCategory = Literal[
     "room",
     "cabin",
+    # A `חושה`: a simple roofed unit, and the commonest thing INPA rents --
+    # 45 of Akhziv's units alone. The rules extractor's glossary already calls
+    # it a hut, so leaving it out of this list made the two halves of one
+    # prompt disagree, and the model followed the glossary.
+    "hut",
     "tent",
     "trailer_parking",
     "tent_pitch",
@@ -21,6 +26,7 @@ ALLOWED_CATEGORIES = frozenset(
     {
         "room",
         "cabin",
+        "hut",
         "tent",
         "trailer_parking",
         "tent_pitch",

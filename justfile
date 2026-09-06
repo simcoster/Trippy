@@ -1,5 +1,5 @@
 # Run from the repo root. Requires just (https://github.com/casey/just) + uv.
-# Pipeline: scrape-sites → scrape-booking-ids → scrape-prices → scrape-availability
+# Pipeline: scrape-sites → scrape-info (rooms → prices → rules) → scrape-availability
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
@@ -54,9 +54,19 @@ pr *title:
 pr *title:
     bash scripts/open_pr.sh {{ if title == "" { "" } else { quote(title) } }}
 
-# info-site rate cards → accommodation_types + list_prices
-scrape-prices:
-    uv run python -m source.scraper.info_site.scrape --prices
+# info-site lodging panel → accommodation_types + per-unit rules (--site N)
+scrape-rooms *args:
+    uv run python -m source.scraper.rules_ingest.rooms {{ trim_start_match(args, "-- ") }}
+
+# All three info-page scrapes in dependency order: rooms → prices → rules
+scrape-info *args:
+    just scrape-rooms {{ args }}
+    just scrape-prices {{ args }}
+    just scrape-rules {{ args }}
+
+# info-site rate cards → list_prices (--site N)
+scrape-prices *args:
+    uv run python -m source.scraper.info_site.scrape --prices {{ trim_start_match(args, "-- ") }}
 
 # parks.org.il listing → campsites
 scrape-sites:
@@ -90,8 +100,8 @@ clear-rules *args:
 update-tables:
     uv run alembic upgrade head
 
-# sites, booking ids, prices, then availability
-scrape-all: scrape-sites scrape-prices scrape-availability
+# sites, then everything the info page gives, then availability
+scrape-all: scrape-sites scrape-info scrape-availability
 
 # Local Streamlit agent (Telegram remains production)
 streamlit:

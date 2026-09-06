@@ -43,6 +43,7 @@ from source.scraper.rules_ingest.report import SiteRun, write_run_report
 from source.scraper.rules_ingest.resolve_conflicts import (
     ConflictResolution,
     ConflictResolverLLMClient,
+    drop_redundant_permissions,
     resolve_page_conflicts,
 )
 from source.scraper.rules_ingest.schemas import miscategorised_rule
@@ -549,6 +550,11 @@ def _ingest_scope(
             dropped_sink=report.drops if report is not None else None,
         )
         print(f"    {written} rule(s) upserted")
+    # Deterministic, so it runs before the model is asked anything -- and only
+    # over what this pass wrote, like the conflict resolver.
+    drop_redundant_permissions(
+        conn, campsite_id=campsite_id, rules=rules, table=rules_table
+    )
     return written
 
 

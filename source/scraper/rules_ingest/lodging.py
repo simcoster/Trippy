@@ -334,6 +334,10 @@ class LodgingSegmenterLLMClient:
 
     MODEL = QWEN_INSTRUCT_30B_MODEL
     TEMPERATURE = 0
+    # A backstop for the same failure `segment_panel` prevents: a labelling
+    # reply is a few hundred tokens, so anything past this is a loop and should
+    # fail loudly rather than be parsed.
+    MAX_TOKENS = 4000
 
     def __init__(
         self,
@@ -362,6 +366,7 @@ class LodgingSegmenterLLMClient:
                 {"role": "user", "content": render_blocks(blocks)},
             ],
             temperature=self.TEMPERATURE,
+            max_tokens=self.MAX_TOKENS,
         )
         if usage is not None:
             usage.add_chat(response.usage, role="lodging_segment", model=self.model)
@@ -372,6 +377,26 @@ class LodgingSegmenterLLMClient:
             # The failure is nearly always an unescaped quote inside a note, and
             # the whole panel is lost with it. Say which panel and show where.
             raise ValueError(f"segmenter JSON invalid ({exc}): {raw[:400]!r}") from exc
+
+
+def segment_panel(
+    blocks: list[Block],
+    segmenter: LodgingSegmenterLLMClient,
+    *,
+    usage: LlmUsage | None = None,
+) -> SegmentedPanel:
+    """Units and rules for one panel, asking the model only when there is a
+    question to answer.
+
+    A panel with no paragraphs has nothing to attribute: every heading is a unit
+    and there are no rules. Asking anyway loses the site -- Yehudia's whole panel
+    is a single `<h4>`, and told to list the paragraph indices belonging to it
+    when there are none, the 30B emitted a runaway `[1, 2, 3, ... 78 ...]` and
+    ran past the end of the JSON.
+    """
+    if not any(b.kind == "para" for b in blocks):
+        return assemble_units(blocks, {"units": [], "rules": [], "notes": []})
+    return assemble_units(blocks, segmenter.segment(blocks, usage=usage))
 
 
 def assemble_units(blocks: list[Block], answer: dict) -> SegmentedPanel:

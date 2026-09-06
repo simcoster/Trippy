@@ -7,6 +7,90 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-06
+
+### 1. Does the lodging panel parse structurally, or does it need a model?
+
+**Question.** `אפשרויות לינה` is AJAX-only and had never been fetched. Is it a
+block of prose that needs an LLM to segment, or does its markup separate units
+from rules on its own?
+
+**Setup.** `temp/lodging_panel_testbed.py --panels`: two plain GETs per site
+(the page for `body[data-id]`, the panel's `data-cnt` and the inline
+`my_repeater_field_nonce`; then `ajax-handler-wp-loadmore.php`), cached under
+`temp/panels/`, parsed by `parse_lodging_blocks`. All 18 sites. No LLM, no
+database.
+
+**Result.** 18/18 fetched. **68 units, 27 with an inventory count, 1 textless,
+8 rule paragraphs.** The catalog is structural: a non-empty `<h4>` is a unit,
+its `(N)` is how many the site has, a `<p>` is description. Two bugs the sweep
+paid for itself with:
+
+| what | cost of getting it wrong |
+|---|---|
+| `<b>` is editorial bolding, not a count marker | reading the count out of it and dropping the rest lost the unit **name on 7 sites** and collapsed three distinct Metsada staff rooms onto one name — a `(hotel_id, name)` collision |
+| `<h3>` must not open a unit | Akhziv's subcamp headings `חניון צפוני` / `חניון דרומי` are `<h3>`; treating them as units invented two phantom types |
+
+The one thing structure cannot decide: a **second** `<p>` after a heading is
+sometimes the unit's description continuing and sometimes a rule about every
+unit, in identical markup. 8 such paragraphs; "the heading claims only its
+first paragraph" gets 7 of 8, failing on Khān Be'erot's room 5. Formatting does
+not separate them either — the unit-specific accessibility intro is `<strong>`
+and so is the site-wide rule, while both room specs are `font-weight: 400`.
+
+**Decision.** Catalog parsed structurally, no model. One segmentation call per
+panel for paragraph attribution and name normalisation only. design.md
+"One tooltip, one pipeline".
+
+### 2. Two passes over a unit: subtract what the first pass read, or not?
+
+**Question.** Pass 1 takes beds and occupancy into columns; pass 2 reads the
+same text for amenities and rules. To stop one fact landing twice, should pass 1
+return the spans it consumed so pass 2 reads the remainder?
+
+**Setup.** `--run` over 3 sites into `experiments.lodging_*`, `consumed_spans`
+on `AccommodationExtract` and a `residual_text()` doing exact-substring removal.
+Then the same 3 sites with the subtraction removed and the exclusion moved into
+`unit_prompt` instead. 186 and 413 per-unit spans respectively.
+
+**Result.** Subtracting mutilates the evidence. **89 of 186 spans (48%) quoted
+text that had never appeared on the page** — the page says
+`בכל חדר: 4 מיטות (מתוכם: מיטה זוגית…) מזרנים, כריות…`, the stored span said
+`בכל חדר: מזרנים, כריות…`. An `evidence_span` exists so a row can be checked
+against its source; half of them could not be. Reading the paragraph as written
+and naming the excluded facts in the prompt instead: **8 of 421 (1.9%)**, and
+every one of those is a model tic, not a design fault — the 235B
+part-translating a word it was told to copy (`מיקרוגל` → `מיקרוwave`,
+`בונגלו` → `בóngלו`, `מוגבלות` → `מогבלות`).
+
+**Cost.** 3 sites $0.038; 18 sites $0.097–$0.100, 0 failures on the first full
+run.
+
+**Decision.** No subtraction. `consumed_spans` and `residual_text` removed;
+`unit_prompt` names bed counts, sleeping capacity and joined-room counts as not
+its own. design.md "One tooltip, one pipeline".
+
+### 3. Does the extractor keep to its own predicate contract?
+
+**Question.** The prompt says a rule name's last part is one of exactly twelve
+predicates and "never coin another". Nothing checks. Does it hold?
+
+**Setup.** The 18-site run above; every subject grouped by category and name.
+
+**Result.** **19 of 431 rows broke it**, two shapes: `tent_setup` ×14 (a
+perfectly good *amenity* name mislabelled `boolean_rule`) and `room_assignment`
+×5, which asserts nothing and **disagreed with itself** — `false` at Hurshat
+Tal, Mamshit and Khān Be'erot, `true` at Akhziv and Mishmar HaCarmel, from one
+identical sentence. `numeric_rule` violations: 0. After adding both sentences to
+the prompt as worked examples: **3 rows**, and neither original shape recurs.
+
+**Decision.** Prompt examples, plus `miscategorised_rule()` clearing the
+*category* rather than dropping the statement, so a good amenity name mislabelled
+a rule survives and is placed on the evidence. The predicate list lives in code,
+which `llm-decides-semantics` normally forbids; the user agreed on the grounds
+that it checks an output contract the prompt states exhaustively rather than
+judging meaning. Reported in the run report, both terminal and Markdown.
+
 ## 2026-09-04
 
 ### 1. Streaming does not change the token accounting

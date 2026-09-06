@@ -23,6 +23,7 @@ from source.scraper.amenity_enrichment.schemas import ALLOWED_CATEGORIES
 from source.scraper.rules_ingest.db import ResolvedRule, upsert_campsite_rules
 from source.scraper.rules_ingest.ingest import SiteReport, rules_from_sections
 from source.scraper.rules_ingest.llm import SYSTEM_PROMPT, RuleExtractorLLMClient
+from source.scraper.rules_ingest.resolve_conflicts import drop_redundant_permissions
 from source.scraper.rules_ingest.sections import Section
 from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
 from source.scraper.subjects.resolve import DEFAULT_STORE, SubjectRef, SubjectStore
@@ -30,24 +31,29 @@ from source.scraper.subjects.resolve import DEFAULT_STORE, SubjectRef, SubjectSt
 _CATEGORIES = ", ".join(sorted(ALLOWED_CATEGORIES))
 
 
-def unit_prompt(type_name: str) -> str:
-    """The production extractor prompt reframed for one accommodation type.
+# The production extractor prompt, reframed for one accommodation unit.
+#
+# In front, not appended, for the reason `subcamp_prompt` gives: the production
+# prompt ends with its output schema, and an instruction placed after that reads
+# as a note on the schema rather than as the frame for the task. The prefix has
+# to countermand one line of it -- "This section describes the CAMPSITE AS A
+# WHOLE. Ignore anything specific to one room or unit type" -- which is exactly
+# backwards here.
+#
+# It is a CONSTANT, deliberately. It used to interpolate the unit name, which
+# made the prompt differ per unit, so `ingest_unit_rules` built a fresh client
+# per unit -- and each client builds its own transport, which costs 5.2 s on a
+# machine with `TLS_TRUST_OS_STORE` set because `ssl_context()` reloads the OS
+# certificate store every time. Six minutes over 68 units, for a name the user
+# message already carries twice: `extract()` sends `Section: <name>`, and
+# `unit_section` puts the name on the first line of the text.
+UNIT_PROMPT = f"""UNIT SCOPE — apply this before every other rule below.
 
-    In front, not appended, for the reason `subcamp_prompt` gives: the
-    production prompt ends with its output schema, and an instruction after
-    that reads as a note on the schema rather than as the frame for the task.
-
-    The prefix has to countermand one line of the production prompt -- "This
-    section describes the CAMPSITE AS A WHOLE. Ignore anything specific to one
-    room or unit type" -- which is exactly backwards here.
-    """
-    return f"""UNIT SCOPE — apply this before every other rule below.
-
-This text is the booking-engine description of ONE accommodation unit at a
-campsite: `{type_name}`. It is NOT a description of the campsite as a whole.
-Where the rules below say to ignore anything specific to one room or unit type,
-read the opposite: everything here is about this unit, and that is what you are
-extracting.
+This text is the description of ONE accommodation unit at a campsite. The unit
+is named on the `Section:` line below, and again on the first line of the text.
+It is NOT a description of the campsite as a whole. Where the rules below say to
+ignore anything specific to one room or unit type, read the opposite: everything
+here is about this unit, and that is what you are extracting.
 
 - Every statement is about this unit. Never name the unit in a subject: it is
   understood, and the row already records which unit it belongs to.
@@ -95,6 +101,15 @@ extracting.
 {SYSTEM_PROMPT}"""
 
 
+def unit_extractor(client: OpenAI | None = None) -> RuleExtractorLLMClient:
+    """One extractor for every unit on every site.
+
+    `ingest.py` has always built its extractor once. This is the same thing for
+    units, and it is only possible because `UNIT_PROMPT` is a constant.
+    """
+    return RuleExtractorLLMClient(client, system_prompt=UNIT_PROMPT)
+
+
 def unit_section(type_name: str, tooltip: str, *, source_url: str | None) -> Section:
     """One unit's description as a section the rule extractor can read.
 
@@ -133,7 +148,7 @@ def ingest_unit_rules(
     cache: dict[str, SubjectRef] | None = None,
     usage: LlmUsage | None = None,
     report: SiteReport | None = None,
-    openai_client: OpenAI | None = None,
+    extractor: RuleExtractorLLMClient | None = None,
 ) -> int:
     """Extract one unit's tooltip and write its rules. Returns rows upserted.
 
@@ -143,13 +158,10 @@ def ingest_unit_rules(
     so per-unit rows reach the conflict resolver and the run report on the same
     terms as site-level ones.
 
-    `openai_client` is shared across units and matters more than it looks.
-    The system prompt varies per unit, so a fresh `RuleExtractorLLMClient` is
-    built each time -- but left to build its own transport it costs 5.2 s per
-    unit on a machine with `TLS_TRUST_OS_STORE` set, because `ssl_context()`
-    reloads the OS certificate store on every call. Over 68 units that is six
-    minutes before a token moves, which is why `ingest.py` has always built
-    its extractor once. Pass one in.
+    Pass `extractor` -- one `unit_extractor()` for the whole run. Building one
+    per unit costs 5.2 s each on a machine with `TLS_TRUST_OS_STORE` set,
+    because every client builds its own transport and `ssl_context()` reloads
+    the OS certificate store; that is six minutes over 68 units.
     """
     # No early return on an empty tooltip: the unit still has a name, and the
     # name is a description. Only a unit with no name at all has nothing to read.
@@ -158,9 +170,7 @@ def ingest_unit_rules(
     rules: list[ResolvedRule] = rules_from_sections(
         conn,
         [unit_section(type_name, tooltip or "", source_url=source_url)],
-        extractor=RuleExtractorLLMClient(
-            openai_client, system_prompt=unit_prompt(type_name)
-        ),
+        extractor=extractor or unit_extractor(),
         embedder=embedder,
         adjudicator=adjudicator,
         store=store,
@@ -181,5 +191,12 @@ def ingest_unit_rules(
             table=rules_table,
             dropped_sink=report.drops if report is not None else None,
         )
+    drop_redundant_permissions(
+        conn,
+        campsite_id=campsite_id,
+        rules=rules,
+        accommodation_type_id=accommodation_type_id,
+        table=rules_table,
+    )
     print(f"    {written} rule(s) upserted for {type_name!r}")
     return written

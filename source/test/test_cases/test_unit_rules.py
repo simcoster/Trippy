@@ -16,12 +16,13 @@ import pytest
 from dotenv import load_dotenv
 
 from source.scraper.amenity_enrichment.schemas import ALLOWED_CATEGORIES
-from source.scraper.rules_ingest.llm import SYSTEM_PROMPT, RuleExtractorLLMClient
+from source.scraper.rules_ingest.llm import SYSTEM_PROMPT
 from source.scraper.rules_ingest.units import (
+    UNIT_PROMPT,
     ingest_unit_rules,
-    unit_prompt,
     unit_section,
 )
+from source.scraper.rules_ingest.units import unit_extractor as make_unit_extractor
 
 load_dotenv()
 
@@ -45,25 +46,38 @@ def test_the_unit_name_leads_the_text_not_only_the_title():
     assert section.source_url == "https://booking.example/1"
 
 
-def test_the_prompt_names_the_unit_and_frames_the_text_as_one_unit():
-    prompt = unit_prompt("חושה כפולה")
-    assert "חושה כפולה" in prompt
-    assert "ONE accommodation unit" in prompt
+def test_the_prompt_frames_the_text_as_one_unit_and_points_at_its_name():
+    """The name is NOT inlined. It reaches the model twice through the user
+    message -- `Section: <name>` and the first line of the text -- and inlining
+    it made the prompt differ per unit, which cost a client per unit."""
+    assert "ONE accommodation unit" in UNIT_PROMPT
+    assert "Section:" in UNIT_PROMPT
+
+
+def test_every_unit_shares_one_prompt_and_therefore_one_client():
+    """Guards the fix. The prompt used to interpolate the unit name, so every
+    unit needed its own client -- and each client builds its own transport, at
+    5.2 s a time on a machine with TLS_TRUST_OS_STORE set, because
+    `ssl_context()` reloads the OS trust store. Six minutes over 68 units.
+
+    Not "no unit word appears in the prompt": `חושה` is in its glossary and its
+    examples, legitimately. The property is that the prompt does not VARY.
+    """
+    assert make_unit_extractor().system_prompt is UNIT_PROMPT
+    assert make_unit_extractor().system_prompt is make_unit_extractor().system_prompt
 
 
 def test_the_unit_framing_comes_before_the_production_prompt():
     """Same reason `subcamp_prompt` prefixes rather than appends: the
     production prompt ends with its output schema, so anything after it reads
     as a note on the schema instead of the frame for the task."""
-    prompt = unit_prompt("אוהל")
-    assert prompt.endswith(SYSTEM_PROMPT)
-    assert prompt.index("UNIT SCOPE") < prompt.index(SYSTEM_PROMPT)
+    assert UNIT_PROMPT.endswith(SYSTEM_PROMPT)
+    assert UNIT_PROMPT.index("UNIT SCOPE") < UNIT_PROMPT.index(SYSTEM_PROMPT)
 
 
 def test_the_prompt_offers_every_category_the_unit_columns_allow():
-    prompt = unit_prompt("בונגלו")
     for category in ALLOWED_CATEGORIES:
-        assert category in prompt
+        assert category in UNIT_PROMPT
 
 
 def test_a_unit_with_no_tooltip_still_reads_its_name():
@@ -95,9 +109,10 @@ def test_a_unit_with_no_name_is_not_extracted_at_all():
 def unit_extractor():
     if not os.environ.get("NEBIUS_API_KEY"):
         pytest.skip("NEBIUS_API_KEY required")
-    return lambda type_name: RuleExtractorLLMClient(
-        system_prompt=unit_prompt(type_name)
-    )
+    # One extractor for every unit, which is the point of the constant prompt.
+    # The fixture keeps its per-name signature so the test bodies are unchanged.
+    client = make_unit_extractor()
+    return lambda _type_name: client
 
 
 def _subjects(extract) -> str:
