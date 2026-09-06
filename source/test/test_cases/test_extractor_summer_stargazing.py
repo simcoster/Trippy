@@ -10,12 +10,15 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 
+import pytest
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 
 from source.agent.dates import today_il, weekday_next_iso_week, weekday_this_iso_week
 
 load_dotenv()
+
+pytestmark = pytest.mark.llm
 
 PROMPT_HE_SUMMER_STARS = (
     "מקום עם מזג אוויר נחמד בקיץ שאפשר לראות בו כוכבים "

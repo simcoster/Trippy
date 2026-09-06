@@ -6,6 +6,30 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-06)
+
+**pytest results on the GitHub run.** CI writes `--junitxml=reports/pytest.xml` (gitignored) and `dorny/test-reporter@v3.0.0` publishes a Check named `pytest` plus a job summary. The test job needs `checks: write`. Same for the manual LLM workflow (`pytest (llm)`). Not a native Tests tab — GitHub does not have one.
+
+**CI does not need a Telegram secret.** `test_webhook.py` imports `main` at collection, and `main.py` raises if `TELEGRAM_TOKEN` is unset. The test job (and the manual LLM workflow) set a dummy `TELEGRAM_TOKEN`; nothing calls Telegram.
+
+**setup-uv pinned to `v10.0.1`.** The first GitHub Actions run failed at "Set up job": `astral-sh/setup-uv` publishes immutable tags (`v10.0.0`, `v10.0.1`) and no floating `v10`. Both workflows now use `astral-sh/setup-uv@v10.0.1`.
+
+**Telegram webhook tests skipped.** Four tests in `test_webhook.py` invoked the live LangGraph graph (`graph.invoke` → `light_model`) and still passed because `telegram_webhook` swallows errors. Telegram is not live; Streamlit is the current client. Marked `@pytest.mark.skip` as deprecated until rewritten. Empty-update cases and the `llm` embedding test are unchanged.
+
+**Scraper OpenAI clients come from one factory.** `make_nebius_openai_client` is the only `OpenAI()` in scraper/ingest code. It calls `ensure_live_llm()` and then constructs; pytest turns that off except `@pytest.mark.llm` (`LiveLlmDisabled`). Wrapper classes (`ConflictResolverLLMClient`, extractors, embeddings, …) request the factory rather than constructing. LangGraph `ChatOpenAI` is a separate path and is not gated. Supersedes the deferred-proxy note in the CI entry below.
+
+**Live LLM is gated at the factory.** `make_nebius_openai_client` and `make_agent_chat_model` go through one `ensure_live_llm()` check (`amenity_enrichment/llm.py`). Production allows it; pytest disables it and turns it back on only for `@pytest.mark.llm` (`source/test/conftest.py`). First use of a client built at import (`graph.py` chat models, `search.py` embedder) raises `LiveLlmDisabled` instead of calling Nebius. Previously unmarked live extractor tests now carry the mark. `test_live_llm_gate.py`.
+
+**CI on every PR.** GitHub Actions runs two required-to-be-required checks on PRs and on pushes to `main`: `lint` (`uv run ruff check .`) and `test` (`pytest -m "not llm"` against a fresh `pgvector/pgvector:pg16`, `alembic upgrade head`, then one seeded campsite + subject). A third workflow, "LLM tests (manual)", is `workflow_dispatch` only so Nebius never fires on a PR (`no-unasked-scrape-runs.mdc` in workflow form). `.github/workflows/ci.yml`, `.github/workflows/llm-tests.yml`, `scripts/ci_seed.py`.
+
+Lint is green by config, not by rewriting Alembic: `per-file-ignores` for `E402` on the dotenv bootstraps (`main.py`, `scripts/streamlit_chat.py`), `I001` on the `sys.path.insert` test (untouched; `existing-tests-permission.mdc`) and on `alembic/**` (the local `alembic/` directory makes `import alembic` first-party, so every generated revision would fail I001). Five import blocks were re-sorted (`db/__init__.py`, `scripts/replay.py`, `source/agent/constraints.py`, `info_site/classify.py`, `info_site/match_listing.py`). No `ruff format` gate.
+
+The test job ignores files that cannot pass on an empty CI database: accommodation amenities/RAG (scraped embeddings) and `test_planner_multi_room.py` (unimplemented; docstring says it currently fails). Live extractor tests are marked `llm` and excluded by `-m "not llm"`; the factory is the backstop if a new test forgets the mark.
+
+Manual step after the first green run: protect `main` so `lint` and `test` are required, and add the `NEBIUS_API_KEY` (and optionally `GOOGLE_API_KEY`) repository secret for the manual workflow.
+
+Supersedes the plan's two-PR split: this branch (`add-ci`) was already clean off `main`, and the lint job cannot pass until the ignores land, so both go together.
+
 ### Done (2026-09-05)
 
 **Rate-card notes parked.** The `הערות למחירון` section is per-rate by construction (each tooltip is prefixed with its rate label) and the extractor dropped the label every time, so the 10:13 run stored `adult_min_age 14` / `child_min_age 5` / `child_max_age 14` (the private-tent price bands), `weekend_min_nights 2` (the air-conditioned bungalow) and, on Yehiam, `mattresses 4` (a family-tent rental) as facts about the campsite; the judge then merged the hut's `weekend_hut_min_nights` into the bungalow's and `mattresses_included` into `mattresses`. `ingest.sections_to_extract` now drops `PARKED_SECTION_TITLES` after parsing (the parser and its tests are unchanged) and the log prints what was parked. `test_rate_notes_parked.py`. Consequence to accept: `test_rules_extraction.py`'s `night` and `age` cases read the fixture through `parse_sections` directly, so they still see the notes and still pass, but they now assert on facts the ingest no longer stores.

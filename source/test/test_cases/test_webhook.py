@@ -32,6 +32,14 @@ def fake_request_factory():
     return _create
 
 
+# Telegram webhook is not live; Streamlit is the current client. These hit the
+# real LangGraph chat models. Rewrite against Streamlit when that path is tested.
+_TELEGRAM_WEBHOOK_DEPRECATED = pytest.mark.skip(
+    reason="deprecated: Telegram webhook is not live; Streamlit is the current client"
+)
+
+
+@_TELEGRAM_WEBHOOK_DEPRECATED
 @pytest.mark.asyncio
 async def test_webhook_with_trip_planning_message(fake_request_factory):
     """Test webhook with a trip-planning related message."""
@@ -43,6 +51,7 @@ async def test_webhook_with_trip_planning_message(fake_request_factory):
     assert result == {"ok": True}
 
 
+@_TELEGRAM_WEBHOOK_DEPRECATED
 @pytest.mark.asyncio
 async def test_webhook_with_non_trip_message(fake_request_factory):
     """Test webhook with a non-trip-planning message."""
@@ -54,6 +63,7 @@ async def test_webhook_with_non_trip_message(fake_request_factory):
     assert result == {"ok": True}
 
 
+@_TELEGRAM_WEBHOOK_DEPRECATED
 @pytest.mark.asyncio
 async def test_webhook_with_trivial_message(fake_request_factory):
     """Test webhook with a trivial message like 'thanks'."""
@@ -82,6 +92,7 @@ async def test_webhook_with_trivial_message(fake_request_factory):
 
     assert result == {"ok": True}
 
+@_TELEGRAM_WEBHOOK_DEPRECATED
 @pytest.mark.asyncio
 async def test_webhook_with_planning_message(fake_request_factory):
     """Test webhook with a trivial message like 'thanks'."""

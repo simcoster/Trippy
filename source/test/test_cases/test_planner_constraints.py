@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 
+import pytest
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -221,6 +222,7 @@ def test_semantic_evidence_payload_empty_queries():
 # ---- Integration tests (LLM extractor) ----
 
 
+@pytest.mark.llm
 def test_extractor_next_friday_running_water_constraint_schema():
     """Hebrew trip ask → structured date + semantic running water."""
     from source.agent.graph import extractor_node
@@ -250,6 +252,7 @@ def test_extractor_next_friday_running_water_constraint_schema():
             assert "date" not in str(item.get("field", "")).lower()
 
 
+@pytest.mark.llm
 def test_extractor_next_friday_sea_or_body_of_water():
     """English sea OR body-of-water + next Friday → date range + OR semantic group."""
     from source.agent.graph import extractor_node

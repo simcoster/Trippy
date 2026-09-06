@@ -47,3 +47,12 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Imports deliberately follow a sys.path / dotenv bootstrap.
+"main.py" = ["E402"]
+"scripts/streamlit_chat.py" = ["E402"]
+"source/test/test_cases/test_info_site_to_availability_flow.py" = ["I001"]
+# Local alembic/ makes `import alembic` first-party; generated revisions
+# would fail I001 forever. Do not re-sort historical migrations.
+"alembic/**" = ["I001"]
