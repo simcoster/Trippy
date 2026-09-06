@@ -336,13 +336,22 @@ def match_accommodation_type(
         return None
     # Availability may still skip: a booking unit the lodging panel never
     # listed is a real thing, and inventing a type for it loses the catalog.
+    # Lowercase the 30B view: `מתחם pitch` vs catalog `מתחם PITCH` is the
+    # same product, but the pick must copy a candidate exactly and otherwise
+    # comes back null. Restore the original casing before storing the alias.
+    original_by_folded = {name.lower(): name for _, name in candidates}
     picked, _confidence = (matcher or InfoWebsiteNameMatcher()).pick_name(
-        needle, [name for _, name in candidates], usage=usage
+        needle.lower(),
+        [name.lower() for _, name in candidates],
+        usage=usage,
     )
     if picked is None:
         return None
+    original = original_by_folded.get(picked.lower())
+    if original is None:
+        return None
     for type_id, name in candidates:
-        if name == picked:
+        if name == original:
             cur.execute(APPEND_ALIAS_SQL, {"id": type_id, "alias": needle})
             print(f"      alias {needle!r} -> {name!r}")
             return type_id

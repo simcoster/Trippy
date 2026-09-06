@@ -142,7 +142,11 @@ rows to 95, with nothing silently overwritten.
 
 The accommodation-type matcher in `populate_availability.py` shares the class
 but keeps the 30B, pinned explicitly. It runs a different prompt for a different
-job, and none of the above was measured on it.
+job, and none of the above was measured on it. The booking name and the
+candidate list are lowercased for that call (`מתחם pitch` vs catalog
+`מתחם PITCH` is the same product; a pick that is not an exact candidate
+string comes back null). The original casing is restored before the alias
+is stored.
 
 ### One tooltip, one pipeline
 
