@@ -180,7 +180,6 @@ def update_accommodation_type_details(
     }
     total_beds = double_beds + single_beds
     urls = [u for u in (image_urls or []) if u][:MAX_IMAGE_URLS]
-    policy_rules = details.get("policy_rules")
     cur.execute(
         """
         UPDATE accommodation_types
@@ -189,9 +188,6 @@ def update_accommodation_type_details(
             total_beds = %(total_beds)s,
             bed_configuration = %(bed_configuration)s::jsonb,
             image_urls = %(image_urls)s::jsonb,
-            check_in_time = %(check_in_time)s,
-            check_out_time = %(check_out_time)s,
-            policy_rules = %(policy_rules)s::jsonb,
             room_count = %(room_count)s,
             updated_at = now()
         WHERE id = %(id)s
@@ -203,9 +199,6 @@ def update_accommodation_type_details(
             "total_beds": total_beds if total_beds > 0 else None,
             "bed_configuration": json.dumps(bed_configuration),
             "image_urls": json.dumps(urls) if urls else None,
-            "check_in_time": details.get("check_in_time"),
-            "check_out_time": details.get("check_out_time"),
-            "policy_rules": json.dumps(policy_rules) if policy_rules else None,
             "room_count": int(details.get("room_count") or 1),
         },
     )

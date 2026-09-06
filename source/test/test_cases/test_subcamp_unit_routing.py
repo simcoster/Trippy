@@ -123,11 +123,12 @@ def upserted(cursor) -> list[dict]:
     ]
 
 
-def created_types(cursor) -> list[dict]:
+def type_inserts(cursor) -> list[str]:
+    """Any SQL this scrape ran that would create an accommodation type."""
     return [
-        call.args[1]
+        str(call.args[0])
         for call in cursor.execute.call_args_list
-        if call.args[0] is pa.GET_OR_CREATE_ACCOMMODATION_TYPE_SQL
+        if "INSERT INTO accommodation_types" in str(call.args[0])
     ]
 
 
@@ -144,7 +145,6 @@ def run_upsert(subcamps):
             {"room_type": SOUTH_TENTS},
             {"room_type": HUT},
         ],
-        listings=[],
         subcamps=subcamps,
     )
     return saved, cursor
@@ -157,18 +157,46 @@ def test_availability_rows_carry_the_owning_subcamps_id():
     assert [row["site_id"] for row in upserted(cursor)] == [37, 38, 38]
 
 
-def test_the_accommodation_type_is_created_under_the_owning_subcamp():
-    """Types are keyed (hotel_id, name), so this is what keeps the six apart."""
+def test_the_availability_scrape_creates_no_accommodation_types():
+    """`scrape-rooms` owns the catalog, read off the info page's lodging panel.
+
+    The booking engine shows only what is free on the nights scanned, so a type
+    created from it is a type the operator may never have listed -- and the
+    unit's inventory count, which only the panel states, would be lost.
+    """
     _saved, cursor = run_upsert(SUBCAMPS)
 
-    assert [row["hotel_id"] for row in created_types(cursor)] == [37, 38, 38]
+    assert type_inserts(cursor) == []
 
 
 def test_without_subcamps_everything_still_lands_on_the_site():
     _saved, cursor = run_upsert([])
 
     assert {row["site_id"] for row in upserted(cursor)} == {PARENT}
-    assert {row["hotel_id"] for row in created_types(cursor)} == {PARENT}
+    assert type_inserts(cursor) == []
+
+
+def test_a_booking_unit_matching_no_type_is_skipped_not_invented():
+    """The lodging panel does not list this unit, so there is nothing to attach
+    the vacancy to. Skipping loses the night; inventing a type loses the
+    catalog, and the run prints and collects every skip so it is visible."""
+    conn, cursor = fake_conn()
+    cursor.fetchone.return_value = None  # no type, and no candidates to pick from
+    unmatched: list[tuple[int, str]] = []
+    saved = pa.upsert_availability_rows(
+        conn,
+        site_id=PARENT,
+        start=date(2026, 9, 10),
+        end=date(2026, 9, 11),
+        adults_no=1,
+        offerings=[{"room_type": HUT}],
+        subcamps=[],
+        unmatched_sink=unmatched,
+    )
+
+    assert saved == 0
+    assert type_inserts(cursor) == []
+    assert unmatched == [(PARENT, HUT)]
 
 
 def test_re_scraping_a_night_clears_the_parent_and_both_subcamps():

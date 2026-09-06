@@ -355,39 +355,23 @@ class ExtractorLLMClient:
 Extract accommodation details from Hebrew raw text into structured JSON.
 You are given the accommodation type name and the tooltip text — use both.
 
+Amenities and rules are NOT extracted here: a separate pass reads the same
+tooltip for those, with the sentence each was read from. Extract only the
+unit's own structured fields.
+
 Rules:
 - Output valid JSON only, without markdown wrappers.
 - Count exact beds (e.g. double_bed, bunk_bed, single_bed). For pitches/parking spots with no beds, use 0.
 - room_count: number of connected rooms/units in this listing. Default 1.
   Example: "שתי חושות מחוברות עם דלת מקשרת שבכל חדר: ..." → room_count: 2
-- Convert Hebrew amenities to standardized snake_case English terms.
+  A count of beds is not a room count, and neither is a room's own number:
+  "חדרי צוות חדרים 3-4 / החדר כולל: 3 מיטות קומותיים" → room_count: 1
+  (one room holding 3 bunk beds; "3-4" numbers the rooms, it does not count them)
 - Infer accommodation_category from the type name (and text if needed). Allowed values:
-  room, cabin, tent, trailer_parking, tent_pitch, bungalow, dorm, other
-- Always include accommodation_category as the first item in "amenities" (so it is searchable).
-- Name amenities in context of the category. Examples for trailer_parking / tent_pitch:
-  - חיבור חשמל / נקודת חשמל → electric_hookup (not electricity / power_outlet)
-  - חיבור מים → water_hookup
-  - ביוב / ניקוז → sewage_hookup
-- Named places (LLM must expand — do not rely on a fixed place list):
-  Whenever a specific place, landmark, or region is named, ALSO add its type(s)
-  as separate amenity strings so generic queries can match.
-  Rule: named place → keep the specific label AND add the geographic / feature type.
-  Examples (illustrative only; apply the same idea to any place you recognize):
-  - כינרת / Kineret → ["near the Kineret", "near a lake", "near a body of water"]
-  - נגב תחתון / lower Negev → ["near lower Negev", "near a desert"]
-  - ים המלח / Dead Sea → ["near the Dead Sea", "near a body of water"]
-  - מכתש רמון → ["near Ramon crater", "near a crater", "near a desert"]
-  Use English snake_case or short phrases consistently (e.g. near_a_desert / "near a desert").
-- Only add amenities to "not_included" if explicitly stated as not included or that guests should bring their own (e.g. "bring your own towels"). Do not infer not_included from absence alone.
-- Extract check_in_time / check_out_time when stated (HH:MM 24h, e.g. "15:00"). Use null if unknown.
-- Extract policy_rules only when explicitly stated. Use null for unknown keys. Typical keys:
-  - min_nights (int): minimum stay any night
-  - max_nights (int), max_weekend_nights (int)
-  - min_weekend_nights (int), min_holiday_nights (int)
-  - pets_allowed (bool)
-  Example: "מותנה במינימום 2 לילות בסופי שבוע ובחגים"
-  → {"min_weekend_nights": 2, "min_holiday_nights": 2}
-  Omit policy_rules entirely (or use {}) if nothing policy-related is stated.
+  room, cabin, hut, tent, trailer_parking, tent_pitch, bungalow, dorm, other
+  A `חושה` is a hut.
+- Times, minimum nights and pet policies are NOT yours. They are read from the same
+  text by the rules pass and stored as rules, not columns.
 
 Schema:
 {
@@ -395,19 +379,7 @@ Schema:
   "double_bed": int,
   "single_bed": int,
   "room_count": int,
-  "max_people": int | null,
-  "check_in_time": "HH:MM" | null,
-  "check_out_time": "HH:MM" | null,
-  "policy_rules": {
-    "min_nights": int | null,
-    "max_nights": int | null,
-    "max_weekend_nights": int | null,
-    "min_weekend_nights": int | null,
-    "min_holiday_nights": int | null,
-    "pets_allowed": bool | null
-  } | null,
-  "amenities": list[str],
-  "not_included": list[str]
+  "max_people": int | null
 }
 """
 
@@ -441,20 +413,12 @@ Schema:
             temperature=self.TEMPERATURE,
         )
         if usage is not None:
-            usage.add_chat(response.usage, role="amenity_extract", model=self.model)
+            usage.add_chat(
+                response.usage, role="unit_details_extract", model=self.model
+            )
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
         return AccommodationExtract.model_validate(data).as_details_dict()
-
-
-# Same extract prompt without named-place expansion (used by the dedicated place node path).
-EXTRACT_WITHOUT_PLACE_EXPANSION_PROMPT = re.sub(
-    r"- Named places \(LLM must expand.*?(?=\n- Only add amenities to \"not_included\")",
-    "",
-    ExtractorLLMClient.SYSTEM_PROMPT,
-    count=1,
-    flags=re.DOTALL,
-)
 
 
 class PlaceEnrichmentLLMClient:

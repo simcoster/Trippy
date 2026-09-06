@@ -26,7 +26,7 @@ from .llm import (
     make_agent_chat_model,
     make_nebius_openai_client,
 )
-from .schemas import AccommodationExtract, PolicyRules
+from .schemas import AccommodationExtract
 
 __all__ = [
     "AccommodationExtract",
@@ -37,7 +37,6 @@ __all__ = [
     "LlmUsage",
     "PlaceEnrichmentLLMClient",
     "MAX_IMAGE_URLS",
-    "PolicyRules",
     "QWEN_INSTRUCT_30B_MODEL",
     "QWEN_INSTRUCT_MODEL",
     "amenity_llm_clients",

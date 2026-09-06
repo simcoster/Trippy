@@ -38,6 +38,9 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+# `temp/` is agent scratch by repo rule, and a git worktree checked out there
+# makes pytest collect a second copy of the whole suite.
+norecursedirs = ["temp", ".venv", "node_modules"]
 markers = [
     "llm: calls a live LLM or embedding model (exclude with -m \"not llm\")",
 ]

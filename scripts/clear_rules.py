@@ -29,7 +29,10 @@ that a partial clear leaves the indexes at full size.
 rows carry embeddings that cost LLM calls to rebuild, and its aliases are what
 make a re-ingest converge on the same subjects instead of forking new ones.
 `--subjects` clears it too, and implies `--all`, because `campsite_rules.
-subject_id` is ON DELETE RESTRICT — a subject cannot go while any rule cites it.
+subject_id` and `conflict_cases.subject_id` are both ON DELETE RESTRICT — a
+subject cannot go while any rule, or any filed collision, cites it. The cases
+go with the vocabulary: each names its subjects by id, so none of them survives
+the renumbering a re-ingest brings.
 
   uv run python scripts/clear_rules.py                # site-level rules
   uv run python scripts/clear_rules.py --site 2       # ... for one campsite
@@ -128,14 +131,15 @@ def main() -> None:
 
                 subjects_deleted = 0
                 if args.subjects:
-                    # One statement for both, because campsite_rules references
-                    # subject_vectors with ON DELETE RESTRICT: TRUNCATE accepts
-                    # several tables precisely so a referencing pair can go
-                    # together without CASCADE reaching anything unnamed.
-                    _log("Truncating campsite_rules and subject_vectors.")
+                    # One statement for all three, because campsite_rules and
+                    # conflict_cases both reference subject_vectors with ON
+                    # DELETE RESTRICT: TRUNCATE accepts several tables precisely
+                    # so a referencing group can go together without CASCADE
+                    # reaching anything unnamed.
+                    _log("Truncating campsite_rules, conflict_cases and subject_vectors.")
                     cur.execute(
-                        "TRUNCATE TABLE campsite_rules, subject_vectors "
-                        "RESTART IDENTITY"
+                        "TRUNCATE TABLE campsite_rules, conflict_cases, "
+                        "subject_vectors RESTART IDENTITY"
                     )
                     deleted, subjects_deleted = (
                         before_site + before_unit,

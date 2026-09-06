@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import re
 
-from amenity_enrichment.llm import (
+from openai import OpenAI
+
+from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_30B_MODEL,
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
 )
-from openai import OpenAI
 
 from .parse import normalize_label
 from .schemas import ClassificationPayload, ClassifiedPriceRow, RawPriceRow

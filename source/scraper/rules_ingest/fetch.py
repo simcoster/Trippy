@@ -3,11 +3,10 @@
 Only the static response is needed: `אפשרויות לינה` and the policy-PDF lists are
 the page's AJAX-loaded parts, and both are out of scope (docs/design.md).
 
-`source.scraper.info_site.scrape` has the same helper, but that module still
-uses bare `from info_site...` / `from amenity_enrichment...` imports that only
-resolve under the justfile's PYTHONPATH, so it cannot be imported by module
-path. The SSL relaxation is for corporate MITM chains, matching the other
-scrapers.
+`source.scraper.info_site.scrape` has the same helper. That module is now
+importable by module path, so the two can be hoisted into one place; that
+cleanup is still pending. The SSL relaxation is for corporate MITM chains,
+matching the other scrapers.
 """
 
 from __future__ import annotations

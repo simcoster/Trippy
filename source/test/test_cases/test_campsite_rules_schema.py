@@ -1,40 +1,27 @@
 """Migrations 023/024 against a live database: the constraints must actually bite.
 
-Every test rolls back, so the dev database is left untouched.
+The tables are clones of production's, `LIKE ... INCLUDING ALL`, in the
+`experiments` schema -- so these still test the real checks and indexes while
+writing nothing to `public`. See `.cursor/rules/no-test-data-in-prod.mdc`.
 """
 
 from __future__ import annotations
 
-import os
-
 import psycopg
 import pytest
-from dotenv import load_dotenv
-
-load_dotenv()
-
-
-def _db_url() -> str:
-    url = os.environ.get("DATABASE_URL")
-    assert url, "DATABASE_URL is required"
-    return url.replace("@db:", "@localhost:")
 
 
 @pytest.fixture
-def conn():
-    with psycopg.connect(_db_url()) as connection:
-        yield connection
-        connection.rollback()
+def conn(experiments_conn):
+    return experiments_conn
 
 
 @pytest.fixture
-def scratch(conn):
-    """An existing campsite plus a throwaway subject, rolled back afterwards."""
+def scratch(experiments_site):
+    """A campsite and a throwaway subject, both in the test schema."""
+    conn, campsite_id = experiments_site
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM campsites ORDER BY id LIMIT 1")
-        row = cur.fetchone()
-        if row is None:
-            pytest.skip("no campsites in the database")
+        row = (campsite_id,)
         cur.execute(
             """
             INSERT INTO subject_vectors (name, category, aliases)

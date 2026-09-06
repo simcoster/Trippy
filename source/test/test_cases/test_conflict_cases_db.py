@@ -1,15 +1,19 @@
-"""Migration 031 and the apply step against the live database. Every test rolls back."""
+"""Migration 031 and the apply step, against clones of the live tables.
+
+The clones live in the `experiments` schema (`.cursor/rules/no-test-data-in-prod.mdc`)
+and are `LIKE public.x INCLUDING ALL`, so the checks under test are the real
+ones -- while `apply_rename_new`, which rewrites a subject's alias list, cannot
+reach the real dictionary.
+"""
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
 import psycopg
 import pytest
-from dotenv import load_dotenv
 
 from source.scraper.rules_ingest.db import DroppedRule, ResolvedRule
 from source.scraper.rules_ingest.resolve_conflicts import (
@@ -19,33 +23,21 @@ from source.scraper.rules_ingest.resolve_conflicts import (
     subject_facts,
 )
 
-load_dotenv()
 
-
-def _db_url() -> str:
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        pytest.skip("DATABASE_URL required")
-    return url.replace("@db:", "@localhost:")
+@pytest.fixture
+def conn(experiments_conn):
+    return experiments_conn
 
 
 @pytest.fixture
-def conn():
-    try:
-        connection = psycopg.connect(_db_url(), connect_timeout=5)
-    except psycopg.OperationalError as exc:
-        pytest.skip(f"database unavailable: {exc}")
-    with connection:
-        yield connection
-        connection.rollback()
+def scratch(experiments_site):
+    """A campsite, an old subject holding a merged alias, and its kept row.
 
-
-@pytest.fixture
-def scratch(conn):
-    """A campsite, an old subject holding a merged alias, and its kept row."""
+    In the `experiments` schema: `apply_rename_new` writes rows and rewrites a
+    subject's aliases, and that must never reach the real dictionary.
+    """
+    conn, campsite_id = experiments_site
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM campsites ORDER BY id LIMIT 1")
-        campsite_id = cur.fetchone()[0]
         cur.execute(
             "INSERT INTO subject_vectors (name, category, aliases) VALUES (%s, 3, %s) RETURNING id",
             ("t_group_min_occupancy", ["t_group_min_occupancy", "t_family_group_min_occupancy"]),
@@ -63,14 +55,14 @@ def scratch(conn):
     return campsite_id, subject_id, drop
 
 
-def test_the_table_exists_with_its_checks(conn):
+def test_the_table_exists_with_its_checks(scratch, conn):
     with conn.cursor() as cur:
-        cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_name = 'conflict_cases'")
+        cur.execute(
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'conflict_cases'"
+        )
         assert cur.fetchone()[0] >= 30
-        cur.execute("SELECT id FROM campsites LIMIT 1")
-        campsite_id = cur.fetchone()[0]
-        cur.execute("SELECT id FROM subject_vectors LIMIT 1")
-        subject_id = cur.fetchone()[0]
+        campsite_id, subject_id, _ = scratch
         with pytest.raises(psycopg.errors.CheckViolation):
             cur.execute(
                 "INSERT INTO conflict_cases (run_at, campsite_id, subject_id, label, action) VALUES (now(), %s, %s, 'CONFLICTING', 'reassign_kept')",

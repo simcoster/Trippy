@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime
 from decimal import Decimal
 from enum import IntEnum
 
@@ -21,7 +21,6 @@ from sqlalchemy import (
     Numeric,
     SmallInteger,
     Text,
-    Time,
     UniqueConstraint,
     func,
     text,
@@ -414,6 +413,10 @@ class AccommodationType(Base):
             "name",
             name="accommodation_types_hotel_id_name_key",
         ),
+        CheckConstraint(
+            "aliases[1] = name", name="accommodation_types_canonical_alias"
+        ),
+        Index("accommodation_types_aliases_gin_idx", "aliases", postgresql_using="gin"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -430,14 +433,24 @@ class AccommodationType(Base):
     total_beds: Mapped[int | None] = mapped_column(Integer)
     # Connected rooms/units in this listing (e.g. 2 for "שתי חושות מחוברות"). Default 1.
     room_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # How many of this unit the site HAS -- the `(48)` in `בונגלו עם מזגן (48)`,
+    # read structurally off the lodging panel heading. Not `room_count`: that
+    # counts rooms inside one listing, this counts the listings. NULL when the
+    # panel does not say, which is 41 of 68 units.
+    unit_count: Mapped[int | None] = mapped_column(Integer)
     # e.g. {"double_beds": 1, "single_beds": 2}
     bed_configuration = mapped_column(JSONB)
     # Up to 3 absolute image URLs from the booking .imageholder gallery
     image_urls = mapped_column(JSONB)
-    check_in_time: Mapped[time | None] = mapped_column(Time)
-    check_out_time: Mapped[time | None] = mapped_column(Time)
-    # e.g. {"min_weekend_nights": 2, "min_holiday_nights": 2, "pets_allowed": false}
-    policy_rules = mapped_column(JSONB)
+    # Booking names that resolved to this type, `aliases[1]` always the
+    # canonical name -- the same shape `subject_vectors` uses, so one idiom
+    # covers both. The availability scrape appends a surface form here rather
+    # than creating a second type. Check-in/out times and minimum-night
+    # policies used to be columns; migration 032 moved them into
+    # `campsite_rules`, where they carry the sentence they were read from.
+    aliases: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, default=list
+    )
     info_website_name_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("info_website_names.id", ondelete="SET NULL"),

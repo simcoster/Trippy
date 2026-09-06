@@ -67,17 +67,29 @@ def write_run_report(
     started_at: datetime,
     seconds: float,
     directory: Path | None = None,
+    title: str = "scrape-rules",
 ) -> Path:
-    """Render and write the report; return the file written."""
+    """Render and write the report; return the file written.
+
+    `title` names the run: both `scrape-rules` and `scrape-availability` ingest
+    into `campsite_rules` now, so the heading is what says which one this was.
+    """
     path = report_path(started_at, directory)
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = render_run_report(runs, usage, started_at=started_at, seconds=seconds)
+    text = render_run_report(
+        runs, usage, started_at=started_at, seconds=seconds, title=title
+    )
     path.write_text(text, encoding="utf-8")
     return path
 
 
 def render_run_report(
-    runs: list[SiteRun], usage: LlmUsage, *, started_at: datetime, seconds: float
+    runs: list[SiteRun],
+    usage: LlmUsage,
+    *,
+    started_at: datetime,
+    seconds: float,
+    title: str = "scrape-rules",
 ) -> str:
     kinds: Counter[str] = Counter()
     for run in runs:
@@ -86,7 +98,7 @@ def render_run_report(
     filed = sum(len(r.report.resolutions) for r in runs)
     applied = sum(1 for r in runs for x in r.report.resolutions.values() if x.applied)
 
-    lines = [f"# scrape-rules — {started_at:%Y-%m-%d %H:%M:%S}", ""]
+    lines = [f"# {title} — {started_at:%Y-%m-%d %H:%M:%S}", ""]
     pages = f"- pages: {len(runs)}"
     if failed:
         pages += f" ({len(failed)} failed)"
@@ -124,6 +136,35 @@ def _site_section(run: SiteRun) -> list[str]:
         f"- terms resolved: {sum(kinds.values())} ({_kinds(kinds)})",
         "",
     ]
+
+    # A `boolean_rule` whose name coins a predicate the prompt does not allow.
+    # The statement was kept and its category cleared, so the resolver searched
+    # every category instead of trusting a label the extractor contradicted --
+    # but it is the extractor drifting off the prompt, and that is worth reading.
+    miscategorised = sorted(set(getattr(run.report, "miscategorised", []) or []))
+    if miscategorised:
+        lines += [
+            f"### Category cleared, coined predicate ({len(miscategorised)})",
+            "",
+            "| term | read from |",
+            "|---|---|",
+        ]
+        lines += [f"| `{term}` | {section} |" for term, section in miscategorised]
+        lines += [""]
+
+    # `X_allowed` deleted because the same pass's `X` already said it. Nothing
+    # is lost, but it means the extractor split one sentence into two
+    # statements where the prompt asks for one, which is worth reading.
+    redundant = sorted(set(getattr(run.report, "redundant", []) or []))
+    if redundant:
+        lines += [
+            f"### Redundant permissions dropped ({len(redundant)})",
+            "",
+            "| subject | scope |",
+            "|---|---|",
+        ]
+        lines += [f"| `{name}` | {scope} |" for name, scope in redundant]
+        lines += [""]
 
     merged = [t for t in first.values() if t.kind == "merged"]
     lines += [f"### Merged into an existing subject ({len(merged)})", ""]

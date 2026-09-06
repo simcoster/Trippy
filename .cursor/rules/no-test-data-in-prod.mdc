@@ -1,0 +1,73 @@
+---
+description: Tests never write to production tables; they own the `experiments` schema outright
+alwaysApply: true
+---
+
+# Test data never goes into a production table
+
+A test may create, delete, truncate and generally do whatever it likes — in the
+**`experiments` schema only**. It must never `INSERT`, `UPDATE`, `DELETE` or
+`TRUNCATE` a table in `public`, not even inside a transaction it intends to roll
+back.
+
+```python
+# BAD — writes to the real dictionary and relies on a rollback to undo it
+@pytest.fixture
+def conn():
+    with psycopg.connect(_db_url()) as connection:
+        yield connection
+        connection.rollback()          # one missed line from real data loss
+
+def test_x(conn):
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO subject_vectors (name, ...) VALUES ('probe', ...)")
+
+# GOOD — the connection cannot see `public` at all
+@pytest.fixture
+def conn():
+    with psycopg.connect(_db_url(), options="-csearch_path=experiments") as c:
+        yield c
+```
+
+"It rolls back" is not the standard. A rollback is one killed process, one
+stray `commit()`, one exception in the wrong place away from not happening, and
+the blast radius is the real database. The isolation has to be **structural**:
+with `options="-csearch_path=experiments"` an unqualified table name *cannot*
+resolve to a production table, so a test that forgets a prefix fails loudly
+instead of quietly editing real rows.
+
+The danger is not only the rows a test inserts. A test that calls production
+code calls whatever that code does — `snapshot_list_prices` opens with
+`DELETE FROM list_prices WHERE site_id = ...`, so pointing it at a real campsite
+id deletes that campsite's whole rate card, and the test never says so.
+
+## What this means in practice
+
+- Open test connections with `options="-csearch_path=experiments,extensions"`.
+  Nothing else is needed to be safe; everything unqualified now lands in the
+  test schema.
+- An extension is installed once per database, into one schema, so `vector` and
+  `pg_trgm` live in `extensions` (migration 033) rather than in `public` --
+  otherwise `%(embedding)s::vector` resolves in production and fails in the
+  test schema. Production's search_path is `"$user", public, extensions`; the
+  test path is `experiments, extensions`, and `public` is on neither test path
+  nor negotiable.
+- The `experiments` schema needs its own copy of every table the code under test
+  touches. Create them in the fixture (`CREATE TABLE IF NOT EXISTS`), and copy
+  the columns the test needs rather than the whole production DDL.
+- **No foreign key may cross between `experiments` and `public`**, in either
+  direction. Duplicate the parent table into the schema instead. This is not
+  cosmetic: a testbed once held a real FK to `accommodation_types`, so
+  `just clear-data` emptied it as a cascade.
+- A read that genuinely wants production data — seeding a realistic vocabulary,
+  say — says `public.` explicitly and means it. Anything unqualified resolves
+  inside `experiments`, so a forgotten prefix cannot silently hit production.
+- Alembic migrations are for schema that ships. The `experiments` schema is
+  created by test fixtures and by scripts under `temp/`, never by a migration.
+
+A test that needs no database at all is better still: `redundant_permissions()`
+takes the statements and returns the ones to delete, so six of its eight tests
+are pure and touch nothing.
+
+`temp/isolate_experiment_schema.py` performs and verifies the separation and
+refuses to commit while any FK crosses the boundary.

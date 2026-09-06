@@ -152,6 +152,15 @@ Examples:
   -> barbecue_equipment / amenity / false / null / none
 - "החניון אינו מותאם לציבור שומרי השבת"
   -> shabbat_observance_suitable_allowed / boolean_rule / false / null / none
+- "קבלת החדר עפ\"י מס' החדר שהוזמן במערכת ההזמנות ואינו ניתן להחלפה"
+  -> room_exchange_allowed / boolean_rule / false / null / none
+  The room being assigned by its booked number is not a second fact: it is the
+  same sentence saying the assignment cannot be changed. `assignment` is not a
+  predicate, so a bare `room_assignment` is not a name you may emit.
+- "צוות החניון מקים את האוהלים באזור ייעודי מראש"
+  -> tent_setup / amenity / true / null / none
+  A service the site performs is an amenity and takes a bare noun. It is not a
+  boolean_rule: nothing here is permitted or required of the guest.
 
 Schema:
 {

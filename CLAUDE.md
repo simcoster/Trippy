@@ -8,6 +8,7 @@ source. Each file is imported here; edit the rule there, not in this file.
 @.cursor/rules/log-experiments-and-decisions.mdc
 @.cursor/rules/no-incidental-reformatting.mdc
 @.cursor/rules/existing-tests-permission.mdc
+@.cursor/rules/no-test-data-in-prod.mdc
 @.cursor/rules/python-imports.mdc
 @.cursor/rules/ruff.mdc
 @.cursor/rules/agent-temp-files.mdc

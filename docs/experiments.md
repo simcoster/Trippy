@@ -7,6 +7,90 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-06
+
+### 1. Does the lodging panel parse structurally, or does it need a model?
+
+**Question.** `אפשרויות לינה` is AJAX-only and had never been fetched. Is it a
+block of prose that needs an LLM to segment, or does its markup separate units
+from rules on its own?
+
+**Setup.** `temp/lodging_panel_testbed.py --panels`: two plain GETs per site
+(the page for `body[data-id]`, the panel's `data-cnt` and the inline
+`my_repeater_field_nonce`; then `ajax-handler-wp-loadmore.php`), cached under
+`temp/panels/`, parsed by `parse_lodging_blocks`. All 18 sites. No LLM, no
+database.
+
+**Result.** 18/18 fetched. **68 units, 27 with an inventory count, 1 textless,
+8 rule paragraphs.** The catalog is structural: a non-empty `<h4>` is a unit,
+its `(N)` is how many the site has, a `<p>` is description. Two bugs the sweep
+paid for itself with:
+
+| what | cost of getting it wrong |
+|---|---|
+| `<b>` is editorial bolding, not a count marker | reading the count out of it and dropping the rest lost the unit **name on 7 sites** and collapsed three distinct Metsada staff rooms onto one name — a `(hotel_id, name)` collision |
+| `<h3>` must not open a unit | Akhziv's subcamp headings `חניון צפוני` / `חניון דרומי` are `<h3>`; treating them as units invented two phantom types |
+
+The one thing structure cannot decide: a **second** `<p>` after a heading is
+sometimes the unit's description continuing and sometimes a rule about every
+unit, in identical markup. 8 such paragraphs; "the heading claims only its
+first paragraph" gets 7 of 8, failing on Khān Be'erot's room 5. Formatting does
+not separate them either — the unit-specific accessibility intro is `<strong>`
+and so is the site-wide rule, while both room specs are `font-weight: 400`.
+
+**Decision.** Catalog parsed structurally, no model. One segmentation call per
+panel for paragraph attribution and name normalisation only. design.md
+"One tooltip, one pipeline".
+
+### 2. Two passes over a unit: subtract what the first pass read, or not?
+
+**Question.** Pass 1 takes beds and occupancy into columns; pass 2 reads the
+same text for amenities and rules. To stop one fact landing twice, should pass 1
+return the spans it consumed so pass 2 reads the remainder?
+
+**Setup.** `--run` over 3 sites into `experiments.lodging_*`, `consumed_spans`
+on `AccommodationExtract` and a `residual_text()` doing exact-substring removal.
+Then the same 3 sites with the subtraction removed and the exclusion moved into
+`unit_prompt` instead. 186 and 413 per-unit spans respectively.
+
+**Result.** Subtracting mutilates the evidence. **89 of 186 spans (48%) quoted
+text that had never appeared on the page** — the page says
+`בכל חדר: 4 מיטות (מתוכם: מיטה זוגית…) מזרנים, כריות…`, the stored span said
+`בכל חדר: מזרנים, כריות…`. An `evidence_span` exists so a row can be checked
+against its source; half of them could not be. Reading the paragraph as written
+and naming the excluded facts in the prompt instead: **8 of 421 (1.9%)**, and
+every one of those is a model tic, not a design fault — the 235B
+part-translating a word it was told to copy (`מיקרוגל` → `מיקרוwave`,
+`בונגלו` → `בóngלו`, `מוגבלות` → `מогבלות`).
+
+**Cost.** 3 sites $0.038; 18 sites $0.097–$0.100, 0 failures on the first full
+run.
+
+**Decision.** No subtraction. `consumed_spans` and `residual_text` removed;
+`unit_prompt` names bed counts, sleeping capacity and joined-room counts as not
+its own. design.md "One tooltip, one pipeline".
+
+### 3. Does the extractor keep to its own predicate contract?
+
+**Question.** The prompt says a rule name's last part is one of exactly twelve
+predicates and "never coin another". Nothing checks. Does it hold?
+
+**Setup.** The 18-site run above; every subject grouped by category and name.
+
+**Result.** **19 of 431 rows broke it**, two shapes: `tent_setup` ×14 (a
+perfectly good *amenity* name mislabelled `boolean_rule`) and `room_assignment`
+×5, which asserts nothing and **disagreed with itself** — `false` at Hurshat
+Tal, Mamshit and Khān Be'erot, `true` at Akhziv and Mishmar HaCarmel, from one
+identical sentence. `numeric_rule` violations: 0. After adding both sentences to
+the prompt as worked examples: **3 rows**, and neither original shape recurs.
+
+**Decision.** Prompt examples, plus `miscategorised_rule()` clearing the
+*category* rather than dropping the statement, so a good amenity name mislabelled
+a rule survives and is placed on the evidence. The predicate list lives in code,
+which `llm-decides-semantics` normally forbids; the user agreed on the grounds
+that it checks an output contract the prompt states exhaustively rather than
+judging meaning. Reported in the run report, both terminal and Markdown.
+
 ## 2026-09-04
 
 ### 1. Streaming does not change the token accounting
@@ -580,3 +664,323 @@ better answer. Accepting it: 17/26.
 **Decision.** Keep the field (it costs nothing and the trace shows it) but do
 not gate on it. The lever is the prompt: worked examples for `reassign_kept`
 and for the naming shape, then a shape check on any proposed name.
+
+---
+
+## 18. The listing matcher on room-numbered names (2026-09-06)
+
+**Question.** After the never-refuse change, the all-sites prices run flagged 12
+of 44 matches. Is the remainder ordinary wording distance, or is 30B actually
+picking the wrong candidate?
+
+**Setup.** `just scrape-prices` over all 18 sites, `reports/prices_rerun.log`,
+Qwen3-30B-A3B. 93 rows written, $0.0048 for 44 `listing_match` calls. Read back
+against `info_website_names` and `list_prices`.
+
+**Result.** Wrong, and on the easiest signal available. Khan Be'erot (site 17)
+has seven lodging products, three of them room-numbered:
+
+| id | listing |
+|---|---|
+| 62 | חדר צוות מאובזר כפול חדר מספר 1-2 |
+| 63 | חדרי צוות חדרים 3-4 |
+| 64 | חדר צוות מאובזר ומונגש חדר מספר 5 |
+| 65 | חדר צוות מאובזר חדר מספר 6 |
+
+The rate card states the same numbers, and the model still missed:
+
+| rate-card label | correct | picked | conf |
+|---|---|---|---|
+| חדר צוות כפול אמצע שבוע (חדרים 1-2) | 62 | **62** | ok |
+| חדר צוות כפול סופי שבוע וחגים (חדרים 1-2) | 62 | refused → 59 (tents) | 0.00 |
+| חדר צוות קטן אמצע שבוע (חדרים 3 ו- 4) | 63 | 62 | 0.60 |
+| חדר צוות קטן סופי שבוע וחגים (חדרים 3 ו- 4) | 63 | 62 | 0.60 |
+| חדר צוות גדול אמצע שבוע (חדרים 5 ו-6) | 64/65 | 62 | 0.60 |
+| חדר צוות גדול סופי שבוע וחגים (חדרים 5 ו-6) | 64/65 | 62 | 0.60 |
+
+Four of six wrong, all onto the same candidate, and the two `חדרים 1-2` rows --
+the one pair the model could have got by copying digits -- split, one right and
+one refused outright. The failures are not near-misses in wording; the model is
+not reading the room numbers as identifying at all. That is the prompt's doing:
+it says a unit or room number does **not** change the product
+(`בונגלו עם מזגן מספר 42 = בונגלו עם מזגן`), which is right when the panel names
+a product once and wrong here, where the number is the only thing telling four
+products apart.
+
+**Second-order damage.** `list_prices_unique_rate` is
+`(info_website_name_id, guest_type, rate_period, rate_class)`, so four labels
+landing on listing 62 collapse: the run reported 93 stored, the table holds 87,
+and Be'erot kept 8 of 11. Never-refuse moved the loss from the matcher, which
+reported it, to the unique index, which does not.
+
+**Decision.** Not a model-tier question yet -- the prompt tells it to ignore the
+signal, so 235B would obey the same instruction. First the prompt learns that a
+room number identifies a product *when more than one candidate carries one*,
+with Be'erot as the worked example; then re-measure before spending a tier.
+The run report now prints the full prompt for every flagged match
+(`print_flagged_prompts`), which is what made this readable at all.
+
+---
+
+## 19. The matcher never saw the room numbers; 30B vs 235B (2026-09-06)
+
+**Corrects §18.** That entry read the room numbers out of the `UNCERTAIN` log
+lines and concluded the model had them and ignored them. It did not have them.
+The line prints `row.raw_label`, but `snapshot_list_prices` passes
+`row.accommodation_type` -- the classifier's normalised type -- to the matcher.
+The final summary in the same log prints that field, and it says what was really
+sent: `חדר צוות`, `חדר צוות גדול`, `חדר צוות כפול`. No numbers, and in one case
+not even `קטן`. §18's "the model is not reading the room numbers as identifying
+at all" is wrong; the prompt clause it blames is not what caused this run's
+failures. This is the mistake the prompt appendix exists to prevent, found by
+the appendix's first user on its first reading.
+
+**Question.** Two then: does the full label fix it, and does 235B do better?
+
+**Setup.** Khan Be'erot's seven real `info_website_names` as candidates. Three
+labels the run got wrong, each sent twice -- as the run sent it, and as the full
+rate-card label -- to `Qwen3-30B-A3B-Instruct-2507` and
+`Qwen3-235B-A22B-Instruct-2507`. Temperature 0, unchanged `SYSTEM_PROMPT`.
+12 calls, $0.0020, no writes.
+
+**Result.**
+
+| name sent | 30B | 235B |
+|---|---|---|
+| `חדר צוות כפול` (as run) | ✅ 0.85 | ✅ 0.85 |
+| `חדר צוות כפול סופי שבוע וחגים (חדרים 1-2)` | ✅ 0.85 | ✅ 0.95 |
+| `חדר צוות` (as run) | ❌ `חדר מספר 1-2` 0.60 | ✅ `חדרי צוות חדרים 3-4` 0.80 |
+| `חדר צוות קטן אמצע שבוע (חדרים 3 ו- 4)` | ❌ `חדר מספר 1-2` 0.40 | ✅ **1.00** |
+| `חדר צוות גדול` (as run) | ❌ `חדר מספר 1-2` 0.60 | ❌ `מאהל גדול קבוע` 0.40 |
+| `חדר צוות גדול אמצע שבוע (חדרים 5 ו-6)` | ✅ `חדר מספר 6` 0.60 | ❌ `חדר מספר 1-2` 0.40 |
+
+Three readings.
+
+- **The numbers matter, and they are being thrown away before the model sees
+  them.** 30B goes 1/3 → 2/3 and 235B reaches 1.00 on a case it answered at 0.80
+  without them. The one thing that would help most costs no tokens at all.
+- **235B is better where 30B is worst.** On `(חדרים 3 ו- 4)` 30B still picks
+  `חדר מספר 1-2` even with the numbers in front of it -- it does not equate
+  `3 ו- 4` with `3-4` -- while 235B does, at full confidence. This was the
+  question asked of it, and 235B answers it.
+- **`חדרים 5 ו-6` has no right answer.** One label spans listings 64 and 65, so
+  no single pick is correct and `list_prices_unique_rate` could not hold both
+  anyway. Scored ❌ above for whichever it picked; it is really a data-shape
+  problem, not a model one.
+
+Both models refuse or wander when handed a bare `חדר צוות גדול` against a list
+where four candidates are staff rooms -- 235B's `מאהל גדול קבוע` (a tent
+structure) is the worse answer of the two.
+
+**Decision.** Pass the full rate-card label, not the normalised type: it is free
+and it helps both models. Re-measure after that before buying a tier -- §18's
+"fix the prompt first" was reasoning from a premise that turned out to be false,
+and the prompt's room-number clause has not actually been shown to cost anything
+yet. The `חדרים 5 ו-6` shape needs a decision of its own: one price legitimately
+covers two products, and the schema has no way to say so.
+
+---
+
+## 20. Bracket order decides the 30B's answer; the 235B does not care (2026-09-06)
+
+**Question.** §19 sampled once per cell. Repeated, is the listing match stable?
+And does the bracket shape in `(חדרים 3 ו- 4)` matter?
+
+**Setup.** Khan Be'erot's seven real `info_website_names` as candidates, the
+`SYSTEM_PROMPT` unchanged, temperature 0. First `חדר צוות קטן אמצע שבוע
+(חדרים 3 ו- 4)` five times per model per bracket form, pooled with the three
+earlier single-shot runs of a literal verified byte-identical across all three
+scripts (`U+0028 … U+0029`, the order every `raw_label` in the database uses).
+Then, on the 235B only, four real Be'erot labels three times each with and
+without brackets. 44 calls, $0.0091, no writes.
+
+**Result — the same string, the same model, temperature 0:**
+
+| | correct | the answer when wrong |
+|---|---|---|
+| 30B `(חדרים 3 ו- 4)` | **1/7** | `חדר צוות מאובזר כפול חדר מספר 1-2` @ 0.40 |
+| 30B `)חדרים 3 ו- 4(` | **6/6** | — (0.85 every time) |
+| 235B, either form | 12/12 | — (1.00 every time) |
+
+Two stable attractors rather than noise: every wrong answer is the same pick at
+the same 0.40, and the single right one came back at 0.85, the confidence the
+flipped form gives every time. The flip is not a fix — it is evidence that the
+30B is deciding this on something that carries no meaning.
+
+**Result — removing the brackets, 235B, n=3 per cell:**
+
+| label | with | without |
+|---|---|---|
+| `… (חדרים 3 ו- 4)` | 3/3 @ 1.00 | 3/3 @ 1.00 |
+| `… (חדרים 1-2)` | 3/3 @ 0.95 | 3/3 @ 0.95 |
+| `… (חדרים 5 ו-6)` | 0/3 @ 0.40 | 1/3 |
+| `… (עד 4 לנים)` | 3/3 @ 1.00 | 3/3 @ 1.00 |
+
+Identical picks and identical confidences on three of four. The fourth is the
+label that spans listings 64 and 65 and has no single right answer; 0/3 → 1/3 is
+noise at this n and is not a regression.
+
+**Decision.** `listing_match` moves to `Qwen3-235B-A22B-Instruct-2507`, and
+`strip_brackets` removes `(` and `)` from the name before sending — inert on the
+235B, and it takes away a lever that should never have moved an answer. The
+candidates are not stripped: the pick has to be a string on the list. The
+accommodation-type matcher in `populate_availability.py` stays on the 30B,
+pinned explicitly, since none of this was measured on its prompt.
+design.md "The rate-card listing match runs on the 235B, and never sees a
+bracket".
+
+**Cost.** 44 calls at $0.0091 here. In a full run the matcher made 44 calls at
+$0.0048 on the 30B; the same run on the 235B is roughly $0.012 — about a cent
+per all-sites scrape.
+
+**Closed since.** §19's "pass the full rate-card label, not the normalised
+type" is now implemented: `match_info_website_name` takes `full_label` and the
+exact test keeps using the normalised name, so the free path is unchanged and
+only the model's view widens. The report appendix prints the user message alone.
+
+---
+
+## 21. The full prices run on the 235B (2026-09-06)
+
+**Question.** §20 changed three things at once -- the model, the brackets, and
+the string the model is shown. What do they do to a real all-sites run?
+
+**Setup.** `just scrape-prices`, all 18 sites, `reports/prices_235b.log`.
+Compared against `reports/prices_rerun.log`, the same recipe on the 30B with the
+normalised type and the brackets intact.
+
+**Result.**
+
+| | 30B run | 235B run |
+|---|---|---|
+| matches flagged | 12 | **2** |
+| refusals forced onto a candidate | 3 | **0** |
+| rows written / rows kept | 93 / 87 | 93 / **91** |
+| `listing_match` | 44 calls, $0.0048 | 43 calls, $0.0094 |
+| whole run | $0.0099 | $0.0145 |
+
+Khan Be'erot, the site that motivated all of this, went from 8 rows to 10 and
+from three wrong picks plus one price filed under tent camping to zero of
+either. `(חדרים 3 ו- 4)` now lands on `חדרי צוות חדרים 3-4` for both its rates,
+and both `(חדרים 1-2)` rates land on `חדר מספר 1-2`.
+
+Both remaining flags are the same label in its two rate periods:
+`חדר צוות גדול ... (חדרים 5 ו-6)`, which names two products. The model picked
+`חדר מספר 1-2` at 0.40 for one and `חדר מספר 5` at 0.60 for the other -- and
+those two answers are what cost the run its two lost rows, since one of them
+collided on `list_prices_unique_rate` with a row already filed under
+`חדר מספר 1-2`. Four cents of model spend fixed everything except the case that
+is not a matching problem.
+
+**Decision.** Keep the change. The open item is unchanged and is now the only
+one left at this site: one rate legitimately covers two products, and neither
+the prompt nor the schema can express that.
+
+**Noticed.** The `matched no lodging product` summary lines still print
+`row.accommodation_type` (`חדר צוות גדול`) while the model is now shown
+`row.raw_label`. Harmless but misleading; the prompt appendix below them is
+correct.
+
+---
+
+## 22. The rescue pass, on a cleared table (2026-09-06)
+
+**Question.** A first answer below `UNCERTAIN_BELOW` is asked again under a
+prompt that permits several names. Does it find the split, and does it invent
+ones that are not there?
+
+**Setup.** `TRUNCATE list_prices`, then `just scrape-prices` over all 18 sites.
+`reports/prices_rescue.log`.
+
+**Result.** It fired exactly twice, on exactly the label that needed it.
+
+| | 30B | 235B | 235B + rescue |
+|---|---|---|---|
+| rate-card lines matched | 93 | 93 | 93 |
+| rows in `list_prices` | 87 | 91 | **94** |
+| flagged | 12 | 2 | 2 uncertain + 2 splits |
+| refusals | 3 | 0 | 0 |
+| run cost | $0.0099 | $0.0145 | $0.0150 |
+
+Both `חדר צוות גדול ... (חדרים 5 ו-6)` rates came back from the first pass as
+`חדר מספר 5` at 0.60, and the rescue returned rooms 5 **and** 6 at 0.90 and
+0.95. Khan Be'erot now holds 13 rows against 11 rate-card lines, and every one
+is right: `(חדרים 3 ו- 4)` on the single catalog entry that covers both rooms,
+`(חדרים 1-2)` on room 1-2, and `(חדרים 5 ו-6)` on both rooms at 480 midweek and
+680 at weekends. Two calls, $0.0003.
+
+Nothing else split. The prompt's second worked example -- one candidate already
+covering several rooms must not be broken up -- is what `(חדרים 3 ו- 4)` needed,
+and it stayed single.
+
+**Decision.** Keep it. Two extra calls a run is not a cost worth optimising.
+
+**One row is still lost, and the rescue cannot see it.** Tel Arad prices two
+Canaanite structures:
+
+```
+מאהל גדול קבוע מבנה כנעני (עד 10 לנים)      860
+מאהל גדול קבוע מבנה כנעני כפול (עד 36)     3080
+```
+
+against a catalog holding both `מאהל גדול קבוע (מבנה כנעני)` and
+`מתחם כפול בתוך מבנה החאן הכנעני`. Both lines matched the first listing
+**confidently**, so no flag and no rescue, and the second insert overwrote the
+first on `list_prices_unique_rate`. 3080 survives, 860 is gone, and
+`מתחם כפול` has no price at all. This is the opposite failure to Be'erot's: not
+one label naming two products, but two labels collapsing onto one.
+
+Worth noting the shape of the fix, unbuilt: two rate lines resolving to the same
+listing at the same `(guest_type, rate_period, rate_class)` is a contradiction
+the code can detect without asking anyone -- the card is pricing two things.
+Today that collision is silent, which is how a run reports 93 and stores 94.
+
+---
+
+## 23. Collision resolution: two labels, two products (2026-09-06)
+
+**Question.** §22 left one row lost at Tel Arad, to two labels matching one
+product *confidently*. Told that the clash happened, can the model separate
+them?
+
+**Setup.** The pair prompt prototyped on Tel Arad's five candidates alone, 5
+runs at temperature 0, then wired in and run over all 18 sites on a cleared
+table. `reports/prices_collision.log`.
+
+**Result — the prototype, 5/5 identical at 0.95:**
+
+```
+Label A: מאהל גדול קבוע מבנה כנעני עד 10 לנים   -> מאהל גדול קבוע (מבנה כנעני)
+Label B: מאהל גדול קבוע מבנה כנעני כפול עד 36   -> מתחם כפול בתוך מבנה החאן הכנעני
+```
+
+Asked one at a time the same model put both on the first candidate, at 1.00 and
+0.80. Knowing the two must differ is the whole difference: it makes `כפול` --
+one word of six -- outweigh the five the wrong candidate shares. Stripping the
+brackets from the candidates as well as the label changed nothing either way
+(3/3 identical picks and confidences), so the brackets were never the problem
+here.
+
+**Result — the full run:**
+
+| | 235B | + rescue | + collision |
+|---|---|---|---|
+| rows in `list_prices` | 91 | 94 | **95** |
+| rows lost to a silent overwrite | 3 | 1 | **0** |
+| run cost | $0.0145 | $0.0150 | $0.0153 |
+
+One collision call in the whole run, $0.0001, and Tel Arad now keeps 860 on
+`מאהל גדול קבוע (מבנה כנעני)` and 3080 on `מתחם כפול בתוך מבנה החאן הכנעני`.
+93 rate-card lines, 95 rows, nothing dropped at any of the 18 sites.
+
+The rescue fired three times rather than two: Metsada's `חדר צוות גדול אמצע
+שבוע` came back at 0.60 and the second pass confirmed one product rather than
+splitting it, which is the behaviour the prompt's second worked example is for.
+
+**Decision.** Keep it. Detection is pure and needs neither a model nor a
+confidence -- `colliding_rows` groups by the unique key itself -- so it fires on
+the fact of the clash, which is what confidence could never catch here. Only a
+pair is asked about; three labels on one product is reported and left alone,
+since that shape is more likely a catalog missing an entry than one bad match.
+An answer is refused unless both names are on the list and differ, and a refused
+answer leaves the rows untouched and says so.

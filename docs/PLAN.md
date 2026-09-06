@@ -6,9 +6,108 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-06, night)
+
+**Two rate lines can no longer collapse onto one product.** `colliding_rows`
+groups resolved rows by `list_prices_unique_rate` itself, so a clash is found
+before anything is written and without a model -- which is what catches the case
+confidence cannot: Tel Arad matched both Canaanite structures to one listing at
+1.00 and 0.80 and silently lost the 860 row. A colliding pair gets one
+`pick_pair` call that must return two different candidates; anything else leaves
+the rows alone and reports. Full run: 95 rows from 93 rate lines, nothing lost
+at any site, one collision call at $0.0001. experiments.md §23.
+
+`snapshot_list_prices` now resolves every row before writing any, since a clash
+is only visible once both halves exist.
+
+### Done (2026-09-06, late)
+
+**A doubted listing match gets a second pass that may name several products.**
+One rate line can price two rooms (`חדרים 5 ו-6`), and a single pick has to be
+wrong about one of them. Below `UNCERTAIN_BELOW`, or on a refusal,
+`pick_names` runs under `MULTI_MATCH_PROMPT` and the price is filed against each
+product named; `match_verdict` gains `"split"` so the report shows a rate that
+wrote more rows than the card has lines. Fired twice in a full run for $0.0003,
+both correct; Khan Be'erot 8 rows -> 13, all right. experiments.md §22.
+
+**Still open:** two rate lines can collapse onto one listing *confidently* --
+Tel Arad's single and double Canaanite structures -- and the second silently
+overwrites the first on `list_prices_unique_rate`. Detectable in code without an
+LLM; not built.
+
+### Done (2026-09-06, evening)
+
+**Listing match → 235B; brackets stripped from the name.** The 30B answered one
+Khan Be'erot label wrongly 6 times in 7 at temperature 0, always the same pick
+at 0.40, and correctly 6 times in 6 on the same bytes with the brackets swapped
+— so its answer turned on bracket direction. The 235B: 12/12 across both forms
+at 1.00. Removing the brackets is measured inert on the 235B, so
+`strip_brackets` now runs on the name (never the candidates). The availability
+type matcher keeps the 30B, pinned explicitly — different prompt, unmeasured.
+experiments.md §20, design.md "The rate-card listing match runs on the 235B".
+
+Supersedes §18's reading, which blamed the prompt's room-number clause for this
+run's failures; §19 established the numbers were never sent to the model at all.
+That is fixed too: the model is now shown the raw rate-card label
+(`full_label`), while the free exact test still runs on the normalised type. The
+report's prompt appendix prints the user message only.
+
+Verified on a full run (`reports/prices_235b.log`): flagged matches 12 -> 2,
+forced refusals 3 -> 0, rows kept 87 -> 91 of 93, run cost $0.0099 -> $0.0145.
+Both remaining flags are `(חדרים 5 ו-6)`, one label naming two products --
+experiments.md §21.
+
+### Done (2026-09-06, later)
+
+**Tests own the `experiments` schema; extensions move out of `public`.**
+
+Three pre-existing test files wrote to production tables and were moved to
+clones in `experiments` (`.cursor/rules/no-test-data-in-prod.mdc`). The clones
+are `CREATE TABLE experiments.x (LIKE public.x INCLUDING ALL)`, so the checks
+and indexes under test are production's own and stay in step with every
+migration. Three things `LIKE` does not carry across, each of which had to be
+replayed or fixed: foreign keys (and `pg_get_constraintdef` qualifies them as
+`public.` when `public` is off the search_path, which pointed every replayed key
+back at production), a `serial`'s sequence (the copied default drew ids from
+`public.campsites_id_seq`), and index *names* (`list_prices_unique_rate` arrived
+auto-named, so `ON CONFLICT ON CONSTRAINT` failed only here).
+
+`vector` and `pg_trgm` moved to a new `extensions` schema (migration 033).
+An extension is installed once per database, into one schema; with pgvector in
+`public` the `%(embedding)s::vector` cast in `subjects/resolve.py` could not
+resolve under `search_path=experiments`. Production now runs
+`"$user", public, extensions` and the tests `experiments, extensions` -- so the
+type is reachable from both and `public` is on neither test path. The rejected
+alternative was appending `public` to the test path, which is precisely what the
+rule exists to prevent: a table that had not been cloned would resolve to the
+real one.
+
+Anything holding an open connection -- the `api` container especially -- must
+reconnect before an unqualified `vector` resolves again.
+
+**The prices run report carries its prompts.**
+
+`UNCERTAIN 0.60: 'x' -> 'y'` shows the answer and not the question, so a wrong
+match could not be attributed to the prompt or to the model. `InfoWebsiteNameMatcher`
+now keeps a `MatchCall` per call -- system, user, raw reply, pick, confidence --
+and `run_prices` ends with the full prompt for every flagged one. `match_verdict`
+derives "forced" / "uncertain" from the record rather than being told, so
+`snapshot_list_prices` is unchanged. See `docs/experiments.md` §18 for what the
+first read of it found.
+
 ### Done (2026-09-06)
 
 **Only the owner merges and fires paid Actions.** Ruleset `Protect main` now requires one approving review, code-owner review (`CODEOWNERS`: `* @simcoster`), re-approval after the last push, squash-only, and green `lint` + `test`. Repository admins may bypass on a PR (a solo owner cannot approve their own PR) but cannot push to `main`. Fork PRs wait for the owner to approve workflows (`all_external_contributors`). Manual LLM tests use the `llm` environment, reviewer `@simcoster`. Completes the “protect `main` so lint and test are required” note in the CI entry below.
+
+**The `אפשרויות לינה` panel is fetched, parsed and ingested — in the testbed only.** Accommodation types are to come from the info page rather than from booking-engine unit names, because the panel lists what *exists* (48 bungalows, 45 חושה, 7 caravan bays) while the booking engine shows only what is free on the nights scanned, and carries no counts. That the booking engine is "structured" bought nothing: its `.tt-desc` is the same Hebrew paragraph the panel's `<p>` is, so the LLM pass over prose was unavoidable either way (experiments.md 2026-09-06 §1). New `rules_ingest/lodging.py` productionises `temp/subcamp_detect_probe.py`'s AJAX fetch — `panel_request` reads `body[data-id]`, the panel's own `data-cnt` (never assumed; the order differs per site) and the inline nonce, folding away the zero-width space Tel Ashkelon writes inside the panel title. `parse_lodging_blocks` gives the panel as indexed blocks; `LodgingSegmenterLLMClient` labels them and normalises names but never rewrites text, so spans stay quotable; `assemble_units` enforces **never merge listings** over whatever the model returns — one `<h4>` is one row, and a name collision sends both headings back to their verbatim text, which is what keeps Metsada's two accessible rooms (7 sleepers and 5) apart. `<h3>` is captured as `scope`: Akhziv's `חניון צפוני` / `חניון דרומי` route units to campsites 37 and 38 by exact match on the operator's own heading, which is the reconciliation design.md:634-641 wanted instead of `unit_name_contains` substring routing. `unit_section` puts the unit name in the *text*, not only the title — Yehudia's whole panel is one `<h4>`, and a name is a description. Two passes over each unit, not chained: pass 1 (`ExtractorLLMClient`, narrowed to beds/occupancy/room_count) and pass 2 (`ingest_unit_rules`) both read the paragraph as written, with the exclusion stated in `unit_prompt` rather than subtracted from the text — subtracting made 48% of evidence spans quote text that was never on the page (experiments.md §2). `check_in_time`, `check_out_time` and `policy_rules` are gone from `AccommodationExtract` and from the `UPDATE`; they have no readers anywhere and become rules. `miscategorised_rule()` clears the category of a `boolean_rule` that coins a predicate, reported in both run reports (experiments.md §3).
+
+**Where this stopped.** Everything above is testbed-only: it writes `experiments.lodging_*` and touches no production table (verified in-run). **Not yet written:** the migrations (`032` dropping the three columns, `033` adding `aliases TEXT[]`, `unit_count` and `campsites.ingest_notes`), the `db/models.py` changes, the lodging pass inside `ingest_site`, `scrape-availability` matching-instead-of-creating with the alias list, the `scrape-all` reordering, and `docs/design.md`. `test_amenity_extraction.py` still exists and its two tests have not moved. The plan is `~/.claude/plans/i-want-to-do-compressed-knuth.md`.
+
+**Known before production.** (1) `ingest_unit_rules` builds a `RuleExtractorLLMClient` per unit because `unit_prompt` interpolates the unit name; each one builds its own transport, and `ssl_context()` costs **5.2 s per call** on a machine with `TLS_TRUST_OS_STORE` set because it reloads the OS certificate store — six minutes of setup over 68 units, which is why the testbed took ~25 min against `scrape-rules`' 17 for twice the rules. Mitigated by passing a shared `openai_client`; the real fix is to stop interpolating the name, since the user message already carries it twice, making `unit_prompt` a constant and one client enough. (2) Yehudia fails: its panel is a single block, and asked to list paragraph indices when there are none the segmenter emits a runaway `[1, 2, 3, … 78 …]` and blows past the JSON. Skip the segmentation call when a panel has no `para` blocks — there is nothing to attribute. (3) One wrong column in 67: Khān Be'erot's `חדרי צוות חדרים 3-4` got `room_count=3` from `3 מיטות קומותיים`; it is one room. (4) 8 of 421 spans are the 235B part-translating a word (`מיקרוגל` → `מיקרוwave`); a substring check at write time would catch every one without a model call.
+
+**Unit amenities go through the rules pipeline, evidence span and all.** `scrape-availability` had its own amenity path: `ExtractorLLMClient` returned `amenities` / `not_included` as bare strings and `write_unit_amenities` wrote `(campsite_id, accommodation_type_id, subject_id, polarity)` — every per-unit row had a NULL `evidence_span`, `source_url`, `confidence` and `qualifier`, so a site rule could be checked against its sentence and a unit rule could not. The merge judge was also called without `states=` or `campsite_id=`, deciding sameness with neither side's assertion in view, and a collision was settled by letting the later write win rather than being filed. New `rules_ingest/units.py`: the tooltip becomes a `Section(title=type_name, source_url=booking_url)` and goes through `rules_from_sections` → `_resolve_statements` → `upsert_campsite_rules(accommodation_type_id=...)`, the same path a page section takes. `unit_prompt` prefixes the production prompt (in front, for the reason `subcamp_prompt` gives) and countermands its "this section describes the CAMPSITE AS A WHOLE" line. Per-unit collisions now reach `resolve_page_conflicts` and `conflict_cases`, and the run writes the same report `scrape-rules` does, titled `scrape-availability`. `ExtractorLLMClient` keeps the type's own columns (beds, occupancy, `room_count`, times, `policy_rules`) and no longer extracts amenities at all; its cost role is renamed `amenity_extract` → `unit_details_extract`. Named-place expansion moved into `unit_prompt`, and its three tests moved from `test_amenity_extraction.py` to the new `test_unit_rules.py`. `ensure_amenities`, `write_unit_amenities` and the never-called `PlaceEnrichmentLLMClient` are now dead — left in place, not yet removed. The LLM half is unverified: `pytest -m llm source/test/test_cases/test_unit_rules.py` is the check, and no scrape was run.
+
+**`just scrape-prices` fixed: the entry point runs as a module.** The recipe ran `python source/scraper/info_site/scrape.py`, so `sys.path[0]` was `source/scraper/info_site` and it shadowed the repo-root `db` package with `info_site/db.py`; `amenity_enrichment/db.py`'s `from db.models import SubjectCategory` then reached `info_site/db.py` and died on its relative `from .schemas import ClassifiedPriceRow`. Adding `info_site/db.py` is what armed it — the justfile's `PYTHONPATH` was never the problem, a script's own directory always comes first. `scrape.py` now imports through `source.scraper.*` with no `sys.path` insert (so no `# noqa: E402`), `info_site/classify.py`, `info_site/match_listing.py` and `populate_availability.py` import `amenity_enrichment` / `info_site` the same way, and the recipe is `uv run python -m source.scraper.info_site.scrape --prices`. `PYTHONPATH` is unchanged: the tests and the other scrapers still import bare. Supersedes design.md's "`rules_ingest/fetch.py` re-implements `fetch_page_html` because scrape.py cannot be imported by module path" — it can now; the two copies are still not hoisted.
 
 **pytest results on the GitHub run.** CI writes `--junitxml=reports/pytest.xml` (gitignored) and `dorny/test-reporter@v3.0.0` publishes a Check named `pytest` plus a job summary. The test job needs `checks: write`. Same for the manual LLM workflow (`pytest (llm)`). Not a native Tests tab — GitHub does not have one.
 
@@ -629,4 +728,4 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 - Availability/price for the next 2 weeks influence results when relevant  
 - Multi-turn prefs persist across messages  
 - Golden set passes CI judge threshold  
-- Deployed endpoint reachable from Telegram with basic monitoring  
+- Deployed endpoint reachable from Telegram with basic monitoring
