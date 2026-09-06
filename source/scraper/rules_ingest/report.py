@@ -67,17 +67,29 @@ def write_run_report(
     started_at: datetime,
     seconds: float,
     directory: Path | None = None,
+    title: str = "scrape-rules",
 ) -> Path:
-    """Render and write the report; return the file written."""
+    """Render and write the report; return the file written.
+
+    `title` names the run: both `scrape-rules` and `scrape-availability` ingest
+    into `campsite_rules` now, so the heading is what says which one this was.
+    """
     path = report_path(started_at, directory)
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = render_run_report(runs, usage, started_at=started_at, seconds=seconds)
+    text = render_run_report(
+        runs, usage, started_at=started_at, seconds=seconds, title=title
+    )
     path.write_text(text, encoding="utf-8")
     return path
 
 
 def render_run_report(
-    runs: list[SiteRun], usage: LlmUsage, *, started_at: datetime, seconds: float
+    runs: list[SiteRun],
+    usage: LlmUsage,
+    *,
+    started_at: datetime,
+    seconds: float,
+    title: str = "scrape-rules",
 ) -> str:
     kinds: Counter[str] = Counter()
     for run in runs:
@@ -86,7 +98,7 @@ def render_run_report(
     filed = sum(len(r.report.resolutions) for r in runs)
     applied = sum(1 for r in runs for x in r.report.resolutions.values() if x.applied)
 
-    lines = [f"# scrape-rules — {started_at:%Y-%m-%d %H:%M:%S}", ""]
+    lines = [f"# {title} — {started_at:%Y-%m-%d %H:%M:%S}", ""]
     pages = f"- pages: {len(runs)}"
     if failed:
         pages += f" ({len(failed)} failed)"

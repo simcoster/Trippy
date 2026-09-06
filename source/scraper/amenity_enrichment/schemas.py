@@ -1,4 +1,4 @@
-"""Pydantic schemas and field validation for amenity extraction."""
+"""Pydantic schemas and field validation for unit-detail extraction."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import re
 from datetime import time
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, field_validator
 
 AccommodationCategory = Literal[
     "room",
@@ -80,6 +80,13 @@ class PolicyRules(BaseModel):
 
 
 class AccommodationExtract(BaseModel):
+    """The unit's own structured fields, read from its booking tooltip.
+
+    Amenities and rules are not here: the same tooltip goes through the rules
+    extractor (`rules_ingest.units`), which reads them as statements carrying
+    the sentence each was read from and writes them to `campsite_rules`.
+    """
+
     accommodation_category: AccommodationCategory = "other"
     double_bed: int = 0
     single_bed: int = 0
@@ -88,8 +95,6 @@ class AccommodationExtract(BaseModel):
     check_in_time: time | None = None
     check_out_time: time | None = None
     policy_rules: PolicyRules | None = None
-    amenities: list[str] = Field(default_factory=list)
-    not_included: list[str] = Field(default_factory=list)
 
     @field_validator("accommodation_category", mode="before")
     @classmethod
@@ -126,29 +131,12 @@ class AccommodationExtract(BaseModel):
     def _coerce_time(cls, v: Any) -> time | None:
         return parse_time_of_day(v)
 
-    @field_validator("amenities", "not_included", mode="before")
-    @classmethod
-    def _string_list(cls, v: Any) -> list[str]:
-        if v is None:
-            return []
-        if not isinstance(v, list):
-            raise ValueError("expected a list")
-        return [str(a).strip() for a in v if str(a).strip()]
-
     @field_validator("policy_rules", mode="before")
     @classmethod
     def _empty_policy_to_none(cls, v: Any) -> Any:
         if v is None or v == {} or v == "":
             return None
         return v
-
-    @model_validator(mode="after")
-    def _ensure_category_amenity(self) -> AccommodationExtract:
-        category = self.accommodation_category
-        amenities = [a for a in self.amenities if a != category]
-        amenities.insert(0, category)
-        self.amenities = amenities
-        return self
 
     def as_details_dict(self) -> dict[str, Any]:
         return {
@@ -162,6 +150,4 @@ class AccommodationExtract(BaseModel):
             "policy_rules": (
                 self.policy_rules.as_db_dict() if self.policy_rules else None
             ),
-            "amenities": list(self.amenities),
-            "not_included": list(self.not_included),
         }

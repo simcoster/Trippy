@@ -1,34 +1,39 @@
-"""Orchestrate tooltip → extract → embed → DB for accommodation types."""
+"""Orchestrate tooltip → extract → DB for accommodation types.
+
+Structured columns only: beds, occupancy, times, images, policy JSONB. The
+unit's amenities and rules are no longer read here — they go through the site
+rules pipeline (`rules_ingest.units.ingest_unit_rules`), which writes them to
+`campsite_rules` with the sentence each was read from.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .db import (
-    ensure_amenities,
-    update_accommodation_type_details,
-    write_unit_amenities,
-)
+from .db import update_accommodation_type_details
 from .html_parse import MAX_IMAGE_URLS
-from .llm import EmbeddingLLMClient, ExtractorLLMClient, LlmUsage
+from .llm import ExtractorLLMClient, LlmUsage
 
 
 def enrich_accommodation_types(
     conn,
     extractor: ExtractorLLMClient,
-    embedder: EmbeddingLLMClient,
     *,
     hotel_id: int,
     type_names: list[str],
     room_media: dict[str, dict[str, Any]],
     get_or_create_type,
     usage: LlmUsage | None = None,
-) -> set[str]:
-    """
-    For each type name lacking amenities, parse tooltip → LLM → DB.
+) -> dict[str, int]:
+    """For each type name, parse tooltip → LLM → the type's own columns.
 
-    `room_media` maps normalized name → {description, image_urls}.
-    Returns the set of type names successfully enriched in this call.
+    `room_media` maps normalized name → {description, image_urls}. Returns the
+    types written, name → `accommodation_types.id`, which is the scope the
+    caller then ingests that unit's rules into.
+
+    The tooltip is left on `accommodation_types.description`: the rules pass
+    reads the same text, and the column is what `load_types_with_amenities`
+    checks to decide a type has been read at all.
     """
     pending: list[tuple[str, str]] = []
     for name in type_names:
@@ -36,16 +41,16 @@ def enrich_accommodation_types(
         if text:
             pending.append((name, text))
         else:
-            print(f"    skip amenity enrich (no tooltip): {name}")
+            print(f"    skip enrich (no tooltip): {name}")
 
     if not pending:
-        return set()
+        return {}
 
     batch_usage = LlmUsage()
     descriptions = {name: text for name, text in pending}
     extractions: dict[str, dict[str, Any]] = {}
     for name, text in pending:
-        print(f"    LLM extract amenities: {name}")
+        print(f"    LLM extract unit details: {name}")
         try:
             extractions[name] = extractor.extract(
                 text, type_name=name, usage=batch_usage
@@ -58,43 +63,12 @@ def enrich_accommodation_types(
             usage.merge(batch_usage)
         if batch_usage.chat_calls or batch_usage.embed_calls:
             print(batch_usage.summary())
-        return set()
+        return {}
 
-    amenity_names: list[str] = []
-    # The tooltip a name came from, so the sameness judge can tell this room's
-    # `bathroom` from the site's communal `toilets`. First tooltip wins: a name
-    # seen in two rooms is the same subject either way.
-    contexts: dict[str, str] = {}
-    for name, details in extractions.items():
-        tooltip = f"{name}: {descriptions[name]}"[:400]
-        for key in ("amenities", "not_included"):
-            # Same canonical names table + embeddings: e.g. "shower" may appear
-            # in both lists.
-            for amenity in details.get(key) or []:
-                amenity_names.append(amenity)
-                contexts.setdefault(amenity, tooltip)
-
-    name_to_id = ensure_amenities(
-        conn, embedder, amenity_names, contexts=contexts, usage=batch_usage
-    )
-    enriched: set[str] = set()
-
+    written: dict[str, int] = {}
     with conn.cursor() as cur:
         for name, details in extractions.items():
             accom_id = get_or_create_type(cur, hotel_id=hotel_id, name=name)
-            amenity_ids = [
-                name_to_id[a]
-                for a in (details.get("amenities") or [])
-                if a in name_to_id
-            ]
-            not_included_ids = [
-                name_to_id[a]
-                for a in (details.get("not_included") or [])
-                if a in name_to_id
-            ]
-            if not amenity_ids and not not_included_ids:
-                print(f"    no amenity ids resolved for {name!r}; leaving empty")
-                continue
             image_urls = (room_media.get(name) or {}).get("image_urls") or []
             update_accommodation_type_details(
                 cur,
@@ -103,20 +77,10 @@ def enrich_accommodation_types(
                 details=details,
                 image_urls=image_urls,
             )
-            # Amenities are rows now, not two JSONB arrays on the type.
-            write_unit_amenities(
-                cur,
-                campsite_id=hotel_id,
-                accommodation_type_id=accom_id,
-                amenity_ids=amenity_ids,
-                not_included_ids=not_included_ids,
-            )
-            enriched.add(name)
+            written[name] = accom_id
             print(
                 f"    enriched {name}: "
                 f"category={details.get('accommodation_category')}, "
-                f"{len(amenity_ids)} amenities, "
-                f"{len(not_included_ids)} not_included, "
                 f"{len(image_urls[:MAX_IMAGE_URLS])} images, "
                 f"max_people={details.get('max_people')}, "
                 f"beds={details.get('double_bed')}+{details.get('single_bed')}, "
@@ -129,4 +93,4 @@ def enrich_accommodation_types(
     if usage is not None:
         usage.merge(batch_usage)
     print(batch_usage.summary())
-    return enriched
+    return written

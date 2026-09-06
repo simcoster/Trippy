@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from amenity_enrichment.llm import (
+from openai import OpenAI
+
+from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_30B_MODEL,
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
 )
-from openai import OpenAI
 
 SYSTEM_PROMPT = """You match a Hebrew INPA booking lodging name to one parks.org.il rate-card name.
 

@@ -1,4 +1,9 @@
-"""LLM amenity extraction: policy_rules and room_count from Hebrew tooltips."""
+"""LLM unit-detail extraction: policy_rules and room_count from Hebrew tooltips.
+
+Amenities are no longer read here. The same tooltip goes through the rules
+extractor (`rules_ingest.units`), and the named-place cases that used to live
+in this file moved to `test_unit_rules.py` with it.
+"""
 
 from __future__ import annotations
 
@@ -58,44 +63,3 @@ def test_extract_connected_hushas_room_count(extractor):
         type_name="חושה כפולה מספר 7-8",
     )
     assert details.get("room_count") == 2
-
-
-def _amenity_blob(amenities: list) -> str:
-    return " ".join(str(a).lower().replace("_", " ") for a in amenities)
-
-
-def test_extract_named_place_ramon_crater(extractor):
-    """מכתש רמון → keep the place and add crater + desert types."""
-    details = extractor.extract(
-        "חניון אוהלים ליד מכתש רמון. נוף מדברי, שקט בלילה.",
-        type_name="חניון אוהלים",
-    )
-    blob = _amenity_blob(details.get("amenities") or [])
-    print("ramon amenities:", details.get("amenities"))
-    assert "ramon" in blob or "רמון" in blob
-    assert "crater" in blob or "makhtesh" in blob or "מכתש" in blob
-    assert "desert" in blob
-
-
-def test_extract_named_place_kineret(extractor):
-    """כנרת → keep the lake name and add lake / body of water."""
-    details = extractor.extract(
-        "אתר קמפינג על שפת הכנרת. גישה למים, מדשאה.",
-        type_name="מתחם אוהלים",
-    )
-    blob = _amenity_blob(details.get("amenities") or [])
-    print("kineret amenities:", details.get("amenities"))
-    assert "kineret" in blob or "kinneret" in blob or "galilee" in blob or "כנרת" in blob
-    assert "lake" in blob or "body of water" in blob
-
-
-def test_extract_named_place_eilat_beach(extractor):
-    """חוף אילת — keep the place and beach, without inventing nearby seas."""
-    details = extractor.extract(
-        "לינה ליד חוף אילת.",
-        type_name="אוהל",
-    )
-    blob = _amenity_blob(details.get("amenities") or [])
-    print("eilat amenities:", details.get("amenities"))
-    assert "eilat" in blob or "אילת" in blob
-    assert "beach" in blob or "חוף" in blob

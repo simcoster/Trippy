@@ -4,7 +4,7 @@ Scrape published rate cards from parks.org.il camping info pages.
 Creates info_website_names from classified lodging rows and snapshots
 list_prices. Does not create accommodation_types or scrape newsflashes.
 
-  uv run python source/scraper/info_site/scrape.py --prices
+  uv run python -m source.scraper.info_site.scrape --prices
 """
 
 from __future__ import annotations
@@ -18,27 +18,27 @@ from pathlib import Path
 
 import httpx
 import psycopg
-from amenity_enrichment.llm import LlmUsage, record_scrape_cost
 from dotenv import load_dotenv
 
-_SCRAPER_DIR = Path(__file__).resolve().parents[1]
-if str(_SCRAPER_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRAPER_DIR))
-
-from info_site.classify import RateCardClassifier, classify_rows  # noqa: E402
-from info_site.db import maybe_fill_booking_hotel_id, snapshot_list_prices  # noqa: E402
-from info_site.parse import (  # noqa: E402
+from source.scraper.amenity_enrichment.llm import LlmUsage, record_scrape_cost
+from source.scraper.info_site.classify import RateCardClassifier, classify_rows
+from source.scraper.info_site.db import (
+    maybe_fill_booking_hotel_id,
+    snapshot_list_prices,
+)
+from source.scraper.info_site.parse import (
     parse_booking_hotel_id,
     parse_rate_table,
     parse_wp_post_id,
 )
-from source.scraper.tls import ssl_context  # noqa: E402
+from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 load_dotenv()
 
+_SCRAPER_DIR = Path(__file__).resolve().parents[1]
 CONFIG_PATH = _SCRAPER_DIR / "config.json"
 LISTING_URL = (
     "https://www.parks.org.il/"

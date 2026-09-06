@@ -56,7 +56,7 @@ pr *title:
 
 # info-site rate cards → accommodation_types + list_prices
 scrape-prices:
-    uv run python source/scraper/info_site/scrape.py --prices
+    uv run python -m source.scraper.info_site.scrape --prices
 
 # parks.org.il listing → campsites
 scrape-sites:

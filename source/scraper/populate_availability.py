@@ -14,14 +14,17 @@ import os
 import re
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from html import unescape
 from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
 import psycopg
-from amenity_enrichment import (
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+from source.scraper.amenity_enrichment import (
     LlmUsage,
     amenity_llm_clients,
     enrich_accommodation_types,
@@ -29,11 +32,17 @@ from amenity_enrichment import (
     load_types_with_amenities,
     parse_room_categories,
 )
-from amenity_enrichment.llm import record_scrape_cost
-from bs4 import BeautifulSoup
-from dotenv import load_dotenv
-from info_site.match_listing import InfoWebsiteNameMatcher, match_info_website_name
-
+from source.scraper.amenity_enrichment.llm import record_scrape_cost
+from source.scraper.info_site.match_listing import (
+    InfoWebsiteNameMatcher,
+    match_info_website_name,
+)
+from source.scraper.rules_ingest.ingest import SiteReport
+from source.scraper.rules_ingest.report import SiteRun, write_run_report
+from source.scraper.rules_ingest.resolve_conflicts import (
+    ConflictResolverLLMClient,
+    resolve_page_conflicts,
+)
 from source.scraper.rules_ingest.subcamps import (
     Subcamp,
     group_by_owner,
@@ -41,6 +50,9 @@ from source.scraper.rules_ingest.subcamps import (
     owned_site_ids,
     unit_owner,
 )
+from source.scraper.rules_ingest.units import ingest_unit_rules
+from source.scraper.subjects.llm import SubjectAdjudicatorLLMClient
+from source.scraper.subjects.resolve import SubjectRef
 from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -481,12 +493,30 @@ def main(argv: list[str] | None = None) -> None:
     amenity_llm_usage = LlmUsage()
     listing_matcher = InfoWebsiteNameMatcher()
     listing_llm_usage = LlmUsage()
+    # The rules half of the unit read: same extractor, judge and conflict
+    # resolver `scrape-rules` uses, so per-unit rows are held to the same
+    # standard as site-level ones.
+    adjudicator = SubjectAdjudicatorLLMClient()
+    conflict_resolver = ConflictResolverLLMClient()
+    rules_llm_usage = LlmUsage()
+    runs: list[SiteRun] = []
+    run_started_at = datetime.now()
+    run_started = time.monotonic()
 
     total_saved = 0
     with psycopg.connect(database_url(config)) as conn:
         for site in campsites:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
+
+            report = SiteReport()
+            outcome = SiteRun(site=site, report=report)
+            runs.append(outcome)
+            site_started = time.monotonic()
+            unit_rules = 0
+            # Shared across this site's units so they converge on one
+            # vocabulary; without it every unit resolves `shower` afresh.
+            subject_cache: dict[str, SubjectRef] = {}
 
             listings = load_info_website_names(conn, site["id"])
             # Subcamps own the booking units; the info-site names above stay on
@@ -575,8 +605,7 @@ def main(argv: list[str] | None = None) -> None:
                     ]
                     if missing_amenity_types:
                         print(
-                            f"    enriching amenities for "
-                            f"{len(missing_amenity_types)} type(s)"
+                            f"    enriching {len(missing_amenity_types)} type(s)"
                         )
                         # Enrichment looks its types up by hotel_id, so it runs
                         # once per owning campsite, not once per site.
@@ -586,13 +615,44 @@ def main(argv: list[str] | None = None) -> None:
                             newly = enrich_accommodation_types(
                                 conn,
                                 extractor,
-                                embedder,
                                 hotel_id=owner,
                                 type_names=owned,
                                 room_media=room_media,
                                 get_or_create_type=require_existing_type,
                                 usage=amenity_llm_usage,
                             )
+                            # The same tooltip read a second time, as rule
+                            # statements: this is what puts a unit's amenities
+                            # in campsite_rules with the sentence each was read
+                            # from, on the same terms as a site-level rule.
+                            try:
+                                for type_name, accom_id in newly.items():
+                                    unit_rules += ingest_unit_rules(
+                                        conn,
+                                        campsite_id=owner,
+                                        accommodation_type_id=accom_id,
+                                        type_name=type_name,
+                                        tooltip=(
+                                            room_media.get(type_name) or {}
+                                        ).get("description")
+                                        or "",
+                                        source_url=url,
+                                        embedder=embedder,
+                                        adjudicator=adjudicator,
+                                        cache=subject_cache,
+                                        usage=rules_llm_usage,
+                                        report=report,
+                                    )
+                            except Exception as exc:  # noqa: BLE001
+                                # A failed resolve or upsert aborts the open
+                                # transaction, so this owner's detail writes go
+                                # with it. The next run redoes them: the
+                                # enriched gate is "has a campsite_rules row",
+                                # which none of them reached.
+                                conn.rollback()
+                                outcome.error = f"unit rules for {owner}: {exc}"
+                                print(f"    unit rules failed, rolled back: {exc}")
+                                continue
                             types_with_amenities.update(newly)
                         conn.commit()
 
@@ -628,22 +688,64 @@ def main(argv: list[str] | None = None) -> None:
                 if pause_s > 0:
                     time.sleep(pause_s)
 
+            outcome.written = unit_rules
+            outcome.seconds = time.monotonic() - site_started
+            # Every collision is a statement the upsert refused because its
+            # subject already had a row in that unit's scope -- something
+            # extracted or merged wrongly. Diagnosed and filed in
+            # `conflict_cases` on the same terms as a site-level page's, and a
+            # merge the resolver is sure of is undone on the spot.
+            if report.drops:
+                try:
+                    resolve_page_conflicts(
+                        conn,
+                        report,
+                        conflict_resolver,
+                        embedder=embedder,
+                        run_at=run_started_at.astimezone(),
+                        usage=rules_llm_usage,
+                    )
+                    conn.commit()
+                except Exception as exc:  # noqa: BLE001 — units are committed
+                    conn.rollback()
+                    print(f"    conflict resolution failed, rolled back: {exc}")
+            if report.drops or report.traces:
+                print(report.render())
+
     print("-" * 60)
-    print(f"Done. Upserted {total_saved} availability row(s).")
+    unit_rules_total = sum(r.written for r in runs)
+    print(
+        f"Done. Upserted {total_saved} availability row(s) and "
+        f"{unit_rules_total} unit rule(s)."
+    )
     if listing_llm_usage.chat_calls:
         print(listing_llm_usage.summary(prefix="Info-site name match total: "))
     if amenity_llm_usage.chat_calls or amenity_llm_usage.embed_calls:
-        print(amenity_llm_usage.summary(prefix="Amenity enrich total: "))
+        print(amenity_llm_usage.summary(prefix="Unit detail extract total: "))
+    if rules_llm_usage.chat_calls or rules_llm_usage.embed_calls:
+        print(rules_llm_usage.summary(prefix="Unit rules total: "))
 
-    # One record for the run; the per-role rows keep name-matching, amenity
-    # extraction, place enrichment and embedding apart.
+    # One record for the run; the per-role rows keep name-matching, unit-detail
+    # extraction, rule extraction, judging and embedding apart.
     run_usage = LlmUsage()
     run_usage.merge(listing_llm_usage)
     run_usage.merge(amenity_llm_usage)
+    run_usage.merge(rules_llm_usage)
     written = record_scrape_cost("scrape-availability", run_usage)
     if written:
         print(run_usage.summary(prefix="Scrape total: "))
         print(f"cost report appended to {written}")
+    # Same report `scrape-rules` writes, titled by the run that produced it:
+    # which terms were merged into which subject, with both sentences.
+    if any(r.report.traces or r.report.drops for r in runs):
+        path = write_run_report(
+            runs,
+            rules_llm_usage,
+            started_at=run_started_at,
+            seconds=time.monotonic() - run_started,
+            title="scrape-availability",
+        )
+        print(f"run report written to {path}")
 
 
 if __name__ == "__main__":

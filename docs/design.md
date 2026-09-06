@@ -90,11 +90,10 @@ the actual proof that nothing lived in the JSONB the rows cannot hold.
 
 ### `accommodation_type_id` is filled by the availability scrape
 
-It used to be NULL on every row. `amenity_enrichment.db.write_unit_amenities` now
-writes per-unit amenities as `campsite_rules` rows carrying the type's id, which
-is what migration `027` backfilled and what the enrichment path writes from here
-on. The info-page ingest still only writes site-level rows: the info page's
-`אפשרויות לינה` panel is a second, weaker source for per-unit data, so
+It used to be NULL on every row. Migration `027` backfilled per-unit amenities as
+`campsite_rules` rows carrying the type's id, and the availability scrape writes
+them from there on. The info-page ingest still only writes site-level rows: the
+info page's `אפשרויות לינה` panel is a second, weaker source for per-unit data, so
 `sections.parse_sections` drops it on purpose. The rate-card notes
 (`הערות למחירון`) are parsed but parked at the ingest (`PARKED_SECTION_TITLES`):
 every note is about one rate, the extractor drops the rate label, and the facts
@@ -102,14 +101,35 @@ landed as campsite-wide rules — `child_min_age 5`, `weekend_min_nights 2`,
 `mattresses 4`. They come back when statements carry a referent that can route
 them to an accommodation type (PLAN 2026-09-05 "Referent field").
 
-A subject the extractor puts in both the included and not-included list for one
-unit collides on `campsite_rules_scope_subject_key`. `write_unit_amenities`
-writes the not-included pass second, so the stricter reading survives.
+### One tooltip, one pipeline
 
-Still in the older shape, and the next thing to unify:
-`accommodation_types.check_in_time`, `check_out_time` and the `policy_rules`
-JSONB (`min_weekend_nights`, `pets_allowed`, …), all of which `campsite_rules`
-can express better.
+A unit's tooltip is a section like any other, so `rules_ingest.units` hands it to
+the same `RuleExtractorLLMClient`, `resolve_subject` and `upsert_campsite_rules`
+the info page's sections go through — `scrape-availability` now files conflict
+cases and writes a run report on the same terms `scrape-rules` does. Only the
+scope differs: rows carry the type's `accommodation_type_id`, and `unit_prompt`
+countermands the production prompt's "this section describes the CAMPSITE AS A
+WHOLE" line, which is exactly backwards for a tooltip.
+
+Before this, `amenity_enrichment` had its own amenity path: `ExtractorLLMClient`
+returned `amenities` / `not_included` as bare strings and `write_unit_amenities`
+wrote `(subject_id, polarity)` and nothing else. Every per-unit row therefore had
+a NULL `evidence_span`, `source_url`, `confidence` and `qualifier` — a site rule
+could be checked against the sentence it came from and a unit rule could not —
+the merge judge was called without `states=` or `campsite_id=`, so it decided
+sameness with neither side's assertion in view, and collisions were resolved by
+letting the later write win instead of being filed for review. Counts the tooltip
+states ("4 מיטות") had nowhere to go at all.
+
+`ExtractorLLMClient` still reads the same tooltip for what belongs in the type's
+own columns: beds, occupancy, `room_count`, check-in/out times and the
+`policy_rules` JSONB. Those remain the older shape, and unifying them is the next
+step — `campsite_rules` can express every one of them, and the unit prompt already
+extracts the numbers alongside.
+
+Named-place expansion (`מכתש רמון` → the place, `near_a_crater`, `near_a_desert`)
+moved into `unit_prompt` with the rest; it used to live in the amenity extractor's
+prompt, with a `PlaceEnrichmentLLMClient` second pass that nothing called.
 
 ### `NULLS NOT DISTINCT` is load-bearing
 
@@ -139,7 +159,7 @@ Three defences, in order:
    This matters because the vector space genuinely ranks the wrong thing first:
    from `barbecue`, the rule `barbecue_allowed` sits at −0.891 while the correct
    amenity `barbecue_equipment_included` is further away at −0.854.
-   `ensure_amenities` pins its own path to `AMENITY` for the same reason.
+   A statement the extractor labels `amenity` pins its search the same way.
 
    The filter is **in the SQL**, not applied afterwards. Post-filtering spends all
    five nearest-neighbour slots on the wrong category and can leave nothing at all
@@ -286,8 +306,11 @@ carries `has_context=True`; a store built with `has_context=False` still resolve
 and simply drops the context. Rows created before `026` have NULL — then the judge
 decides on the names alone, as it did before.
 
-`ensure_amenities(contexts=...)` carries the room tooltip down the accommodation
-path, so a room's own `bathroom` arrives with the sentence that distinguishes it.
+On the unit path the context is `_statement_context`'s section title plus the
+statement's own evidence span — the unit name and the sentence — so a room's own
+`bathroom` arrives with what distinguishes it from the site's communal `toilets`.
+`ensure_amenities(contexts=...)` used to do this from the tooltip as a whole; it
+is no longer on the path.
 
 ### The classifier renames, but only to fix a real problem
 
@@ -676,8 +699,8 @@ Everything currently in scope is server-rendered, which is why
 - `claims.embedding` and `notices.embedding` still carry `vector_cosine_ops` HNSW
   indexes while every query ranks with `<#>` (negative inner product), so those two
   indexes are never used. `subject_vectors` is fixed; the others are not.
-- `rules_ingest/fetch.py` re-implements `fetch_page_html` because
-  `source/scraper/info_site/scrape.py` still uses bare `from info_site...` /
-  `from amenity_enrichment...` imports that only resolve under the justfile's
-  `PYTHONPATH`, so it cannot be imported by module path. That is the sixth copy of
-  the same `_ssl_context` helper in the repo; hoisting them is a separate cleanup.
+- `rules_ingest/fetch.py` re-implements `fetch_page_html`. The reason it had to is
+  gone — `info_site/scrape.py` now imports through `source.scraper.*` and runs as
+  `python -m source.scraper.info_site.scrape` — but the two copies have not been
+  hoisted into one place yet. That is also the sixth copy of the same
+  `_ssl_context` helper in the repo; hoisting them is a separate cleanup.

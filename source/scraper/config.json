@@ -7,10 +7,11 @@
     "infants": 0,
     "rooms": 1,
     "lang": "heb",
-    "limit_campsites": 2
+    "limit_campsites": 20,
+    "request_pause_seconds": 0.5
   },
   "info_site": {
-    "limit_campsites": 2,
+    "limit_campsites": 20,
     "request_pause_seconds": 0.5
   },
   "subcamps": {
