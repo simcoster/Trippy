@@ -33,12 +33,15 @@ HUSHA_TOOLTIP = (
 
 
 # ----------------------------------------------------------------- framing
-def test_the_section_carries_the_unit_name_and_the_booking_url():
+def test_the_unit_name_leads_the_text_not_only_the_title():
+    """The name is part of the description, so it has to be IN the text: it is
+    what the category statement quotes, and on a title-only panel it is the
+    whole description."""
     section = unit_section(
         "חושה", f"  {HUSHA_TOOLTIP}  ", source_url="https://booking.example/1"
     )
     assert section.title == "חושה"
-    assert section.text == HUSHA_TOOLTIP
+    assert section.text == "חושה\n" + HUSHA_TOOLTIP
     assert section.source_url == "https://booking.example/1"
 
 
@@ -63,14 +66,22 @@ def test_the_prompt_offers_every_category_the_unit_columns_allow():
         assert category in prompt
 
 
-def test_a_unit_with_no_tooltip_is_not_extracted_at_all():
-    """No text, no LLM call and no DB work — `conn` is never touched."""
+def test_a_unit_with_no_tooltip_still_reads_its_name():
+    """Yehudia's whole panel is one `<h4>` and nothing else. Read as a title
+    alone it yielded no rules at all, but `לינת שטח באוהלים פרטיים` states a
+    tent-pitching area on its own."""
+    section = unit_section("לינת שטח באוהלים פרטיים", "   ", source_url=None)
+    assert section.text == "לינת שטח באוהלים פרטיים"
+
+
+def test_a_unit_with_no_name_is_not_extracted_at_all():
+    """Nothing to read at all — `conn` is never touched."""
     assert (
         ingest_unit_rules(
             None,
             campsite_id=1,
             accommodation_type_id=2,
-            type_name="חושה",
+            type_name="   ",
             tooltip="   ",
             embedder=None,
             adjudicator=None,
@@ -93,11 +104,20 @@ def _subjects(extract) -> str:
     return " ".join(s.subject.lower() for s in extract.statements)
 
 
+def _extract(unit_extractor, type_name: str, tooltip: str):
+    """Extract the way `ingest_unit_rules` does — through `unit_section`, so the
+    model sees the name line that production puts in front of the text."""
+    section = unit_section(type_name, tooltip, source_url=None)
+    return unit_extractor(type_name).extract(
+        section.text, section_title=section.title
+    )
+
+
 @pytest.mark.llm
 def test_every_statement_carries_the_sentence_it_was_read_from(unit_extractor):
     """The whole point of the move: a per-unit row can be checked against the
     tooltip, which the old `(subject_id, polarity)` write made impossible."""
-    extract = unit_extractor("חושה").extract(HUSHA_TOOLTIP, section_title="חושה")
+    extract = _extract(unit_extractor, "חושה", HUSHA_TOOLTIP)
     assert extract.statements
     for statement in extract.statements:
         assert (statement.evidence_span or "").strip(), statement.subject
@@ -107,7 +127,7 @@ def test_every_statement_carries_the_sentence_it_was_read_from(unit_extractor):
 def test_the_unit_category_is_emitted_as_an_amenity(unit_extractor):
     """`accommodation_category` used to be forced in as the first amenity by a
     validator. The prompt asks for it now, so a unit stays findable by shape."""
-    extract = unit_extractor("חושה").extract(HUSHA_TOOLTIP, section_title="חושה")
+    extract = _extract(unit_extractor, "חושה", HUSHA_TOOLTIP)
     assert any(s.subject in ALLOWED_CATEGORIES for s in extract.statements), _subjects(
         extract
     )
@@ -116,7 +136,7 @@ def test_the_unit_category_is_emitted_as_an_amenity(unit_extractor):
 @pytest.mark.llm
 def test_the_unit_name_is_not_repeated_inside_subject_names(unit_extractor):
     """The row records the unit; naming it again forks `shower` per unit."""
-    extract = unit_extractor("חושה").extract(HUSHA_TOOLTIP, section_title="חושה")
+    extract = _extract(unit_extractor, "חושה", HUSHA_TOOLTIP)
     assert "חושה" not in _subjects(extract)
     assert "_in_husha" not in _subjects(extract)
 

@@ -137,6 +137,21 @@ def _site_section(run: SiteRun) -> list[str]:
         "",
     ]
 
+    # A `boolean_rule` whose name coins a predicate the prompt does not allow.
+    # The statement was kept and its category cleared, so the resolver searched
+    # every category instead of trusting a label the extractor contradicted --
+    # but it is the extractor drifting off the prompt, and that is worth reading.
+    miscategorised = sorted(set(getattr(run.report, "miscategorised", []) or []))
+    if miscategorised:
+        lines += [
+            f"### Category cleared, coined predicate ({len(miscategorised)})",
+            "",
+            "| term | read from |",
+            "|---|---|",
+        ]
+        lines += [f"| `{term}` | {section} |" for term, section in miscategorised]
+        lines += [""]
+
     merged = [t for t in first.values() if t.kind == "merged"]
     lines += [f"### Merged into an existing subject ({len(merged)})", ""]
     if merged:

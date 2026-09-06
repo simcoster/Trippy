@@ -85,9 +85,7 @@ def enrich_accommodation_types(
                 f"max_people={details.get('max_people')}, "
                 f"beds={details.get('double_bed')}+{details.get('single_bed')}, "
                 f"room_count={details.get('room_count')}, "
-                f"check_in={details.get('check_in_time')}, "
-                f"check_out={details.get('check_out_time')}, "
-                f"policy={details.get('policy_rules')}"
+                f"spans={len(details.get('consumed_spans') or [])}"
             )
 
     if usage is not None:

@@ -16,6 +16,8 @@ qualifier, and a merge judge that could not see what either side asserted.
 
 from __future__ import annotations
 
+from openai import OpenAI
+
 from source.scraper.amenity_enrichment.llm import EmbeddingLLMClient, LlmUsage
 from source.scraper.amenity_enrichment.schemas import ALLOWED_CATEGORIES
 from source.scraper.rules_ingest.db import ResolvedRule, upsert_campsite_rules
@@ -68,21 +70,52 @@ extracting.
     "במכתש רמון"      -> near_ramon_crater / amenity / true
                        -> near_a_crater    / amenity / true
                        -> near_a_desert    / amenity / true
-- Bed counts, occupancy, check-in and check-out times and minimum-night
-  policies are read from this tooltip by a separate extractor and stored as
-  columns on the unit. Extract them here too when the text states them: a
-  number stated in a sentence is a statement like any other.
+- Bed counts, sleeping capacity and how many rooms the listing joins are NOT
+  yours. A separate pass reads the same text for those and stores them as
+  columns on the unit, so emitting them here would state one fact twice, in two
+  places that can disagree. Skip them however they are phrased:
+    "4 מיטות (מתוכם: מיטה זוגית ומיטה דו קומתית)"   -> nothing
+    "עד 4 לנים בכל בונגלו"                          -> nothing
+    "2 חושות מחוברות עם דלת מקשרת"                   -> nothing
+  Everything else in the same sentence is still yours: from
+  "בכל חדר: 4 מיטות, מזרנים, כריות, מזגן" emit mattress, pillow and
+  air_conditioning, and quote the whole sentence as the evidence span.
+- Check-in and check-out times, minimum-night rules and pet policies ARE yours.
+  They used to be columns on the unit and are now rules like any other.
+- The unit's NAME is the first line of the text and is a description in its own
+  right, sometimes the only one. Read it for what the unit is.
+- Glossary: `אוהלים פרטיים` means the guest brings their own tent. The unit is a
+  pitch to put it on, NOT a tent the site rents out. So
+  `לינת שטח באוהלים פרטיים` is a tent-pitching area:
+    -> tent_pitch  / amenity / true  / null / none
+    -> tent        / amenity / false / null / none   (the guest supplies it)
+  A unit whose name says `השכרת אוהל` is the opposite -- there the site does
+  provide the tent.
 
 {SYSTEM_PROMPT}"""
 
 
 def unit_section(type_name: str, tooltip: str, *, source_url: str | None) -> Section:
-    """One unit's tooltip as a section the rule extractor can read.
+    """One unit's description as a section the rule extractor can read.
 
-    The title is the unit name, which is what the extractor is told the text
-    describes and what every resolution trace is keyed by.
+    **The name is the first line of the text, not only the title.** It is part
+    of the description and often the whole of it: `לינת שטח באוהלים פרטיים`
+    states a tent-pitching area on its own, and Yehudia's panel is that heading
+    and nothing else — read as a title alone it yielded no rules at all.
+
+    It also makes the category statement quotable. `unit_prompt` asks for one
+    statement naming the unit's category with the unit name as its evidence
+    span; with the name only in the title, that span cited text that appeared
+    nowhere in the section, which is 17 of the 27 non-verbatim spans measured
+    over 18 sites.
     """
-    return Section(title=type_name, text=tooltip.strip(), source_url=source_url)
+    name = type_name.strip()
+    body = tooltip.strip()
+    return Section(
+        title=name,
+        text=f"{name}\n{body}" if body else name,
+        source_url=source_url,
+    )
 
 
 def ingest_unit_rules(
@@ -100,6 +133,7 @@ def ingest_unit_rules(
     cache: dict[str, SubjectRef] | None = None,
     usage: LlmUsage | None = None,
     report: SiteReport | None = None,
+    openai_client: OpenAI | None = None,
 ) -> int:
     """Extract one unit's tooltip and write its rules. Returns rows upserted.
 
@@ -108,14 +142,25 @@ def ingest_unit_rules(
     words. `report` collects the resolution traces and the upsert collisions,
     so per-unit rows reach the conflict resolver and the run report on the same
     terms as site-level ones.
+
+    `openai_client` is shared across units and matters more than it looks.
+    The system prompt varies per unit, so a fresh `RuleExtractorLLMClient` is
+    built each time -- but left to build its own transport it costs 5.2 s per
+    unit on a machine with `TLS_TRUST_OS_STORE` set, because `ssl_context()`
+    reloads the OS certificate store on every call. Over 68 units that is six
+    minutes before a token moves, which is why `ingest.py` has always built
+    its extractor once. Pass one in.
     """
-    text = (tooltip or "").strip()
-    if not text:
+    # No early return on an empty tooltip: the unit still has a name, and the
+    # name is a description. Only a unit with no name at all has nothing to read.
+    if not type_name.strip():
         return 0
     rules: list[ResolvedRule] = rules_from_sections(
         conn,
-        [unit_section(type_name, text, source_url=source_url)],
-        extractor=RuleExtractorLLMClient(system_prompt=unit_prompt(type_name)),
+        [unit_section(type_name, tooltip or "", source_url=source_url)],
+        extractor=RuleExtractorLLMClient(
+            openai_client, system_prompt=unit_prompt(type_name)
+        ),
         embedder=embedder,
         adjudicator=adjudicator,
         store=store,

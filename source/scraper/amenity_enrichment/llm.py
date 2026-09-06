@@ -366,15 +366,8 @@ Rules:
   Example: "שתי חושות מחוברות עם דלת מקשרת שבכל חדר: ..." → room_count: 2
 - Infer accommodation_category from the type name (and text if needed). Allowed values:
   room, cabin, tent, trailer_parking, tent_pitch, bungalow, dorm, other
-- Extract check_in_time / check_out_time when stated (HH:MM 24h, e.g. "15:00"). Use null if unknown.
-- Extract policy_rules only when explicitly stated. Use null for unknown keys. Typical keys:
-  - min_nights (int): minimum stay any night
-  - max_nights (int), max_weekend_nights (int)
-  - min_weekend_nights (int), min_holiday_nights (int)
-  - pets_allowed (bool)
-  Example: "מותנה במינימום 2 לילות בסופי שבוע ובחגים"
-  → {"min_weekend_nights": 2, "min_holiday_nights": 2}
-  Omit policy_rules entirely (or use {}) if nothing policy-related is stated.
+- Times, minimum nights and pet policies are NOT yours. They are read from the same
+  text by the rules pass and stored as rules, not columns.
 
 Schema:
 {
@@ -382,17 +375,7 @@ Schema:
   "double_bed": int,
   "single_bed": int,
   "room_count": int,
-  "max_people": int | null,
-  "check_in_time": "HH:MM" | null,
-  "check_out_time": "HH:MM" | null,
-  "policy_rules": {
-    "min_nights": int | null,
-    "max_nights": int | null,
-    "max_weekend_nights": int | null,
-    "min_weekend_nights": int | null,
-    "min_holiday_nights": int | null,
-    "pets_allowed": bool | null
-  } | null
+  "max_people": int | null
 }
 """
 

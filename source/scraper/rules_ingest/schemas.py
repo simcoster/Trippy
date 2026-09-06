@@ -22,6 +22,37 @@ UNIT_BY_NAME: dict[str, QualifierUnit] = {
 }
 
 
+# The predicates the extractor prompt allows a rule name to end in, quoted from
+# it: "predicate (rules only) is the LAST part of the name and is one of exactly
+# ... Never coin another predicate."
+#
+# This list is in code, which `llm-decides-semantics` normally forbids, and the
+# `PREDICATE_SUFFIXES` guard it names as its BAD example looked like this. The
+# difference, and the reason Omri agreed to it: that guard decided which
+# candidate pairs the judge was allowed to *compare*, which is a judgement about
+# meaning. This decides only whether the model kept to an output contract the
+# prompt states exhaustively -- the same kind of check `_coerce_unit` and
+# `_coerce_category` already make on the other fields of this reply. It never
+# rejects a statement; it clears a category the model has already contradicted,
+# so the resolver searches on the evidence instead of on a broken label.
+RULE_PREDICATES = (
+    "_allowed",
+    "_required",
+)
+
+
+def miscategorised_rule(subject: str, category: int | None) -> bool:
+    """A `boolean_rule` whose name coins a predicate the prompt does not allow.
+
+    Measured over 18 sites: 19 of 431 rows, two shapes. `tent_setup` is a
+    perfectly good *amenity* name mislabelled a rule, and `room_assignment`
+    asserts nothing at all and disagreed with itself across three sites.
+    """
+    if category != int(SubjectCategory.BOOLEAN_RULE):
+        return False
+    return not subject.casefold().endswith(RULE_PREDICATES)
+
+
 class RuleStatement(BaseModel):
     """One extracted fact about a campsite."""
 

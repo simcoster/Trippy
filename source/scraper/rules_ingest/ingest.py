@@ -45,6 +45,7 @@ from source.scraper.rules_ingest.resolve_conflicts import (
     ConflictResolverLLMClient,
     resolve_page_conflicts,
 )
+from source.scraper.rules_ingest.schemas import miscategorised_rule
 from source.scraper.rules_ingest.sections import Section, parse_sections
 from source.scraper.rules_ingest.subcamps import (
     load_subcamps,
@@ -101,6 +102,9 @@ class SiteReport:
 
     drops: list[DroppedRule] = field(default_factory=list)
     traces: list[ResolutionTrace] = field(default_factory=list)
+    # Statements whose category the extractor contradicted with its own naming
+    # rule: (term, section title). The category was cleared, not the statement.
+    miscategorised: list[tuple[str, str]] = field(default_factory=list)
     # Per collision, keyed by index into `drops`, filled after the page is
     # done: the resolver's diagnosis (what the explainer used to give) and its
     # full resolution -- the action, whether it was applied, the case id.
@@ -119,8 +123,24 @@ class SiteReport:
             if t.subject_id is not None and t.subject_name
         }
         lines = self._subjects_section(first_trace)
+        lines.extend(self._miscategorised_section())
         lines.extend(self._collisions_section(first_trace, names))
         return "\n".join(lines)
+
+    def _miscategorised_section(self) -> list[str]:
+        """Terms whose category the extractor contradicted with its own naming rule.
+
+        Worth seeing even though nothing was lost: a `boolean_rule` that coins a
+        predicate is the extractor drifting off the prompt, and the subject it
+        lands on was chosen without the category filter that normally protects
+        it.
+        """
+        if not self.miscategorised:
+            return []
+        lines = ["", "    Category cleared (boolean_rule with a coined predicate):"]
+        for term, section in sorted(set(self.miscategorised)):
+            lines.append(f"      {term}  ({section})")
+        return lines
 
     def _subjects_section(self, first_trace: dict[str, ResolutionTrace]) -> list[str]:
         """Every subject the page touched, with each term that reached it and how."""
@@ -246,6 +266,7 @@ def rules_from_sections(
     usage: LlmUsage | None = None,
     trace_sink: list[ResolutionTrace] | None = None,
     campsite_id: int | None = None,
+    report: SiteReport | None = None,
 ) -> list[ResolvedRule]:
     """Extract each section, then resolve every subject to a subject_vectors id.
 
@@ -306,6 +327,7 @@ def rules_from_sections(
             usage=resolve_usage,
             trace_sink=trace_sink,
             campsite_id=campsite_id,
+            report=report,
         )
         resolved.extend(rules)
         print(
@@ -342,6 +364,7 @@ def _resolve_statements(
     usage: LlmUsage,
     trace_sink: list[ResolutionTrace] | None,
     campsite_id: int | None = None,
+    report: SiteReport | None = None,
 ) -> tuple[list[ResolvedRule], int]:
     """Resolve one section's statements to subject ids.
 
@@ -351,6 +374,19 @@ def _resolve_statements(
     rules: list[ResolvedRule] = []
     dropped = 0
     for statement in statements:
+        # A `boolean_rule` has to end in `_allowed` or `_required`; the prompt
+        # says so exhaustively. When it does not, the label is the part the
+        # model got wrong, so drop the label rather than the fact and let the
+        # resolver place it on the evidence.
+        if miscategorised_rule(statement.subject, statement.category):
+            print(
+                f"    {statement.subject!r} is category "
+                f"{statement.category} but coins a predicate; "
+                f"searching every category instead"
+            )
+            if report is not None:
+                report.miscategorised.append((statement.subject, section.title))
+            statement.category = None
         # A statement with neither a polarity nor a number asserts nothing:
         # it would add a permanent subject no query can use, and one that
         # later terms could be merged into.
@@ -498,6 +534,7 @@ def _ingest_scope(
         usage=usage,
         trace_sink=report.traces if report is not None else None,
         campsite_id=campsite_id,
+        report=report,
     )
     if not rules:
         print("    no statements extracted")
