@@ -8,6 +8,8 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ### Done (2026-09-06)
 
+**Only the owner merges and fires paid Actions.** Ruleset `Protect main` now requires one approving review, code-owner review (`CODEOWNERS`: `* @simcoster`), re-approval after the last push, squash-only, and green `lint` + `test`. Repository admins may bypass on a PR (a solo owner cannot approve their own PR) but cannot push to `main`. Fork PRs wait for the owner to approve workflows (`all_external_contributors`). Manual LLM tests use the `llm` environment, reviewer `@simcoster`. Completes the “protect `main` so lint and test are required” note in the CI entry below.
+
 **pytest results on the GitHub run.** CI writes `--junitxml=reports/pytest.xml` (gitignored) and `dorny/test-reporter@v3.0.0` publishes a Check named `pytest` plus a job summary. The test job needs `checks: write`. Same for the manual LLM workflow (`pytest (llm)`). Not a native Tests tab — GitHub does not have one.
 
 **CI does not need a Telegram secret.** `test_webhook.py` imports `main` at collection, and `main.py` raises if `TELEGRAM_TOKEN` is unset. The test job (and the manual LLM workflow) set a dummy `TELEGRAM_TOKEN`; nothing calls Telegram.
