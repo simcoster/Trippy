@@ -443,6 +443,13 @@ either model; live-model tests should expect occasional flakes and the judge
 grid in §5 should be repeated before its 0/6 is relied on. (experiments.md
 2026-09-04 §6.)
 
+**Live Nebius clients are off in pytest.** Scraper/ingest code requests an
+`OpenAI` client from one factory, `make_nebius_openai_client` — that is the
+only `OpenAI()` constructor in that tree. The factory calls `ensure_live_llm()`:
+allowed in production, denied in tests unless `@pytest.mark.llm`, in which
+case it raises `LiveLlmDisabled`. LangGraph chat models are a separate path
+(`ChatOpenAI` via `make_agent_chat_model`) and are not gated here.
+
 The per-site report printed by the rules ingest lists every subject a page
 touched, which term reached it by which path (alias / merged / existing /
 inserted), and every upsert collision with both phrasings — the evidence the

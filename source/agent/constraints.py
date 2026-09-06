@@ -8,14 +8,13 @@ from datetime import date, datetime
 from typing import Any
 
 from source.agent.dates import (
+    _as_stay_range,
+    _parse_iso_day,
     apply_resolved_dates,
     resolve_dates,
     today_il,
 )
-from source.agent.dates import _as_stay_range
-from source.agent.dates import _parse_iso_day
 from source.agent.messages import message_text
-
 
 _REVIEW_DATE_FORMATS = (
     "%Y-%m-%d",

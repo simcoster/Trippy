@@ -169,7 +169,7 @@ We cannot HA Nebius. We can fail fast and degrade. **If the bottleneck is a thir
 
 ## 6. Ship / release bar
 
-- **CI:** `pytest -m "not llm"` on every PR. Alembic `upgrade` against a throwaway Postgres. No `NEBIUS_API_KEY` in CI.
+- **CI:** `pytest -m "not llm"` on every PR. Alembic `upgrade` against a throwaway Postgres. No `NEBIUS_API_KEY` in CI. Scraper code requests `OpenAI` only via `make_nebius_openai_client`, which raises `LiveLlmDisabled` unless production or the test is marked `llm`.
 - **CD:** build an image **without** ngrok, without `--reload`, without the repo bind-mount, without pytest as a runtime dep (`pytest` is in `[project] dependencies` today). Run migrations, then roll the API.
 - **Secrets:** `TELEGRAM_TOKEN`, `NEBIUS_API_KEY`, `GOOGLE_API_KEY`, `DATABASE_URL` only from the platform. Rotate the bot token once ngrok URLs have been public.
 - **Staging** with a test bot and a copy of prod data (PII-aware: review authors, Telegram chat ids).

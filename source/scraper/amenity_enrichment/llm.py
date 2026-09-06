@@ -54,7 +54,36 @@ def embed_usd_per_mtok(model: str | None) -> float:
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
 
+class LiveLlmDisabled(NotImplementedError):
+    """Raised when code would call Nebius outside production or `@pytest.mark.llm`."""
+
+
+_allow_live_llm = True
+
+
+def set_live_llm_allowed(allowed: bool) -> None:
+    """Production stays True. Pytest sets False, then True only for `llm` tests."""
+    global _allow_live_llm
+    _allow_live_llm = allowed
+
+
+def live_llm_allowed() -> bool:
+    return _allow_live_llm
+
+
+def ensure_live_llm() -> None:
+    """The one gate: every live Nebius OpenAI client is built through this check."""
+    if not _allow_live_llm:
+        raise LiveLlmDisabled(
+            "Live LLM calls are disabled unless this is production or a "
+            "test marked @pytest.mark.llm. Pass a mock client, or run "
+            "pytest -m llm."
+        )
+
+
 def make_nebius_openai_client() -> OpenAI:
+    """The only `OpenAI()` in scraper/ingest code. Request a client here."""
+    ensure_live_llm()
     api_key = os.environ.get("NEBIUS_API_KEY")
     if not api_key:
         raise RuntimeError("NEBIUS_API_KEY is required")
@@ -510,7 +539,13 @@ class EmbeddingLLMClient:
     INPUT_USD_PER_MTOK = EMBED_INPUT_USD_PER_MTOK
 
     def __init__(self, client: OpenAI | None = None) -> None:
-        self.client = client or make_nebius_openai_client()
+        self._client = client
+
+    @property
+    def client(self) -> OpenAI:
+        if self._client is None:
+            self._client = make_nebius_openai_client()
+        return self._client
 
     def embed(
         self,

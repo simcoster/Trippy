@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 
+import pytest
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 
 from source.agent.constraints import today_il
 
 load_dotenv()
+
+pytestmark = pytest.mark.llm
 
 PROMPT = "משהו ל3 אנשים החל מהיום ל2 לילות עם מזגן"
 

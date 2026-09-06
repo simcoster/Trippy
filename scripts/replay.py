@@ -1,6 +1,8 @@
 import asyncio
 import json
+
 from main import telegram_webhook
+
 
 # Minimal fake Request to pass to the handler
 class FakeRequest:
