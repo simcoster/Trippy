@@ -8,6 +8,8 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ### Done (2026-09-06)
 
+**setup-uv pinned to `v10.0.1`.** The first GitHub Actions run failed at "Set up job": `astral-sh/setup-uv` publishes immutable tags (`v10.0.0`, `v10.0.1`) and no floating `v10`. Both workflows now use `astral-sh/setup-uv@v10.0.1`.
+
 **Telegram webhook tests skipped.** Four tests in `test_webhook.py` invoked the live LangGraph graph (`graph.invoke` → `light_model`) and still passed because `telegram_webhook` swallows errors. Telegram is not live; Streamlit is the current client. Marked `@pytest.mark.skip` as deprecated until rewritten. Empty-update cases and the `llm` embedding test are unchanged.
 
 **Scraper OpenAI clients come from one factory.** `make_nebius_openai_client` is the only `OpenAI()` in scraper/ingest code. It calls `ensure_live_llm()` and then constructs; pytest turns that off except `@pytest.mark.llm` (`LiveLlmDisabled`). Wrapper classes (`ConflictResolverLLMClient`, extractors, embeddings, …) request the factory rather than constructing. LangGraph `ChatOpenAI` is a separate path and is not gated. Supersedes the deferred-proxy note in the CI entry below.
