@@ -106,6 +106,9 @@ class SiteReport:
     # Statements whose category the extractor contradicted with its own naming
     # rule: (term, section title). The category was cleared, not the statement.
     miscategorised: list[tuple[str, str]] = field(default_factory=list)
+    # `X_allowed` statements deleted because this pass's own `X` already said
+    # it: (subject name, the scope it was written in).
+    redundant: list[tuple[str, str]] = field(default_factory=list)
     # Per collision, keyed by index into `drops`, filled after the page is
     # done: the resolver's diagnosis (what the explainer used to give) and its
     # full resolution -- the action, whether it was applied, the case id.
@@ -125,8 +128,22 @@ class SiteReport:
         }
         lines = self._subjects_section(first_trace)
         lines.extend(self._miscategorised_section())
+        lines.extend(self._redundant_section())
         lines.extend(self._collisions_section(first_trace, names))
         return "\n".join(lines)
+
+    def _redundant_section(self) -> list[str]:
+        """Permissions deleted because the pass's own amenity already said it.
+
+        Not a loss, but worth reading: it says the extractor split one sentence
+        into two statements where the prompt asks for one.
+        """
+        if not self.redundant:
+            return []
+        lines = ["", "    Redundant permissions dropped (the amenity says it):"]
+        for name, scope in sorted(set(self.redundant)):
+            lines.append(f"      {name}" + (f"  ({scope})" if scope else ""))
+        return lines
 
     def _miscategorised_section(self) -> list[str]:
         """Terms whose category the extractor contradicted with its own naming rule.
@@ -553,7 +570,12 @@ def _ingest_scope(
     # Deterministic, so it runs before the model is asked anything -- and only
     # over what this pass wrote, like the conflict resolver.
     drop_redundant_permissions(
-        conn, campsite_id=campsite_id, rules=rules, table=rules_table
+        conn,
+        campsite_id=campsite_id,
+        rules=rules,
+        table=rules_table,
+        sink=report.redundant if report is not None else None,
+        scope="site-level",
     )
     return written
 

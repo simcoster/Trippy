@@ -152,6 +152,20 @@ def _site_section(run: SiteRun) -> list[str]:
         lines += [f"| `{term}` | {section} |" for term, section in miscategorised]
         lines += [""]
 
+    # `X_allowed` deleted because the same pass's `X` already said it. Nothing
+    # is lost, but it means the extractor split one sentence into two
+    # statements where the prompt asks for one, which is worth reading.
+    redundant = sorted(set(getattr(run.report, "redundant", []) or []))
+    if redundant:
+        lines += [
+            f"### Redundant permissions dropped ({len(redundant)})",
+            "",
+            "| subject | scope |",
+            "|---|---|",
+        ]
+        lines += [f"| `{name}` | {scope} |" for name, scope in redundant]
+        lines += [""]
+
     merged = [t for t in first.values() if t.kind == "merged"]
     lines += [f"### Merged into an existing subject ({len(merged)})", ""]
     if merged:

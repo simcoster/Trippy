@@ -159,3 +159,35 @@ def test_a_per_unit_permission_never_cancels_a_site_level_amenity(scope):
 
     assert dropped == ["zz_probe_rental_allowed"]
     assert surviving(cur, campsite_id, PAIR) == set(PAIR)
+
+
+def test_a_dropped_permission_reaches_the_run_report(scope):
+    """It is not a loss, but it says the extractor split one sentence into two
+    statements where the prompt asks for one -- so it has to be readable
+    afterwards, not just printed as the run scrolls past."""
+    campsite_id, add, cur = scope
+    amenity = add("zz_probe_rental", 1, True)
+    permission = add("zz_probe_rental_allowed", 2, True)
+    sink: list[tuple[str, str]] = []
+
+    drop_redundant_permissions(
+        cur.connection,
+        campsite_id=campsite_id,
+        rules=[rule(amenity, polarity=True), rule(permission, polarity=True)],
+        sink=sink,
+        scope="חושה",
+    )
+
+    assert sink == [("zz_probe_rental_allowed", "חושה")]
+
+
+def test_the_report_renders_what_was_dropped():
+    from source.scraper.rules_ingest.ingest import SiteReport
+
+    report = SiteReport()
+    report.redundant.append(("zz_probe_rental_allowed", "חושה"))
+    rendered = report.render()
+
+    assert "Redundant permissions dropped" in rendered
+    assert "zz_probe_rental_allowed" in rendered
+    assert "חושה" in rendered

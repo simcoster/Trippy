@@ -212,7 +212,13 @@ def ingest_rooms(
                 dropped_sink=report.drops if report is not None else None,
             )
         conn.commit()
-        drop_redundant_permissions(conn, campsite_id=site["id"], rules=rules)
+        drop_redundant_permissions(
+            conn,
+            campsite_id=site["id"],
+            rules=rules,
+            sink=report.redundant if report is not None else None,
+            scope=PANEL_TITLE,
+        )
         conn.commit()
         print(f"    {site_written} site-level rule(s) upserted")
         written += site_written

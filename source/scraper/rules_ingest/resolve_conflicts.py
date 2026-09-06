@@ -544,6 +544,8 @@ def drop_redundant_permissions(
     accommodation_type_id: int | None = None,
     table: str = "campsite_rules",
     subjects: str = "subject_vectors",
+    sink: list[tuple[str, str]] | None = None,
+    scope: str = "",
     verbose: bool = True,
 ) -> list[str]:
     """Delete `X_allowed` where this pass's own `X` says the same thing.
@@ -579,6 +581,9 @@ def drop_redundant_permissions(
             },
         )
     dropped = [name for _, name in doomed]
+    if sink is not None:
+        sink.extend((name, scope) for name in dropped)
     if verbose:
-        print(f"    dropped {len(dropped)} redundant permission(s): {', '.join(dropped)}")
+        names = ", ".join(dropped)
+        print(f"    dropped {len(dropped)} redundant permission(s): {names}")
     return dropped

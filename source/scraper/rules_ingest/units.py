@@ -197,6 +197,8 @@ def ingest_unit_rules(
         rules=rules,
         accommodation_type_id=accommodation_type_id,
         table=rules_table,
+        sink=report.redundant if report is not None else None,
+        scope=type_name,
     )
     print(f"    {written} rule(s) upserted for {type_name!r}")
     return written
