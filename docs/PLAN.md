@@ -8,6 +8,8 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ### Done (2026-09-06)
 
+**CI does not need a Telegram secret.** `test_webhook.py` imports `main` at collection, and `main.py` raises if `TELEGRAM_TOKEN` is unset. The test job (and the manual LLM workflow) set a dummy `TELEGRAM_TOKEN`; nothing calls Telegram.
+
 **setup-uv pinned to `v10.0.1`.** The first GitHub Actions run failed at "Set up job": `astral-sh/setup-uv` publishes immutable tags (`v10.0.0`, `v10.0.1`) and no floating `v10`. Both workflows now use `astral-sh/setup-uv@v10.0.1`.
 
 **Telegram webhook tests skipped.** Four tests in `test_webhook.py` invoked the live LangGraph graph (`graph.invoke` → `light_model`) and still passed because `telegram_webhook` swallows errors. Telegram is not live; Streamlit is the current client. Marked `@pytest.mark.skip` as deprecated until rewritten. Empty-update cases and the `llm` embedding test are unchanged.

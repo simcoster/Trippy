@@ -53,6 +53,9 @@ jobs:
       # Scraper OpenAI clients never use this: make_nebius_openai_client raises
       # LiveLlmDisabled first unless the test is marked llm.
       NEBIUS_API_KEY: ci-not-a-secret
+      # main.py raises at import if this is unset; test_webhook.py imports it
+      # during collection even for skipped tests. Telegram is not live.
+      TELEGRAM_TOKEN: ci-not-a-secret
     steps:
       - uses: actions/checkout@v4
         with:

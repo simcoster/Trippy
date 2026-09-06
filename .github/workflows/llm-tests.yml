@@ -34,6 +34,8 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/source/scraper
       NEBIUS_API_KEY: ${{ secrets.NEBIUS_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      # main.py raises at import if this is unset; collection imports it.
+      TELEGRAM_TOKEN: ci-not-a-secret
     steps:
       - uses: actions/checkout@v4
         with:
