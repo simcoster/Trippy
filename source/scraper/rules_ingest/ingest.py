@@ -31,6 +31,7 @@ from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     record_scrape_cost,
 )
+from source.scraper.cli import add_site_argument, site_ids
 from source.scraper.rules_ingest.db import (
     DroppedRule,
     ResolvedRule,
@@ -243,19 +244,22 @@ def database_url(config: dict) -> str:
 
 
 def fetch_campsites(
-    config: dict, *, limit: int, site: int | None = None
+    config: dict, *, limit: int, sites: list[int] | None = None
 ) -> list[dict]:
-    """Campsites with a page of their own, or just the one named by `site`.
+    """Campsites with a page of their own, or just the ones `sites` names.
 
     A subcamp has no page — it is ingested as part of its parent's page, once
     per subcamp. Skipping children here is the whole cost of the split to this
     loop, and `WHERE url IS NOT NULL` is what does it.
+
+    `limit` still applies, so naming more sites than it allows scrapes the
+    first `limit` of them; pass `--limit` alongside to raise it.
     """
     where = "url IS NOT NULL"
     params: list = []
-    if site is not None:
-        where += " AND id = %s"
-        params.append(site)
+    if sites:
+        where += " AND id = ANY(%s)"
+        params.append(list(sites))
     params.append(limit)
     with psycopg.connect(database_url(config)) as conn, conn.cursor() as cur:
         cur.execute(
@@ -584,7 +588,7 @@ def run(
     config: dict,
     *,
     limit: int,
-    site: int | None = None,
+    sites: list[int] | None = None,
     usage: LlmUsage | None = None,
     runs: list[SiteRun] | None = None,
     run_at: datetime | None = None,
@@ -597,7 +601,7 @@ def run(
     taken and any failure -- for the run report `main()` writes afterwards.
     `run_at` stamps the conflict cases this run files.
     """
-    campsites = fetch_campsites(config, limit=limit, site=site)
+    campsites = fetch_campsites(config, limit=limit, sites=sites)
     if not campsites:
         print("No campsites found")
         return 0
@@ -697,11 +701,10 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="How many campsites to process (default: info_site.limit_campsites)",
     )
-    parser.add_argument(
-        "--site",
-        type=int,
-        default=None,
-        help="Ingest one campsite by id (a parent id for a split site)",
+    add_site_argument(
+        parser,
+        help_text="Campsite ids to ingest (a parent id for a split site); "
+        "repeat or comma-separate. Default: all",
     )
     args = parser.parse_args(argv)
     config = load_config()
@@ -713,7 +716,7 @@ def main(argv: list[str] | None = None) -> None:
     started_at = datetime.now()
     started = time.monotonic()
     run(
-        config, limit=limit, site=args.site, usage=usage, runs=runs,
+        config, limit=limit, sites=site_ids(args.site), usage=usage, runs=runs,
         run_at=started_at.astimezone(),
     )
     # Recorded here, not in run(): a test driving run() must not write reports/.

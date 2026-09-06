@@ -38,6 +38,7 @@ from source.scraper.amenity_enrichment.llm import (
     make_nebius_openai_client,
     record_scrape_cost,
 )
+from source.scraper.cli import add_site_argument, site_ids
 from source.scraper.info_site.db import get_or_create_info_website_name
 from source.scraper.rules_ingest.db import upsert_campsite_rules
 from source.scraper.rules_ingest.fetch import fetch_page_html
@@ -238,11 +239,11 @@ def run(
     config: dict,
     *,
     limit: int,
-    site: int | None = None,
+    sites: list[int] | None = None,
     usage: LlmUsage | None = None,
     runs: list[SiteRun] | None = None,
 ) -> int:
-    campsites = fetch_campsites(config, limit=limit, site=site)
+    campsites = fetch_campsites(config, limit=limit, sites=sites)
     if not campsites:
         print("No campsites found")
         return 0
@@ -309,7 +310,7 @@ def run(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Lodging-panel room ingester")
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--site", type=int, default=None)
+    add_site_argument(parser)
     args = parser.parse_args(argv)
     config = load_config()
     limit = args.limit
@@ -319,7 +320,7 @@ def main(argv: list[str] | None = None) -> None:
     runs: list[SiteRun] = []
     started_at = datetime.now()
     started = time.monotonic()
-    run(config, limit=limit, site=args.site, usage=usage, runs=runs)
+    run(config, limit=limit, sites=site_ids(args.site), usage=usage, runs=runs)
     written = record_scrape_cost("scrape-rooms", usage)
     if written:
         print(f"cost report appended to {written}")

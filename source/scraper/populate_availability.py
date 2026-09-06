@@ -30,6 +30,9 @@ from source.scraper.amenity_enrichment import (
     parse_room_categories,
 )
 from source.scraper.amenity_enrichment.llm import record_scrape_cost
+
+# aliased: `site_ids` is also a local here, the subcamp id list.
+from source.scraper.cli import site_ids as parse_site_ids
 from source.scraper.info_site.match_listing import InfoWebsiteNameMatcher
 from source.scraper.rules_ingest.subcamps import (
     Subcamp,
@@ -98,8 +101,8 @@ def database_url(config: dict) -> str:
     return url.replace("@db:", "@localhost:")
 
 
-def fetch_campsites(config: dict, *, site: int | None = None) -> list[dict]:
-    """Campsites with a booking engine hotel id, or just the one named by `site`.
+def fetch_campsites(config: dict, *, sites: list[int] | None = None) -> list[dict]:
+    """Campsites with a booking engine hotel id, or just the ones `sites` names.
 
     Subcamps carry no `booking_hotel_id` — a split site has one booking id and
     one flat unit list, which `unit_owner` divides afterwards — so they never
@@ -108,9 +111,10 @@ def fetch_campsites(config: dict, *, site: int | None = None) -> list[dict]:
     limit = int(config.get("availability", {}).get("limit_campsites", 2))
     where = "booking_hotel_id IS NOT NULL"
     params: list = []
-    if site is not None:
-        where += " AND id = %s"
-        params.append(site)
+    if sites:
+        where += " AND id = ANY(%s)"
+        params.append(list(sites))
+        limit = len(sites)
     params.append(limit)
     sql = f"""
         SELECT id, name, booking_hotel_id
@@ -443,9 +447,11 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="INPA availability scraper")
     parser.add_argument(
         "--site",
-        type=int,
+        action="append",
         default=None,
-        help="Scrape one campsite by id (a parent id for a split site)",
+        metavar="ID[,ID...]",
+        help="Campsite ids to scrape (a parent id for a split site); "
+        "repeat or comma-separate. Default: all",
     )
     args = parser.parse_args(argv)
 
@@ -460,7 +466,7 @@ def main(argv: list[str] | None = None) -> None:
     lang = avail.get("lang", "heb")
     pause_s = float(avail.get("request_pause_seconds", 0.5))
 
-    campsites = fetch_campsites(config, site=args.site)
+    campsites = fetch_campsites(config, sites=parse_site_ids(args.site))
     if not campsites:
         print("No campsites with booking_hotel_id found")
         return
