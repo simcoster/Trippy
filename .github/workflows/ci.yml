@@ -29,6 +29,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Check run + job summary from dorny/test-reporter.
+    permissions:
+      contents: read
+      checks: write
     services:
       db:
         # pgvector, not stock postgres: migration 001 runs CREATE EXTENSION vector.
@@ -84,7 +88,21 @@ jobs:
       - name: pytest
         run: |
           uv run pytest -m "not llm" -q \
+            --junitxml=reports/pytest.xml \
             --ignore=source/test/test_cases/test_accommodation_amenities.py \
             --ignore=source/test/test_cases/test_accommodation_rag.py \
             --ignore=source/test/test_cases/test_planner_multi_room.py
+
+      # Check on the PR ("pytest") and a table at the bottom of the run.
+      # GitHub caps the markdown at 64 KB; listing every pass may collapse
+      # to failed/skipped only. Runs even when pytest itself failed.
+      - name: Test report
+        uses: dorny/test-reporter@v3.0.0
+        if: ${{ !cancelled() }}
+        with:
+          name: pytest
+          path: reports/pytest.xml
+          reporter: python-xunit
+          list-suites: all
+          list-tests: all
 

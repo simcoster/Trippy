@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   llm:
@@ -54,7 +55,16 @@ jobs:
           PYTEST_TARGET: ${{ inputs.target }}
         run: |
           if [ -n "${PYTEST_TARGET}" ]; then
-            uv run pytest -m llm -q -- "${PYTEST_TARGET}"
+            uv run pytest -m llm -q --junitxml=reports/pytest.xml -- "${PYTEST_TARGET}"
           else
-            uv run pytest -m llm -q
+            uv run pytest -m llm -q --junitxml=reports/pytest.xml
           fi
+      - name: Test report
+        uses: dorny/test-reporter@v3.0.0
+        if: ${{ !cancelled() }}
+        with:
+          name: pytest (llm)
+          path: reports/pytest.xml
+          reporter: python-xunit
+          list-suites: all
+          list-tests: all
