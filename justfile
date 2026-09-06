@@ -78,6 +78,10 @@ scrape-rules *args:
 clear-availability *args:
     uv run python scripts/clear_availability.py {{ trim_start_match(args, "-- ") }}
 
+# Truncate list_prices and delete info_website_names
+clear-prices:
+    uv run python scripts/clear_prices.py
+
 # Truncate reviews and claims; keep campsites
 clear-reviews:
     uv run python scripts/clear_reviews_and_claims.py

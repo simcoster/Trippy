@@ -29,12 +29,14 @@ that a partial clear leaves the indexes at full size.
 rows carry embeddings that cost LLM calls to rebuild, and its aliases are what
 make a re-ingest converge on the same subjects instead of forking new ones.
 `--subjects` clears it too, and implies `--all`, because `campsite_rules.
-subject_id` is ON DELETE RESTRICT — a subject cannot go while any rule cites it.
+subject_id` and `conflict_cases.subject_id` are ON DELETE RESTRICT — a subject
+cannot go while any rule or filed collision cites it. The cases go with the
+vocabulary: they name subjects that will not exist after the wipe.
 
   uv run python scripts/clear_rules.py                # site-level rules
   uv run python scripts/clear_rules.py --site 2       # ... for one campsite
   uv run python scripts/clear_rules.py --all          # per-unit rows as well
-  uv run python scripts/clear_rules.py --subjects     # and the vocabulary
+  uv run python scripts/clear_rules.py --subjects     # vocabulary + conflict_cases
 """
 
 from __future__ import annotations
@@ -67,7 +69,8 @@ COUNTS = """
 SELECT
   (SELECT COUNT(*) FROM campsite_rules WHERE accommodation_type_id IS NULL),
   (SELECT COUNT(*) FROM campsite_rules WHERE accommodation_type_id IS NOT NULL),
-  (SELECT COUNT(*) FROM subject_vectors)
+  (SELECT COUNT(*) FROM subject_vectors),
+  (SELECT COUNT(*) FROM conflict_cases)
 """
 
 
@@ -81,7 +84,7 @@ def main() -> None:
     parser.add_argument(
         "--subjects",
         action="store_true",
-        help="also clear subject_vectors; implies --all",
+        help="also clear subject_vectors and conflict_cases; implies --all",
     )
     parser.add_argument(
         "--site",
@@ -120,26 +123,33 @@ def main() -> None:
         with psycopg.connect(url, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(COUNTS)
-                before_site, before_unit, before_subjects = cur.fetchone()
+                before_site, before_unit, before_subjects, before_cases = (
+                    cur.fetchone()
+                )
                 _log(
                     f"before: site-level={before_site} per-unit={before_unit} "
-                    f"subjects={before_subjects}"
+                    f"subjects={before_subjects} conflict_cases={before_cases}"
                 )
 
-                subjects_deleted = 0
+                subjects_deleted = cases_deleted = 0
                 if args.subjects:
-                    # One statement for both, because campsite_rules references
-                    # subject_vectors with ON DELETE RESTRICT: TRUNCATE accepts
-                    # several tables precisely so a referencing pair can go
-                    # together without CASCADE reaching anything unnamed.
-                    _log("Truncating campsite_rules and subject_vectors.")
-                    cur.execute(
-                        "TRUNCATE TABLE campsite_rules, subject_vectors "
-                        "RESTART IDENTITY"
+                    # One statement for all three, because campsite_rules and
+                    # conflict_cases both reference subject_vectors with
+                    # ON DELETE RESTRICT: TRUNCATE accepts several tables
+                    # precisely so a referencing set can go together without
+                    # CASCADE reaching anything unnamed.
+                    _log(
+                        "Truncating conflict_cases, campsite_rules and "
+                        "subject_vectors."
                     )
-                    deleted, subjects_deleted = (
+                    cur.execute(
+                        "TRUNCATE TABLE conflict_cases, campsite_rules, "
+                        "subject_vectors RESTART IDENTITY"
+                    )
+                    deleted, subjects_deleted, cases_deleted = (
                         before_site + before_unit,
                         before_subjects,
+                        before_cases,
                     )
                 else:
                     cur.execute(f"DELETE FROM campsite_rules{clause}", params)
@@ -159,7 +169,7 @@ def main() -> None:
                         )
 
                 cur.execute(COUNTS)
-                site, unit, subjects = cur.fetchone()
+                site, unit, subjects, cases = cur.fetchone()
             conn.commit()
     except psycopg.errors.ForeignKeyViolation as exc:
         print(
@@ -173,9 +183,16 @@ def main() -> None:
         print(f"Postgres connection failed: {exc}", file=sys.stderr, flush=True)
         sys.exit(1)
 
-    tail = f" and {subjects_deleted} subject(s)." if args.subjects else "."
+    tail = (
+        f", {subjects_deleted} subject(s) and {cases_deleted} conflict case(s)."
+        if args.subjects
+        else "."
+    )
     _log(f"Removed {deleted} rule(s){tail}")
-    _log(f"after:  site-level={site} per-unit={unit} subjects={subjects}")
+    _log(
+        f"after:  site-level={site} per-unit={unit} "
+        f"subjects={subjects} conflict_cases={cases}"
+    )
     if deleted and (site or unit):
         # A partial delete cannot reset the files, and the HNSW indexes on
         # subject_vectors are the ones that degrade rather than merely bloat.

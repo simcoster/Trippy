@@ -501,7 +501,10 @@ so nothing gates on it; the field is recorded. `validate` allows a name that is
 already an alias of the old subject (that is the merge being undone) and refuses
 only the old subject's own name. Resolution runs after the page's own commit,
 in its own transaction. `test_rules_conflict_resolver.py`,
-`test_conflict_cases_db.py`.
+`test_conflict_cases_db.py`. Wiping the vocabulary (`just clear-rules --subjects`)
+truncates `conflict_cases` in the same statement as `campsite_rules` and
+`subject_vectors`: both tables cite subjects with ON DELETE RESTRICT, and the
+cases name subjects that will not exist after the wipe.
 
 ### A property stated about a list goes into every name on it
 
