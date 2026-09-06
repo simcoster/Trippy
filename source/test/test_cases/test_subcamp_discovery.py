@@ -6,22 +6,18 @@ and what lets three of the four scrapers ignore subcamps entirely, by filtering
 `WHERE url IS NOT NULL`.
 
 Both halves are tested: the seeding, against a mocked cursor, and the
-constraints, against the real database inside a transaction that is rolled back.
+constraints, against clones of the real tables in the `experiments` schema.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from unittest.mock import MagicMock, patch
 
 import psycopg
 import pytest
-from dotenv import load_dotenv
 
 from source.scraper import discover_sites
-
-load_dotenv()
 
 AKHZIV = {"id": 2, "name": "חניון לילה גן לאומי אכזיב", "url": "https://x/akhziv/"}
 NORTH = {"heading": "חניון צפוני", "aliases": ["אכזיב צפון"]}
@@ -104,23 +100,20 @@ def test_the_shipped_config_names_exactly_one_default_units_subcamp():
 # --- schema ------------------------------------------------------------------
 
 
-def _db_url() -> str:
-    url = os.environ.get("DATABASE_URL")
-    assert url, "DATABASE_URL is required"
-    return url.replace("@db:", "@localhost:")
-
-
 @pytest.fixture
-def scratch():
-    """A throwaway parent campsite; every test rolls back."""
-    with psycopg.connect(_db_url()) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO campsites (name, url) VALUES "
-                "('test parent', 'https://example.invalid/test-parent/') RETURNING id"
-            )
-            yield cur.fetchone()[0], cur
-        conn.rollback()
+def scratch(experiments_conn):
+    """A parent campsite in the test schema.
+
+    `campsites` here is a clone of production's, `LIKE ... INCLUDING ALL`, so
+    the unique url index and the subcamp checks these tests rely on are the real
+    ones -- while nothing is written to `public`.
+    """
+    with experiments_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO campsites (name, url) VALUES "
+            "('test parent', 'https://example.invalid/test-parent/') RETURNING id"
+        )
+        yield cur.fetchone()[0], cur
 
 
 def add_child(cur, parent_id, name="test parent – north", **overrides):

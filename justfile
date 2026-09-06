@@ -92,6 +92,10 @@ clear-availability *args:
 clear-reviews:
     uv run python scripts/clear_reviews_and_claims.py
 
+# Clear all info-page data: rules, prices, types, names, vocabulary + availability
+clear-info *args:
+    uv run python scripts/clear_info.py {{ trim_start_match(args, "-- ") }}
+
 # Delete site-level campsite_rules; keeps per-unit rows + vocabulary (--all, --subjects, --site N)
 clear-rules *args:
     uv run python scripts/clear_rules.py {{ trim_start_match(args, "-- ") }}

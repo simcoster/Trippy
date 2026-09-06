@@ -101,6 +101,49 @@ landed as campsite-wide rules — `child_min_age 5`, `weekend_min_nights 2`,
 `mattresses 4`. They come back when statements carry a referent that can route
 them to an accommodation type (PLAN 2026-09-05 "Referent field").
 
+### The rate-card listing match runs on the 235B, and never sees a bracket
+
+A rate-card label is resolved to an `info_website_names` row by exact name, else
+one LLM pick over that site's lodging products. That pick is the **235B**, not
+the 30B the rest of the info-site scrape uses.
+
+The 30B does not merely make mistakes here; it makes them on distinctions that
+should not exist. On `חדר צוות קטן אמצע שבוע (חדרים 3 ו- 4)` against Khan
+Be'erot's seven products it answered `חדר צוות מאובזר כפול חדר מספר 1-2` six
+times in seven, always at 0.40 — and answered correctly six times in six when
+the same bytes were sent with `(` and `)` swapped. Nothing about a bracket's
+direction should decide which room a price belongs to. The 235B was right twelve
+times in twelve across both forms, at 1.00 (experiments.md §20).
+
+So both were changed. The model moved up, and `strip_brackets` removes `(` and
+`)` from the name before it is sent — measured inert on the 235B, same picks and
+same confidences on three of four real Be'erot labels and no worse on the
+fourth, which spans two products and has no single right answer. The candidates
+are never stripped: the answer has to come back as a string on the list.
+
+**The two stages read different strings.** The exact test uses the classifier's
+normalised type, because only that can equal a catalog name and cost nothing;
+the model is shown the raw rate-card label, because normalisation is what drops
+`(חדרים 3 ו- 4)` and those numbers are the only thing separating four staff
+rooms at Khan Be'erot. The run report prints the user message for every flagged
+match, so what the model was actually asked is on the page rather than inferred
+from the summary line.
+
+**A doubted answer is asked again; a clash is settled last.** Below
+`UNCERTAIN_BELOW` -- or on a refusal -- `pick_names` may name several products,
+because one rate line can price two rooms (`חדרים 5 ו-6`) and a single pick has
+to be wrong about one of them. Separately, and with no model involved,
+`colliding_rows` finds two rate lines resolving to the same product at the same
+`(guest_type, rate_period, rate_class)`: that is a contradiction on the unique
+key, so one match is wrong however confident it was. Such a pair gets one
+`pick_pair` call that must answer with two *different* candidates. Both are
+measured (experiments.md §22, §23); together they took a full run from 87 stored
+rows to 95, with nothing silently overwritten.
+
+The accommodation-type matcher in `populate_availability.py` shares the class
+but keeps the 30B, pinned explicitly. It runs a different prompt for a different
+job, and none of the above was measured on it.
+
 ### One tooltip, one pipeline
 
 A unit's tooltip is a section like any other, so `rules_ingest.units` hands it to

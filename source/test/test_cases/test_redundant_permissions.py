@@ -9,16 +9,13 @@ model anything. What it must NOT touch is the pair the extractor prompt
 deliberately produces -- `barbecue_allowed` true AND `barbecue_equipment` false
 are two different facts, and their polarities differing is what says so.
 
-Every test rolls back; the dev database is left untouched.
+Everything runs in the `experiments` schema: the code under test DELETEs rows,
+and it must never be pointed at a real one.
 """
 
 from __future__ import annotations
 
-import os
-
-import psycopg
 import pytest
-from dotenv import load_dotenv
 
 from source.scraper.rules_ingest.db import ResolvedRule
 from source.scraper.rules_ingest.resolve_conflicts import (
@@ -26,31 +23,15 @@ from source.scraper.rules_ingest.resolve_conflicts import (
     redundant_permissions,
 )
 
-load_dotenv()
-
-
-def _db_url() -> str:
-    url = os.environ.get("DATABASE_URL")
-    assert url, "DATABASE_URL is required"
-    return url.replace("@db:", "@localhost:")
-
 
 @pytest.fixture
-def conn():
-    with psycopg.connect(_db_url()) as connection:
-        yield connection
-        connection.rollback()
+def scope(experiments_site):
+    """The test campsite, and a factory for subject + rule pairs.
 
-
-@pytest.fixture
-def scope(conn):
-    """A campsite, and a factory for throwaway subject + rule pairs."""
+    In `experiments`, so the deletes under test cannot reach a real rule.
+    """
+    conn, campsite_id = experiments_site
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM campsites ORDER BY id LIMIT 1")
-        row = cur.fetchone()
-        if row is None:
-            pytest.skip("no campsites in the database")
-        campsite_id = row[0]
 
         def add(name: str, category: int, polarity: bool | None, qualifier=None) -> int:
             cur.execute(
@@ -78,8 +59,8 @@ def surviving(cur, campsite_id: int, names: list[str]) -> set[str]:
     return {r[0] for r in cur.fetchall()}
 
 
-PAIR = ["zz_probe_rental", "zz_probe_rental_allowed"]
-NAMES = {1: "zz_probe_rental", 2: "zz_probe_rental_allowed", 3: "zz_probe_other"}
+PAIR = ["probe_rental", "probe_rental_allowed"]
+NAMES = {1: "probe_rental", 2: "probe_rental_allowed", 3: "probe_other"}
 
 
 def rule(subject_id: int, polarity=None, qualifier=None) -> ResolvedRule:
@@ -93,7 +74,7 @@ def test_the_permission_is_named_and_the_amenity_is_not():
     doomed = redundant_permissions(
         [rule(1, polarity=True), rule(2, polarity=True)], NAMES
     )
-    assert doomed == [(2, "zz_probe_rental_allowed")]
+    assert doomed == [(2, "probe_rental_allowed")]
 
 
 def test_opposite_polarities_are_two_facts_and_neither_is_named():
@@ -130,8 +111,8 @@ def test_nothing_written_names_nothing():
 # --- the delete itself, against a live database ---------------------------
 def test_the_permission_row_goes_and_the_amenity_row_stays(scope):
     campsite_id, add, cur = scope
-    amenity = add("zz_probe_rental", 1, True)
-    permission = add("zz_probe_rental_allowed", 2, True)
+    amenity = add("probe_rental", 1, True)
+    permission = add("probe_rental_allowed", 2, True)
 
     dropped = drop_redundant_permissions(
         cur.connection,
@@ -139,16 +120,16 @@ def test_the_permission_row_goes_and_the_amenity_row_stays(scope):
         rules=[rule(amenity, polarity=True), rule(permission, polarity=True)],
     )
 
-    assert dropped == ["zz_probe_rental_allowed"]
-    assert surviving(cur, campsite_id, PAIR) == {"zz_probe_rental"}
+    assert dropped == ["probe_rental_allowed"]
+    assert surviving(cur, campsite_id, PAIR) == {"probe_rental"}
 
 
 def test_a_per_unit_permission_never_cancels_a_site_level_amenity(scope):
     """Scope is part of the identity: the site providing showers says nothing
     about whether one unit permits them."""
     campsite_id, add, cur = scope
-    amenity = add("zz_probe_rental", 1, True)
-    permission = add("zz_probe_rental_allowed", 2, True)
+    amenity = add("probe_rental", 1, True)
+    permission = add("probe_rental_allowed", 2, True)
 
     dropped = drop_redundant_permissions(
         cur.connection,
@@ -157,7 +138,7 @@ def test_a_per_unit_permission_never_cancels_a_site_level_amenity(scope):
         accommodation_type_id=-1,  # a scope holding neither row
     )
 
-    assert dropped == ["zz_probe_rental_allowed"]
+    assert dropped == ["probe_rental_allowed"]
     assert surviving(cur, campsite_id, PAIR) == set(PAIR)
 
 
@@ -166,8 +147,8 @@ def test_a_dropped_permission_reaches_the_run_report(scope):
     statements where the prompt asks for one -- so it has to be readable
     afterwards, not just printed as the run scrolls past."""
     campsite_id, add, cur = scope
-    amenity = add("zz_probe_rental", 1, True)
-    permission = add("zz_probe_rental_allowed", 2, True)
+    amenity = add("probe_rental", 1, True)
+    permission = add("probe_rental_allowed", 2, True)
     sink: list[tuple[str, str]] = []
 
     drop_redundant_permissions(
@@ -178,16 +159,16 @@ def test_a_dropped_permission_reaches_the_run_report(scope):
         scope="חושה",
     )
 
-    assert sink == [("zz_probe_rental_allowed", "חושה")]
+    assert sink == [("probe_rental_allowed", "חושה")]
 
 
 def test_the_report_renders_what_was_dropped():
     from source.scraper.rules_ingest.ingest import SiteReport
 
     report = SiteReport()
-    report.redundant.append(("zz_probe_rental_allowed", "חושה"))
+    report.redundant.append(("probe_rental_allowed", "חושה"))
     rendered = report.render()
 
     assert "Redundant permissions dropped" in rendered
-    assert "zz_probe_rental_allowed" in rendered
+    assert "probe_rental_allowed" in rendered
     assert "חושה" in rendered

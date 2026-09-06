@@ -50,10 +50,12 @@ def test_llm_tent_booking_matches_classified_rate_card_name():
         (LISTING_ID, payload.accommodation_type),
         (11, "בונגלו עם מזגן"),
     ]
-    listing_id = match_info_website_name(
+    listing_id, confidence = match_info_website_name(
         NORTHERN_COMPOUND_BOOKING,
         listings,
         matcher=InfoWebsiteNameMatcher(),
     )
     assert listing_id == LISTING_ID
-    assert match_info_website_name(NORTHERN_COMPOUND_BOOKING, listings) is None
+    assert confidence is None or 0.0 <= confidence <= 1.0
+    # Without a matcher there is no model to ask, so nothing is matched.
+    assert match_info_website_name(NORTHERN_COMPOUND_BOOKING, listings) == (None, None)

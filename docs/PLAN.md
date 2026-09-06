@@ -6,6 +6,95 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-06, night)
+
+**Two rate lines can no longer collapse onto one product.** `colliding_rows`
+groups resolved rows by `list_prices_unique_rate` itself, so a clash is found
+before anything is written and without a model -- which is what catches the case
+confidence cannot: Tel Arad matched both Canaanite structures to one listing at
+1.00 and 0.80 and silently lost the 860 row. A colliding pair gets one
+`pick_pair` call that must return two different candidates; anything else leaves
+the rows alone and reports. Full run: 95 rows from 93 rate lines, nothing lost
+at any site, one collision call at $0.0001. experiments.md §23.
+
+`snapshot_list_prices` now resolves every row before writing any, since a clash
+is only visible once both halves exist.
+
+### Done (2026-09-06, late)
+
+**A doubted listing match gets a second pass that may name several products.**
+One rate line can price two rooms (`חדרים 5 ו-6`), and a single pick has to be
+wrong about one of them. Below `UNCERTAIN_BELOW`, or on a refusal,
+`pick_names` runs under `MULTI_MATCH_PROMPT` and the price is filed against each
+product named; `match_verdict` gains `"split"` so the report shows a rate that
+wrote more rows than the card has lines. Fired twice in a full run for $0.0003,
+both correct; Khan Be'erot 8 rows -> 13, all right. experiments.md §22.
+
+**Still open:** two rate lines can collapse onto one listing *confidently* --
+Tel Arad's single and double Canaanite structures -- and the second silently
+overwrites the first on `list_prices_unique_rate`. Detectable in code without an
+LLM; not built.
+
+### Done (2026-09-06, evening)
+
+**Listing match → 235B; brackets stripped from the name.** The 30B answered one
+Khan Be'erot label wrongly 6 times in 7 at temperature 0, always the same pick
+at 0.40, and correctly 6 times in 6 on the same bytes with the brackets swapped
+— so its answer turned on bracket direction. The 235B: 12/12 across both forms
+at 1.00. Removing the brackets is measured inert on the 235B, so
+`strip_brackets` now runs on the name (never the candidates). The availability
+type matcher keeps the 30B, pinned explicitly — different prompt, unmeasured.
+experiments.md §20, design.md "The rate-card listing match runs on the 235B".
+
+Supersedes §18's reading, which blamed the prompt's room-number clause for this
+run's failures; §19 established the numbers were never sent to the model at all.
+That is fixed too: the model is now shown the raw rate-card label
+(`full_label`), while the free exact test still runs on the normalised type. The
+report's prompt appendix prints the user message only.
+
+Verified on a full run (`reports/prices_235b.log`): flagged matches 12 -> 2,
+forced refusals 3 -> 0, rows kept 87 -> 91 of 93, run cost $0.0099 -> $0.0145.
+Both remaining flags are `(חדרים 5 ו-6)`, one label naming two products --
+experiments.md §21.
+
+### Done (2026-09-06, later)
+
+**Tests own the `experiments` schema; extensions move out of `public`.**
+
+Three pre-existing test files wrote to production tables and were moved to
+clones in `experiments` (`.cursor/rules/no-test-data-in-prod.mdc`). The clones
+are `CREATE TABLE experiments.x (LIKE public.x INCLUDING ALL)`, so the checks
+and indexes under test are production's own and stay in step with every
+migration. Three things `LIKE` does not carry across, each of which had to be
+replayed or fixed: foreign keys (and `pg_get_constraintdef` qualifies them as
+`public.` when `public` is off the search_path, which pointed every replayed key
+back at production), a `serial`'s sequence (the copied default drew ids from
+`public.campsites_id_seq`), and index *names* (`list_prices_unique_rate` arrived
+auto-named, so `ON CONFLICT ON CONSTRAINT` failed only here).
+
+`vector` and `pg_trgm` moved to a new `extensions` schema (migration 033).
+An extension is installed once per database, into one schema; with pgvector in
+`public` the `%(embedding)s::vector` cast in `subjects/resolve.py` could not
+resolve under `search_path=experiments`. Production now runs
+`"$user", public, extensions` and the tests `experiments, extensions` -- so the
+type is reachable from both and `public` is on neither test path. The rejected
+alternative was appending `public` to the test path, which is precisely what the
+rule exists to prevent: a table that had not been cloned would resolve to the
+real one.
+
+Anything holding an open connection -- the `api` container especially -- must
+reconnect before an unqualified `vector` resolves again.
+
+**The prices run report carries its prompts.**
+
+`UNCERTAIN 0.60: 'x' -> 'y'` shows the answer and not the question, so a wrong
+match could not be attributed to the prompt or to the model. `InfoWebsiteNameMatcher`
+now keeps a `MatchCall` per call -- system, user, raw reply, pick, confidence --
+and `run_prices` ends with the full prompt for every flagged one. `match_verdict`
+derives "forced" / "uncertain" from the record rather than being told, so
+`snapshot_list_prices` is unchanged. See `docs/experiments.md` §18 for what the
+first read of it found.
+
 ### Done (2026-09-06)
 
 **Only the owner merges and fires paid Actions.** Ruleset `Protect main` now requires one approving review, code-owner review (`CODEOWNERS`: `* @simcoster`), re-approval after the last push, squash-only, and green `lint` + `test`. Repository admins may bypass on a PR (a solo owner cannot approve their own PR) but cannot push to `main`. Fork PRs wait for the owner to approve workflows (`all_external_contributors`). Manual LLM tests use the `llm` environment, reviewer `@simcoster`. Completes the “protect `main` so lint and test are required” note in the CI entry below.
@@ -639,4 +728,4 @@ Artifacts: `docs/` diagrams, sample traces, CI badge, short demo video optional.
 - Availability/price for the next 2 weeks influence results when relevant  
 - Multi-turn prefs persist across messages  
 - Golden set passes CI judge threshold  
-- Deployed endpoint reachable from Telegram with basic monitoring  
+- Deployed endpoint reachable from Telegram with basic monitoring

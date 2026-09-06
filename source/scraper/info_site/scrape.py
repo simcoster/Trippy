@@ -24,10 +24,11 @@ from source.scraper.amenity_enrichment.llm import LlmUsage, record_scrape_cost
 from source.scraper.cli import add_site_argument, site_ids
 from source.scraper.info_site.classify import RateCardClassifier, classify_rows
 from source.scraper.info_site.db import (
+    UNCERTAIN_BELOW,
     maybe_fill_booking_hotel_id,
     snapshot_list_prices,
 )
-from source.scraper.info_site.match_listing import InfoWebsiteNameMatcher
+from source.scraper.info_site.match_listing import InfoWebsiteNameMatcher, MatchCall
 from source.scraper.info_site.parse import (
     parse_booking_hotel_id,
     parse_rate_table,
@@ -147,6 +148,61 @@ def scrape_prices_for_site(
     return len(lodging)
 
 
+def match_verdict(call: MatchCall) -> str:
+    """"forced", "collision", "split", "uncertain", or "" -- the same reading
+    `snapshot_list_prices` makes of the answer, taken from the record rather
+    than passed alongside it.
+
+    A refusal is the model ignoring an instruction the prompt states plainly, so
+    the price is forced onto a candidate; a low number is the model doing as it
+    was told and saying the match is poor. A split is the rescue pass finding
+    that one rate really does price several products -- confident or not, that
+    is worth seeing, because it writes more rows than the rate card has lines.
+    """
+    if call.kind == "collision":
+        # Always shown: the clash was established in code, so this is the one
+        # answer with no confidence of its own to hide behind.
+        return "collision" if call.picked is not None else "collision unresolved"
+    if call.picked is None:
+        return "forced"
+    if len(call.picked_names) > 1:
+        return "split"
+    if call.confidence is not None and call.confidence < UNCERTAIN_BELOW:
+        return "uncertain"
+    return ""
+
+
+def print_flagged_prompts(matcher: InfoWebsiteNameMatcher) -> None:
+    """Every uncertain or forced match, with the exact prompt that produced it.
+
+    A wrong pick is either the prompt's fault or the model's, and the summary
+    lines above cannot tell you which: they show the answer, not the question.
+    Only the user message is printed -- the system prompt is byte-identical on
+    every call and lives in `match_listing.SYSTEM_PROMPT`.
+    """
+    flagged = [(call, match_verdict(call)) for call in matcher.calls]
+    flagged = [(call, verdict) for call, verdict in flagged if verdict]
+    if not flagged:
+        return
+    print()
+    print("=" * 60)
+    print(f"PROMPTS FOR {len(flagged)} FLAGGED MATCH(ES)")
+    print("=" * 60)
+    for i, (call, verdict) in enumerate(flagged, start=1):
+        confidence = "none" if call.confidence is None else f"{call.confidence:.2f}"
+        print("-" * 60)
+        print(f"{i}. {verdict.upper()} (confidence {confidence}) -- {call.site}")
+        if call.kind == "rescue" and len(call.picked_names) > 1:
+            print(f"   priced against {len(call.picked_names)} products")
+        print()
+        print("[user]")
+        print(call.user)
+        print()
+        print("[reply]")
+        print(call.reply)
+    print("-" * 60)
+
+
 def run_prices(
     config: dict, *, usage: LlmUsage | None = None, sites: list[int] | None = None
 ) -> int:
@@ -177,6 +233,7 @@ def run_prices(
             except httpx.HTTPError as exc:
                 print(f"    HTTP error: {exc}")
                 continue
+            calls_before = len(matcher.calls)
             saved = scrape_prices_for_site(
                 conn,
                 site,
@@ -186,6 +243,8 @@ def run_prices(
                 matcher=matcher,
                 unmatched_sink=unmatched,
             )
+            for call in matcher.calls[calls_before:]:
+                call.site = site["name"]
             conn.commit()
             total += saved
             if pause_s > 0:
@@ -197,6 +256,7 @@ def run_prices(
         print(f"{len(unmatched)} rate-card label(s) matched no lodging product:")
         for name in sorted(set(unmatched)):
             print(f"  {name}")
+    print_flagged_prompts(matcher)
     if usage.chat_calls:
         print(usage.summary(prefix="Classify total: "))
     return total

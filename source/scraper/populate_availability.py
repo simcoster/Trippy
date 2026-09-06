@@ -29,7 +29,10 @@ from source.scraper.amenity_enrichment import (
     fill_missing_image_urls,
     parse_room_categories,
 )
-from source.scraper.amenity_enrichment.llm import record_scrape_cost
+from source.scraper.amenity_enrichment.llm import (
+    QWEN_INSTRUCT_30B_MODEL,
+    record_scrape_cost,
+)
 
 # aliased: `site_ids` is also a local here, the subcamp id list.
 from source.scraper.cli import site_ids as parse_site_ids
@@ -331,7 +334,9 @@ def match_accommodation_type(
         return int(row[0])
     if not candidates:
         return None
-    picked = (matcher or InfoWebsiteNameMatcher()).pick_name(
+    # Availability may still skip: a booking unit the lodging panel never
+    # listed is a real thing, and inventing a type for it loses the catalog.
+    picked, _confidence = (matcher or InfoWebsiteNameMatcher()).pick_name(
         needle, [name for _, name in candidates], usage=usage
     )
     if picked is None:
@@ -478,8 +483,12 @@ def main(argv: list[str] | None = None) -> None:
     listing_llm_usage = LlmUsage()
     # Booking names are matched onto the types `scrape-rooms` created, never
     # used to create one. A non-exact match is remembered as an alias.
+    # Pinned to the 30B: the move to the 235B was measured on the rate-card
+    # listing prompt, and this is a different prompt doing a different job.
     type_matcher = InfoWebsiteNameMatcher(
-        system_prompt=UNIT_MATCH_PROMPT, role="unit_match"
+        system_prompt=UNIT_MATCH_PROMPT,
+        role="unit_match",
+        model=QWEN_INSTRUCT_30B_MODEL,
     )
     unmatched: list[tuple[int, str]] = []
 

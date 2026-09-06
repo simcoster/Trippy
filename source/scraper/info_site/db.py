@@ -9,13 +9,21 @@ reported rather than inventing a lodging product the operator never listed.
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from source.scraper.amenity_enrichment.llm import LlmUsage
 from source.scraper.info_site.match_listing import (
     InfoWebsiteNameMatcher,
     match_info_website_name,
+    rescue_info_website_names,
 )
 
 from .schemas import ClassifiedPriceRow
+
+# Below this the match is worth a person's eye. The matcher is told never to
+# refuse -- a rate card and a lodging panel describe one campsite, so a price
+# belongs somewhere -- so a poor match reports itself as a low number instead.
+UNCERTAIN_BELOW = 0.7
 
 LOAD_INFO_WEBSITE_NAMES_SQL = """
 SELECT id, name FROM info_website_names WHERE site_id = %(site_id)s ORDER BY id
@@ -89,6 +97,83 @@ def maybe_fill_booking_hotel_id(
     return row[1] if row else None
 
 
+def colliding_rows(
+    resolutions: list[tuple[ClassifiedPriceRow, list[int], float | None]],
+    rate_class: str,
+) -> list[list[int]]:
+    """Indices of rows that would overwrite each other, worst pair first.
+
+    `list_prices_unique_rate` is (product, guest type, rate period, class), so
+    two rate lines resolving to the same product do not both survive the insert
+    -- the second wins and the first is gone with nothing printed. This finds
+    that before any of it is written, and it needs no model and no confidence:
+    the rate card priced them on separate lines, so they are separate products
+    and one of the two matches is simply wrong.
+    """
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    for index, (row, name_ids, _confidence) in enumerate(resolutions):
+        for name_id in name_ids:
+            key = (name_id, row.guest_type, row.rate_period, rate_class)
+            groups[key].append(index)
+    return [indices for indices in groups.values() if len(indices) > 1]
+
+
+def resolve_collisions(
+    resolutions: list[tuple[ClassifiedPriceRow, list[int], float | None]],
+    names: list[tuple[int, str]],
+    *,
+    rate_class: str,
+    matcher: InfoWebsiteNameMatcher,
+    usage: LlmUsage | None = None,
+    unmatched_sink: list[str] | None = None,
+) -> None:
+    """Give each of two colliding rate lines a product of its own, in place.
+
+    Only a pair is asked about: three lines on one product is a different shape
+    -- likely a catalog missing an entry rather than one bad match -- and is
+    reported instead of guessed at.
+    """
+    by_id = dict(names)
+    for indices in colliding_rows(resolutions, rate_class):
+        first_row, first_ids, _ = resolutions[indices[0]]
+        if len(indices) != 2:
+            labels = ", ".join(
+                repr(resolutions[i][0].raw_label) for i in indices
+            )
+            print(f"      {len(indices)} labels on one product, left as is: {labels}")
+            if unmatched_sink is not None:
+                unmatched_sink.append(f"{len(indices)}-way collision: {labels}")
+            continue
+        second_row, second_ids, _ = resolutions[indices[1]]
+        collided_on = by_id.get(first_ids[0], "")
+        first, second, confidence = matcher.pick_pair(
+            first_row.raw_label,
+            second_row.raw_label,
+            collided_on,
+            [name for _, name in names],
+            usage=usage,
+        )
+        if first is None or second is None:
+            print(
+                f"      COLLISION unresolved on {collided_on!r}: "
+                f"{first_row.raw_label!r} / {second_row.raw_label!r}"
+            )
+            if unmatched_sink is not None:
+                unmatched_sink.append(
+                    f"unresolved collision on {collided_on}: "
+                    f"{first_row.raw_label} / {second_row.raw_label}"
+                )
+            continue
+        ids = {name: row_id for row_id, name in names}
+        resolutions[indices[0]] = (first_row, [ids[first]], confidence)
+        resolutions[indices[1]] = (second_row, [ids[second]], confidence)
+        print(
+            f"      COLLISION on {collided_on!r} split: "
+            f"{first_row.raw_label!r} -> {first!r}, "
+            f"{second_row.raw_label!r} -> {second!r}"
+        )
+
+
 def snapshot_list_prices(
     conn,
     *,
@@ -103,7 +188,11 @@ def snapshot_list_prices(
     """Replace regular list prices for a site. Persists lodging rows only.
 
     Each rate-card label is resolved to an existing `info_website_names` row --
-    exact name, else one 30B pick over the names `scrape-rooms` created. A label
+    exact name on the classified type, else one 235B pick shown the full
+    rate-card label, over the names `scrape-rooms` created. A pick the model is
+    unsure of gets a second call that may name several products, and the price
+    is then filed against each of them. Two labels landing on one product is
+    settled last, once every row is resolved -- see `resolve_collisions`. A label
     that resolves to nothing is skipped: the rate card sometimes prices things
     the lodging panel does not list, and a price with no product is not
     something the planner can use.
@@ -119,28 +208,88 @@ def snapshot_list_prices(
             {"site_id": site_id, "rate_class": rate_class},
         )
         stored: list[ClassifiedPriceRow] = []
+        resolutions: list[tuple[ClassifiedPriceRow, list[int], float | None]] = []
         for row in lodging:
-            name_id = match_info_website_name(
-                row.accommodation_type, names, matcher=matcher, usage=usage
+            name_id, confidence = match_info_website_name(
+                row.accommodation_type,
+                names,
+                # The label as the rate card wrote it. The classifier's
+                # normalised type is what can match a catalog name exactly, but
+                # it is also what drops the room numbers, and the model needs
+                # them: `חדר צוות גדול` cannot be told from three other staff
+                # rooms, `... (חדרים 5 ו-6)` can.
+                full_label=row.raw_label,
+                matcher=matcher,
+                usage=usage,
             )
-            if name_id is None:
-                print(f"      NO LODGING MATCH, price skipped: {row.raw_label!r}")
+            name_ids = [] if name_id is None else [name_id]
+            doubted = name_id is None or (
+                confidence is not None and confidence < UNCERTAIN_BELOW
+            )
+            if doubted and matcher is not None:
+                # A rate card sometimes prices two products on one line, and a
+                # single pick has to be wrong about one of them. Only a doubted
+                # answer is worth a second call, and only a doubted one is
+                # allowed to come back with several names.
+                rescued, rescued_confidence = rescue_info_website_names(
+                    row.raw_label, names, matcher=matcher, usage=usage
+                )
+                if rescued:
+                    name_ids, confidence = rescued, rescued_confidence
+                    if len(rescued) > 1:
+                        print(
+                            f"      SPLIT across {len(rescued)}: {row.raw_label!r}"
+                        )
+            if not name_ids:
+                # The prompt forbids a refusal, so this is the model failing to
+                # follow it rather than a label with no home. Attach the price
+                # to the first candidate at confidence 0 and say so: a price
+                # filed against the wrong unit is visible and fixable, a price
+                # dropped on the floor is neither.
+                name_ids, confidence = [names[0][0]], 0.0
+                print(f"      FORCED MATCH (model refused): {row.raw_label!r}")
+            if confidence is not None and confidence < UNCERTAIN_BELOW:
+                picked = ", ".join(
+                    n for i, n in names if i in name_ids
+                )
+                print(
+                    f"      UNCERTAIN {confidence:.2f}: "
+                    f"{row.raw_label!r} -> {picked!r}"
+                )
                 if unmatched_sink is not None:
-                    unmatched_sink.append(row.accommodation_type)
-                continue
-            stored.append(row)
-            cur.execute(
-                INSERT_LIST_PRICE_SQL,
-                {
-                    "site_id": site_id,
-                    "info_website_name_id": name_id,
-                    "guest_type": row.guest_type,
-                    "rate_period": row.rate_period,
-                    "rate_class": rate_class,
-                    "price": row.price,
-                    "currency": currency,
-                    "notes": row.notes,
-                    "raw_label": row.raw_label,
-                },
+                    unmatched_sink.append(
+                        f"{row.raw_label} -> {picked} ({confidence:.2f})"
+                    )
+            resolutions.append((row, name_ids, confidence))
+
+        # Every row is resolved before any is written: a clash is only visible
+        # once both halves of it exist, and it has to be settled before the
+        # insert rather than discovered from a row count afterwards.
+        if matcher is not None:
+            resolve_collisions(
+                resolutions,
+                names,
+                rate_class=rate_class,
+                matcher=matcher,
+                usage=usage,
+                unmatched_sink=unmatched_sink,
             )
+
+        for row, name_ids, _confidence in resolutions:
+            stored.append(row)
+            for name_id in name_ids:
+                cur.execute(
+                    INSERT_LIST_PRICE_SQL,
+                    {
+                        "site_id": site_id,
+                        "info_website_name_id": name_id,
+                        "guest_type": row.guest_type,
+                        "rate_period": row.rate_period,
+                        "rate_class": rate_class,
+                        "price": row.price,
+                        "currency": currency,
+                        "notes": row.notes,
+                        "raw_label": row.raw_label,
+                    },
+                )
     return stored
