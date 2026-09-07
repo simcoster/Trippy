@@ -6,6 +6,65 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-07, amenity gate −0.7)
+
+**Do not loosen amenity −0.8 → −0.7.** `"electricity"` extras are real
+(`electric_outlet` −0.750, `electric_hookup` −0.704, top 5) **and**
+`electric_stove`. The same −0.7 makes `tent` (−0.719) satisfy desert and
+quiet — 25–32 types — and the judge cannot veto a stated amenity.
+`electric_hookup` is caravan bay **and** PITCH tents **and** site-wide
+נקודות חשמל, not trailer-only. Gate stays −0.8. experiments.md
+2026-09-07 §7.
+
+### Done (2026-09-07, retrieve K=5/10/20)
+
+**Labeled gold is rank 1 at −0.6; K=10/20 add no gold.** Same 35 packs,
+nearest 20 claims and 20 rules. Claim gold −0.615…−0.767; `dogs_allowed`
+−0.897; `electric_hookup` −0.704. Desert has no location rule in 20 —
+tents at −0.719 fill the list and sit closer than electricity. Keep
+claim top-5. Rule gate should not be −0.6 (flood) or −0.8 (drops
+hookup). experiments.md 2026-09-07 §6.
+
+### Done (2026-09-07, claim-rule judge)
+
+**One 235B call does relevant + satisfies, with campsite rules in view.**
+Same 35 packs as the polarity probe, top 5 claims at −0.6 plus nearest 5
+rules (all categories). Combined JSON: 35/35 satisfies and 35/35
+relevant-exact. Pet-forbidden stays relevant and does not satisfy.
+Gate −0.6; planner filters on `satisfies`, recommender gets the relevant
+claims. Did not split into two calls. experiments.md 2026-09-07 §5.
+
+### Done (2026-09-07, claim-judge polarity)
+
+**Judge polarity few-shots fix pet-friendly.** Same −0.6 retrieve as §3;
+prompt now requires `is_positive` to match the request. Horshat Tal /
+Ashkelon “pets not allowed” → no. Desert/Mamshit/electricity still yes.
+35/35. Gate −0.6 kept. Not in the recommender until you say so.
+experiments.md 2026-09-07 §4.
+
+### Done (2026-09-07, claim-verify judge probe)
+
+**235B can filter a −0.6 claim gate for location.** All claims with
+`<#> ≤ −0.6` per site, one judge call, “most may be irrelevant”: desert /
+in-the-desert 22/22 vs gold (Masada + Mamshit despite; Khan Be'erot and
+Hai-Bar animals no). Pet-friendly: 2 false yes on “pets not allowed”.
+Not wired; polarity must be in the prompt first. experiments.md
+2026-09-07 §3.
+
+### Done (2026-09-07, despite-aside split)
+
+**Claim splitter splits concessive asides.** "Despite X, Y" / `בכל זאת מדבר
+ורוחות` was one cleanliness claim, so `"desert"` RAG missed Mamshit (−0.578
+vs gate −0.7). One few-shot: 15/15 on the 235B (English, Hebrew span, full
+Mamshit review × 5). Stored claims unchanged until a claims rebuild.
+experiments.md 2026-09-07 §2.
+
+### Done (2026-09-07, claims_with_reviews name)
+
+**`claims_with_reviews` includes the campsite name.** The view still
+exposes `campsite_id`; it now joins `campsites` so a row is readable
+without a second lookup. Migration `035_claims_campsite_name`.
+
 ### Done (2026-09-07, date_intent few-shots)
 
 **Extractor date_intent few-shots for הקרוב / הבא / בעוד N שבועות.** The 30B

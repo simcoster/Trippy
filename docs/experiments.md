@@ -9,6 +9,120 @@ decided.
 
 ## 2026-09-07
 
+### 7. Does loosening the amenity gate −0.8 → −0.7 catch electricity without tent-as-desert?
+
+**Question.** `electric_hookup` sits at −0.704, outside −0.8, so with no
+claim the listing never enters `fits`. Is it trailer-only? Does top 5
+already contain it? How much noise does −0.7 add on other queries?
+
+**Setup.** No LLM, no writes. All `campsite_rules` whose subject name
+has electric/hookup/outlet/power, with unit name and `evidence_span`.
+Then `search_stated_amenities` (limit 80) and `search_site_amenities`
+(limit 40) for 11 queries; count types/sites at −0.8 vs extra in
+(−0.8, −0.7]. Output `temp/amenity_gate_minus07.json`.
+
+**Result.** `electric_hookup` is **not only trailers**:
+
+| scope | sentence | sites |
+|---|---|---|
+| `עמדת חניה לקרוואן פרטי` | קיים חיבור חשמל ומים | Horshat Tal, Maayan Harod, Yarkon, Besor, Tel Arad, Mamshit |
+| `מתחם PITCH` | …וחיבור חשמל | Yehiam, Maayan Harod |
+| site-wide | נקודות חשמל (sometimes לקבוצות בלבד / shade shelters) | Nahal Amud, Kochav Hayarden, Gan Hashlosha, Masada, Tel Arad, Khan Be'erot, Hai-Bar, Yehiam |
+
+Query `"electricity"`, unit ranking (ungated): **top 5 does reach it.**
+Ranks 1–3 `electric_outlet` bungalow/tukul **−0.750**; ranks 4–5
+`electric_hookup` PITCH then caravan bay **−0.704**. All fail −0.8; all
+pass −0.7. `electric_stove` (staff kitchen) is −0.703, just behind.
+
+Noise at −0.7 (unit extras unless noted):
+
+| query | @−0.8 | extra @−0.7 | what the extras are |
+|---|---|---|---|
+| electricity | 0 | **14** types + 8 sites | outlets, hookups, **stoves** |
+| running water | 0 unit / 1 site | 14 types + 17 sites | caravan water hookup; **every** `drinking_water_fountain` at −0.788 |
+| desert / in the desert | 0 | **25** tents+huts at −0.719/−0.73 | lodging, not location |
+| quiet | 0 | **32** tents/huts/rooms | same |
+| near the north | 0 | 5 חושה as `hut` −0.706 | false location |
+| fridge | 18 | 3 | AC rooms as fridge |
+| hot showers | 14 | 3 | shared_shower / heating |
+| AC in room | 17 | 0 | — |
+| near the sea | 0 | 0 | still miss |
+
+The judge cannot veto a stated amenity, so desert→tent at −0.719 would
+put every tent pitch in `fits`.
+
+**Decision.** Keep amenity gate **−0.8**. −0.7 recovers electricity
+synonyms and also makes `tent` satisfy desert/quiet. Caravan-bay hookup
+is one of three `electric_hookup` senses; bungalow `electric_outlet` is
+the closer electricity hit. design.md amenity gate.
+
+### 6. Does gold sit past rank 5 at gate −0.6 (K=5 vs 10 vs 20)?
+
+**Question.** §5 packed top 5 claims and top 5 rules. If gold evidence
+sometimes ranks lower, does K=10 or 20 recover it at the same −0.6
+gate? Claims and rules may need different distance cutoffs.
+
+**Setup.** Same 35 (query, site) packs as §5 (any claim `≤ −0.6`). Fetch
+the nearest **20** claims and **20** rules with no K cap, then score gold
+recall at K=5/10/20, both among gated hits and among the raw 20. Gold
+claims = §5 relevant set; gold rules = `dogs_allowed` / `pets_allowed`
+for pet-friendly, `electric_hookup` / `electricity` / `electric_outlet`
+for electricity, `near_a_desert` / `desert` for desert queries. Distances
+on every row. No LLM, no writes. `temp/claim_rule_topk.json`.
+
+**Result.** **Labeled gold is always rank 1.** K=10 and K=20 add no gold.
+
+| query | claim gold d / rank | rule gold d / rank |
+|---|---|---|
+| desert | Masada atmosphere **−0.750** r1 | none in top 20 |
+| in the desert | Masada **−0.767** r1; Mamshit despite **−0.637** r1 | none in top 20 |
+| pet friendly | Horshat Tal forbid **−0.700** r1; Ashkelon dogs **−0.615** r1 | `dogs_allowed` false **−0.897** r1 (12/12) |
+| electricity | Yarkon **−0.656** r1 | `electric_hookup` true **−0.704** r1 |
+
+Sites with **6–7** gated claims exist (Nahal Amud, Khan Be'erot, Castel,
+Tel Arad) — all gold=0; K=5 already dropped only noise. Rules at −0.6
+are flooded: Masada desert **20/20** pass, all tent/room/shower; no
+location subject in 20. Tent rules sit at **−0.719**, which is *closer*
+than `electric_hookup` (−0.704). A shared −0.8 rule gate would drop
+tents **and** the electricity rule.
+
+**Decision.** Keep claim K=5 at −0.6; raising K does not recover gold on
+this set. Do not use the claim gate as the rule gate: −0.6 over-recalls
+lodging subjects, −0.8 would miss `electric_hookup`. Rule threshold
+still open. design.md "Planner claim/rule judge".
+
+### 5. Can one 235B call return relevant claims *and* satisfies, given rules too?
+
+**Question.** The planner needs two decisions on a −0.6 top-5 claim pack:
+which claims are about the request (evidence for the recommender, including
+forbiddens) and whether the guest would get what they asked for (filter).
+Official `campsite_rules` must be in view (`dogs_allowed` polarity false,
+`electric_hookup`). Does one JSON object (`relevant_claims` + `satisfies`)
+hold, or do the jobs interfere so we need two calls?
+
+**Setup.** Same 35 (query, site) packs as §4, but claims capped at top 5
+per site and nearest 5 `campsite_rules` (all categories, including polarity
+false) attached. Gold satisfies = §4 (Masada desert, Mamshit despite,
+Yarkon electricity; pet-friendly none). Gold relevant = only claims actually
+about the request, including “Pets are not allowed” / “not allowed to bring
+dogs”. Campfires, staff-friendly, desert-animals-on-the-drive, tent/cabin
+rules are noise. Combined prompt with polarity few-shots plus a relevant-
+but-does-not-satisfy pet example. 235B, temperature 0. No writes. Dump
+`temp/claim_rule_judge_packs.json`; output
+`temp/claim_rule_judge_combined.json`.
+
+**Result.** **35/35 satisfies and 35/35 relevant-exact.** fp=0 fn=0. 42 s,
+~$0.01. Horshat Tal / Ashkelon: relevant = the forbid claim, satisfies =
+false (official `dogs_allowed` false). Khan Be'erot / Hai-Bar animals: not
+relevant, not satisfies. Yarkon `satisfy_by=both` (claim + `electric_hookup`).
+Nearest rules for `"desert"` were tents/cabins at ~−0.72; the judge ignored
+them.
+
+**Decision.** One call. Do not split relevant vs satisfies. Claim retrieve
+gate −0.6, top 5; planner runs the judge and keeps all relevant claims as
+evidence. experiments.md this entry; design.md "Planner claim/rule judge";
+claims.md.
+
 ### 1. Do date-intent few-shots fix הקרוב vs הבא and בעוד שבועיים?
 
 **Question.** Five live camping queries had the 30B emit a `date_intent` that
@@ -35,6 +149,87 @@ writes.
 
 **Decision.** Keep the 30B. Do not split date intent into a second call.
 design.md "Query extractor: date_intent".
+
+### 2. Does a despite-X/Y few-shot unglue desert from tent cleanliness?
+
+**Question.** Mamshit claim 470 was one row: "The shared sleeping tent is
+clean and not very dusty despite being in the desert with winds." Query
+`"desert"` sat at −0.578, outside the −0.7 claim gate; only Masada's short
+"The desert atmosphere is perfect." passed. The 235B splitter had glued a
+concessive setting (`בכל זאת מדבר ורוחות`) onto the cleanliness fact. Does
+one despite-X → [X, Y] example split them, including on the full review?
+
+**Setup.** Prompt-only change on `SPLIT_SYSTEM`. No DB writes. 235B
+`split_one_review`, temperature 0, three inputs × five trials:
+
+| input | what was glued before |
+|---|---|
+| English one-liner (the few-shot) | n/a (new) |
+| Hebrew parenthetical `האוהל עצמו נקי… (בכל זאת מדבר ורוחות)` | the stored claim |
+| Truncated Mamshit review containing that span | claim 470 |
+
+Pass = a desert claim that does not also say clean/dust, plus a clean/dust
+claim.
+
+**Result.** **15/15.** 44 s. No writes. Stored rows unchanged until
+`just populate-claims` after `just clear-claims`.
+
+**Decision.** Keep the few-shot. Do not add GIN yet. claims.md split rules.
+
+### 3. Can a 235B judge salvage a −0.6 claim gate?
+
+**Question.** At −0.6 the claim lane adds many false sites (campfires /
+seashore for `"desert"`). If we keep the loose gate for recall and show the
+235B *all* claims that passed, telling it most are irrelevant, does it
+still only verify a site when a claim actually states the amenity?
+
+**Setup.** No writes. Query vector, then every claim with
+`embedding <#> ≤ −0.6` (no top-5 cap), grouped by campsite. One
+`Qwen3-235B` call per (query, site), temperature 0. Prompt: loose
+retrieval, do not infer from distance or site name, concessive asides
+count, passing mentions do not.
+
+| query | sites at −0.6 | gold verifies | judge yes |
+|---|---|---|---|
+| desert | 7 | 1 (Masada atmosphere) | 1 Masada |
+| in the desert | 15 | 2 (Masada, Mamshit glued despite) | 2 same |
+| pet friendly | 12 | 0 (none say pets *allowed*) | 2 (Horshat Tal / Ashkelon: pets *forbidden*) |
+| electricity | 1 | 1 (Yarkon, limited hookup) | 1 same |
+
+**Result.** Location: **22/22** vs gold (7+15). Khan Be'erot correctly
+rejected (reviews say במדבר, stored claims do not). Hai-Bar “desert
+animals on the drive” rejected. Mamshit concessive accepted. Electricity
+1/1. Pet-friendly: the judge treated a negative policy as verifying the
+*topic* (“pets are not allowed” → yes). 35 calls, 382 s, ~$0.004. No
+writes.
+
+**Decision.** A post-retrieve 235B judge can eat the −0.6 location noise.
+It must be told that *verifies* means the guest gets what they asked for
+(`is_positive` / same polarity), not that the topic is mentioned. Not
+wired into the planner until that line is in the prompt and re-checked.
+claims.md open.
+
+### 4. Does polarity + few-shot stop “pets not allowed” counting as pet-friendly?
+
+**Question.** §3's 235B judge recovered desert sites at gate −0.6 but said
+yes on Horshat Tal and Ashkelon for `"pet friendly"` because a claim
+*mentioned* pets (`Pets are not allowed`). The recommender needs
+*satisfies the request*, not topic overlap. Do an explicit polarity rule
+and four few-shots fix that without losing Masada / Mamshit / electricity?
+
+**Setup.** Same retrieve as §3 (every claim `<#> ≤ −0.6` per site). Same
+35 (query, site) pairs. New system prompt: `is_positive` must match what
+the guest wants; `"Pets are not allowed"` ↛ pet-friendly; concessive
+desert aside still yes; electricity with limited coverage still yes.
+235B, temperature 0. No writes. Output
+`temp/claim_verify_judge_polarity.json`.
+
+**Result.** **35/35 vs gold.** Pet-friendly 12/12 no (Horshat Tal and
+Ashkelon: “mentions pets but forbids them”). Desert 7/7 (Masada only).
+In-the-desert 15/15 (Masada + Mamshit despite). Electricity 1/1. 51 s.
+
+**Decision.** Keep gate −0.6 and this judge prompt for the recommender
+once wired. Not in production until the user is satisfied. claims.md.
 
 ## 2026-09-06
 

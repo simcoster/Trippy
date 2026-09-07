@@ -518,6 +518,83 @@ def search_site_amenities(
         return [{"error": f"Error searching site amenities: {e}"}]
 
 
+def search_campsite_rules(
+    query: str,
+    limit: int = 5,
+    *,
+    embedding: str | None = None,
+    campsite_ids: list[int] | None = None,
+) -> list[dict]:
+    """Nearest official rules per campsite, all subject categories.
+
+    Unlike the amenity lanes this includes polarity-false rows (dogs_allowed
+    forbidden) and boolean/numeric rules. A subcamp reads its parent's rules.
+    """
+    db_url = os.environ.get("DATABASE_URL")
+    if not db_url:
+        return []
+    if campsite_ids is not None and not campsite_ids:
+        return []
+    vec_literal = embedding or _query_vec_literal(query)
+    ids = [int(x) for x in campsite_ids] if campsite_ids is not None else None
+    if ids is None:
+        sql = """
+            SELECT cr.campsite_id, sv.name, sv.category, cr.polarity,
+                   cr.qualifier, cr.qualifier_unit, cr.evidence_span,
+                   cr.accommodation_type_id,
+                   sv.embedding <#> %s::vector AS distance
+            FROM campsite_rules cr
+            JOIN subject_vectors sv ON sv.id = cr.subject_id
+            WHERE sv.embedding IS NOT NULL
+            ORDER BY sv.embedding <#> %s::vector
+            LIMIT %s
+        """
+        params: list[Any] = [vec_literal, vec_literal, limit]
+    else:
+        sql = """
+            SELECT s.campsite_id, x.name, x.category, x.polarity,
+                   x.qualifier, x.qualifier_unit, x.evidence_span,
+                   x.accommodation_type_id, x.distance
+            FROM unnest(%s::bigint[]) AS s(campsite_id)
+            JOIN campsites site ON site.id = s.campsite_id
+            CROSS JOIN LATERAL (
+                SELECT sv.name, sv.category, cr.polarity,
+                       cr.qualifier, cr.qualifier_unit, cr.evidence_span,
+                       cr.accommodation_type_id,
+                       sv.embedding <#> %s::vector AS distance
+                FROM campsite_rules cr
+                JOIN subject_vectors sv ON sv.id = cr.subject_id
+                WHERE cr.campsite_id = COALESCE(site.parent_id, site.id)
+                  AND sv.embedding IS NOT NULL
+                ORDER BY sv.embedding <#> %s::vector
+                LIMIT %s
+            ) x
+        """
+        params = [ids, vec_literal, vec_literal, limit]
+    try:
+        with psycopg.connect(db_url) as conn:
+            register_vector(conn)
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+        return [
+            {
+                "campsite_id": int(row[0]),
+                "subject": row[1],
+                "category": int(row[2]),
+                "polarity": row[3],
+                "qualifier": float(row[4]) if row[4] is not None else None,
+                "qualifier_unit": int(row[5]) if row[5] is not None else None,
+                "evidence_span": row[6],
+                "accommodation_type_id": int(row[7]) if row[7] is not None else None,
+                "distance": float(row[8]),
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        return [{"error": f"Error searching campsite rules: {e}"}]
+
+
 # Global top-K over every claim. Used when no campsite scope is given.
 _CLAIMS_GLOBAL_SQL = """
         SELECT c.campsite_id, c.claim, c.is_positive, r.published_at,

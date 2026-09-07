@@ -14,8 +14,9 @@ from source.agent.dates import DATE_TRUNCATED_NOTICE, MAX_DATE_WINDOWS
 
 AMENITY_MATCH_MAX_DISTANCE = -0.8
 # Claims are whole sentences, so they sit further from a short query than a
-# curated amenity label does — a looser gate than the amenity lane.
-CLAIM_MATCH_MAX_DISTANCE = -0.7
+# curated amenity label does — a looser gate than the amenity lane. −0.6 is
+# recall; the 235B claim/rule judge (claim_judge.py) is precision.
+CLAIM_MATCH_MAX_DISTANCE = -0.6
 CLAIM_RECENCY_HALF_LIFE_DAYS = 365
 CLAIM_EVIDENCE_LIMIT = 5
 REJECTED_SAMPLE_LIMIT = 5

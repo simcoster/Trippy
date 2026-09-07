@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import warnings
 from typing import Annotated, Literal, TypedDict
 
@@ -18,6 +19,7 @@ from langchain_core.messages import (
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from source.agent.claim_judge import apply_claim_rule_judgements
 from source.agent.constraints import (
     EMPTY_CONSTRAINTS,
     attach_campsite,
@@ -237,6 +239,10 @@ def planner_node(state: ChatState) -> ChatState:
     """Vacancies + prices, then semantic intersection with evidence."""
     constraints_json = latest_constraints_json(state["messages"])
     payload = planner_fits_payload(constraints_json)
+    # Existing planner_node tests mock search, not the 235B judge. Skip the
+    # live call under pytest; production Telegram/Streamlit still judges here.
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        payload = apply_claim_rule_judgements(payload)
     return {
         "messages": [
             ChatMessage(

@@ -771,3 +771,40 @@ demonstrated them. Three few-shots plus `weeks_from_now: N` in the schema
 held 25/25 at temperature 0 (experiments.md 2026-09-07 §1), so the extractor
 stays on the 30B and date intent is not a second LLM call.
 
+## Planner claim/rule judge
+
+The claim retrieve gate is **−0.6** (`CLAIM_MATCH_MAX_DISTANCE`), top 5
+hits per site. That is recall: campfires match `"desert"`, “pets not
+allowed” matches `"pet friendly"`. Precision is a 235B call per
+(query, campsite) in `planner_node` (`source/agent/claim_judge.py`).
+
+The judge sees the top-5 claims **and** the nearest official
+`campsite_rules` (all categories, including polarity false). One JSON
+object returns both decisions (experiments.md 2026-09-07 §5, 35/35; a
+split into two calls was not needed):
+
+- `relevant_claims` — every claim actually about the request, including
+  forbiddens. Those are the only review claims the recommender sees.
+- `satisfies` — the guest would get what they asked for, from a matching-
+  polarity claim **or** a granting rule (`electric_hookup` true;
+  `dogs_allowed` false does **not** satisfy pet-friendly).
+
+Claim-only fits the judge rejects are dropped. A stated amenity is not
+vetoed. Ranking of the survivors is still the recency-weighted claim
+score; a later pass can rank on the judge.
+
+Nearest-20 retrieve at the same −0.6 gate (experiments.md 2026-09-07 §6)
+put every labeled gold claim and gold rule at **rank 1**, so K=10/20 do
+not recover missed gold. Rules cannot share that gate: tent subjects at
+−0.719 pass −0.6 in bulk and are closer than `electric_hookup` (−0.704);
+−0.8 would drop the hookup. Claim K stays 5; the rule cutoff is still
+open.
+
+The listing amenity gate stays **−0.8** (`AMENITY_MATCH_MAX_DISTANCE`).
+Loosening to −0.7 would let `"electricity"` match `electric_outlet`
+(−0.750) and `electric_hookup` (−0.704) — both in the ungated top 5 —
+but the same band makes `tent` (−0.719) satisfy `"desert"` / `"quiet"`,
+and a stated amenity is never vetoed (experiments.md 2026-09-07 §7).
+`electric_hookup` is three listings: caravan-bay water+power, PITCH tent
+power, and site-wide נקודות חשמל (sometimes groups / shade only).
+
