@@ -14,9 +14,26 @@ Probe tables (anonymized): `temp/split_reviews.md`, `temp/split_claims_table_235
 | Stars / author / full text | `reviews` table only — claims do not copy rating |
 | Claims columns | `review_id`, `campsite_id`, `claim` (standalone rewrite, usually EN), `evidence_span` (original language), `polarity`, `confidence`, `embedding` |
 | Recency | `reviews.published_at`; search joins reviews |
-| Visit gate | **30B** before split. Ads / brochure / history dumps **and hiking-trail writeups** → `reviews.skip_reason = not_personal`, `skip_note`, **no claims**. Guest reports of site conditions (streams dry, crowding, paid entry) **keep**, even if they rant. Mixed stay+trail still keep. Splitter and `confidence < 0.5` unchanged. Empty text: store only, no gate. Gold: `visit_gate.json`. |
+| Visit gate | **30B** before split. Ads / brochure / history dumps **and hiking-trail writeups** → `reviews.skip_reason = not_personal`, `reviews.is_relevant = false`, `skip_note`, **no claims**. Guest reports of site conditions (streams dry, crowding, paid entry) **keep** (`is_relevant = true`), even if they rant. Mixed stay+trail still keep. Splitter and `confidence < 0.5` unchanged. Empty text: `is_relevant = false`, no gate. Gold: `visit_gate.json`. |
 
-Ingest: `source/scraper/populate_reviews_and_claims.py` → `populate_reviews_and_claims(campsite_id, reviews_dict)`. Places fetch is still a separate step.
+Google fetch and claim extract are separate:
+
+1. `just scrape-reviews` (`populate_reviews_and_claims.main`) — two Place Details
+   calls per site (`reviews_sort=newest`, then `most_relevant`; cap 5 each),
+   concatenated newest-first, duplicates dropped (a most_relevant review can
+   also be newest; same author/time/text). Upserts `reviews` only. Same text
+   keeps `is_relevant`; changed non-empty text sets it `NULL` so claims can be
+   rebuilt; empty text is `is_relevant = false`. Does not call the visit gate
+   or splitter.
+2. `just populate-claims` — rows with `is_relevant IS NULL` and non-empty text:
+   visit gate, one 235B split per kept review, one embed batch per site, then
+   commit that site. Already-classified rows (`is_relevant` not null) are skipped.
+3. `just clear-claims` — `DELETE FROM claims` and
+   `UPDATE reviews SET is_relevant = NULL`. Review rows stay. `clear-reviews`
+   still truncates both tables.
+
+Tests may still pass a reviews dict into `populate_reviews_and_claims()`
+(upsert + gate + split in one call). Production scrape does not.
 
 ## Why 1 review / call (not 5-in-1)
 
@@ -50,11 +67,11 @@ Embeddings retrieve by topic; `text_en` is already a standalone sentence. Aspect
 ## Schema
 
 ```
-reviews  (campsite_id, source, author, rating, text, published_at, review_uid, skip_reason, skip_note)
+reviews  (campsite_id, source, author, rating, text, published_at, review_uid, skip_reason, skip_note, is_relevant)
 claims   (review_id, campsite_id, …)  — no stars; date via join
 ```
 
-Migration `014_reviews_and_claims` drops the old `claims` table (text `campsite_id`, author/date/source on the claim) and recreates it with FKs.
+Migration `014_reviews_and_claims` drops the old `claims` table (text `campsite_id`, author/date/source on the claim) and recreates it with FKs. `034_review_is_relevant` adds nullable `reviews.is_relevant`.
 
 ## Open: negative claims presuppose the feature (2026-09-02)
 

@@ -6,6 +6,34 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-07, empty reviews)
+
+**Empty review text is `is_relevant = false`.** scrape-reviews upsert sets it on
+insert/update; populate-claims bulk-marks leftover empty unclassified rows
+before the visit gate. They are not sent to the 30B.
+
+### Done (2026-09-07, claims per site)
+
+**populate-claims commits after each campsite.** A restart skips
+`is_relevant IS NOT NULL` (already gated). Failed site rolls back; finished
+sites stay. Supersedes the same-day split entry's one-transaction-for-the-table.
+
+### Done (2026-09-07, claims split)
+
+**Google fetch no longer classifies.** `just scrape-reviews` upserts the 5+5
+Place Details rows into `reviews` and stops. `just populate-claims` visit-gates
+and splits rows with `is_relevant IS NULL`. `just clear-claims` deletes `claims`
+and nulls that flag only, so review text is kept and Google is not re-fetched
+to rebuild claims. Migration `034`. Supersedes the same-day entry that still
+ran gate/split inside scrape-reviews. claims.md ingest.
+
+### Done (2026-09-07, reviews)
+
+**Reviews scrape always fetches newest then most_relevant.** Two Place Details
+calls per site (cap 5 each), concatenated newest-first, overlap dropped, then
+the same visit-gate / split / embed path. `--most-relevant` is a no-op.
+Supersedes the weekly-newest / seed-relevant split. claims.md ingest.
+
 ### Done (2026-09-07)
 
 **Availability type match lowercases the 30B view.** Ma'ayan Harod's lodging

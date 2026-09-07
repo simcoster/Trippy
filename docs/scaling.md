@@ -20,7 +20,7 @@ The webhook holds the HTTP request until the whole LangGraph turn finishes (ligh
 
 Scrapers are `just` CLIs a human runs. Availability is still capped (`limit_campsites: 2` plus a leftover `and id = 2` filter). Every search opens a fresh `psycopg.connect()`. No CI, no real health check, no job runner, no backups.
 
-Reviews ingest (`populate_reviews_and_claims`): for each campsite, for each review: 30B visit gate → 235B split (one review per call, locked in `docs/claims.md`) → one embed batch for the site. The site is one transaction; an exception rolls all of it back.
+Reviews fetch (`just scrape-reviews`) is Google Place Details only. Claim extract (`just populate-claims`): for each unclassified review (`is_relevant IS NULL`): 30B visit gate → 235B split (one review per call, locked in `docs/claims.md`) → one embed batch for the site. The site is one transaction; an exception rolls all of it back.
 
 Availability scrape: for each site, for each of 14 nights: HTTP to INPA, 0.5s pause, sometimes 30B name-match and 235B amenity enrich. Sequential.
 
@@ -134,8 +134,7 @@ Treat ingest as scheduled, observable jobs — not `just scrape-availability` on
 | **Availability** | Hourly Thu–Sat IL daytime; every 4–6h otherwise | Booking truth decays fast near weekends |
 | **Prices / info-site** | Daily or weekly | Tariffs change rarely |
 | **Site discovery + booking IDs** | Weekly | Catalog is almost static |
-| **Reviews `newest`** | Weekly | Places cap is 5; LLM-heavy |
-| **Reviews `most_relevant` seed** | Once per new site | Not a cron |
+| **Reviews** | Weekly | Two Details calls per site (newest + most_relevant, cap 5 each); LLM-heavy |
 
 How: Cloud Run Jobs + Scheduler, GitHub Actions cron, or a tiny worker with cron. Same Docker image, different command. Lock per job so two overlapping availability scrapes cannot delete-then-insert the same night.
 

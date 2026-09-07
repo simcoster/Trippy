@@ -76,9 +76,13 @@ scrape-sites:
 scrape-availability *args:
     uv run python source/scraper/populate_availability.py {{ trim_start_match(args, "-- ") }}
 
-# Google Place Details → reviews + claims (newest). Seed: just scrape-reviews -- --most-relevant
+# Google Place Details → reviews table only (newest then most_relevant, concat)
 scrape-reviews *args:
     uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
+
+# Visit-gate + split claims for reviews with is_relevant IS NULL (--campsite-id N)
+populate-claims *args:
+    uv run python -m source.scraper.populate_claims {{ trim_start_match(args, "-- ") }}
 
 # info-site static pages -> campsite_rules (site-level rules + amenities; --site N)
 scrape-rules *args:
@@ -91,6 +95,10 @@ clear-availability *args:
 # Truncate reviews and claims; keep campsites
 clear-reviews:
     uv run python scripts/clear_reviews_and_claims.py
+
+# Delete claims and null reviews.is_relevant; keep review rows
+clear-claims:
+    uv run python scripts/clear_claims.py
 
 # Clear all info-page data: rules, prices, types, names, vocabulary + availability
 clear-info *args:
