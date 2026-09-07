@@ -61,7 +61,7 @@ Embeddings retrieve by topic; `text_en` is already a standalone sentence. Aspect
 - Direct experience vs speculation: keep “staff were rude”; drop “management should open the streams”.
 - Dedup same fact in one review; crowding at two spots ≠ streams dry.
 - One visitor incident = one claim (dog + leash refusal + cashier + U-turn → one pets/gate claim).
-- Concessive asides are a second site fact: "despite X, Y" / `בכל זאת X` → claims [X, Y], not one glued sentence (experiments.md 2026-09-07 §2). The incident rule still forbids splitting supporting beats of one event.
+- Concessive asides are a second site fact: "despite X, Y" / `בכל זאת X` → claims [X, Y], not one glued sentence (experiments.md 2026-09-07 §2). The incident rule still forbids splitting supporting beats of one event. After a full `populate-claims` with that few-shot, Mamshit’s live review was still one glued row (`despite being in the desert with winds`) at −0.577 for `"desert"` (experiments.md 2026-09-07 §8).
 - Keep specific rentable features (bungalow, mats).
 - Opposite sentiments are separate rows.
 

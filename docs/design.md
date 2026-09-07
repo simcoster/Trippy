@@ -801,10 +801,12 @@ not recover missed gold. Rules cannot share that gate: tent subjects at
 open.
 
 The listing amenity gate stays **−0.8** (`AMENITY_MATCH_MAX_DISTANCE`).
-Loosening to −0.7 would let `"electricity"` match `electric_outlet`
-(−0.750) and `electric_hookup` (−0.704) — both in the ungated top 5 —
-but the same band makes `tent` (−0.719) satisfy `"desert"` / `"quiet"`,
-and a stated amenity is never vetoed (experiments.md 2026-09-07 §7).
-`electric_hookup` is three listings: caravan-bay water+power, PITCH tent
-power, and site-wide נקודות חשמל (sometimes groups / shade only).
+A probe that retrieved at −0.7 and asked the judge to sift listing rows
+too kept electricity outlets / PITCH hookup / site-wide נקודות חשמל
+and dropped tent-as-desert and caravan-bay-only hookup (experiments.md
+2026-09-07 §8, 59/60). Prod still does not send amenity-only fits
+through the judge, so −0.7 would still put every tent pitch in `fits`
+for `"desert"` / `"quiet"`. `electric_hookup` is three listings:
+caravan-bay water+power, PITCH tent power, and site-wide נקודות חשמל
+(sometimes groups / shade only).
 

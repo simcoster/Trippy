@@ -9,6 +9,51 @@ decided.
 
 ## 2026-09-07
 
+### 8. After rebuilding claims, can the judge sift amenity −0.7 listing hits?
+
+**Question.** §7 kept amenity −0.8 because tent-as-desert would enter
+`fits` and the judge never saw listing-only rows. After `just
+populate-claims` with the despite-split few-shot, do desert location
+claims retrieve at −0.6? If amenity retrieve is −0.7 and the judge
+also sifts listing hits (`relevant_rules` + `satisfies`), does it keep
+`electric_outlet` / PITCH hookup / fridge and drop tent-as-desert,
+`electric_stove`, and caravan-bay-only hookup?
+
+**Setup.** No writes. Amenity gate **−0.7**, claim gate **−0.6** top 5,
+nearest 5 rules. Candidates = sites with a stated/site amenity ≤ −0.7
+(not claim-gated). Queries: desert, electricity, quiet, fridge. One
+235B call per (query, site), 8 workers, short `reason`. Gold satisfies
+= a location-desert claim in the pack (atmosphere / in the desert; not
+safari, animals, music, sandy pitches); electricity = outlet or PITCH
+hookup or site-wide נקודות חשמל or an electricity claim, not
+caravan-bay-only; quiet = a claim containing “quiet”; fridge =
+refrigerator rule/hit or fridge/freezer claim. 60 pairs. Dump
+`temp/judge_sift_amenity07.json`.
+
+**Result.** **59/60 satisfies.** 349 s wall, ~40 s/call TTFT, ~880 in /
+~45 out, $0.012. The miss is gold, not the model: Horshat Tal
+`"Noise and music are prohibited at night"` for `"quiet"` — judge yes,
+gold required the substring “quiet”.
+
+Retrieve after rebuild did **not** add Mamshit to `"desert"`. The
+despite sentence is still one glued row (`despite being in the desert
+with winds`) at **−0.577**, outside −0.6. `"in the desert"` still
+passes it at **−0.635**. New −0.6 noise: Mamshit sandy tent slots
+**−0.612**, Hai-Bar desert safari **−0.604**. The judge dropped both.
+Masada atmosphere **−0.748** is still the only `"desert"` location hit.
+Yarkon electricity claim **−0.656** unchanged. Quiet and fridge claims
+now retrieve (Nahal Amud / Tel Arad / Be'erot quiet; many refrigerator
+claims).
+
+Sift of listing −0.7: desert tents → no (except Masada via claim);
+Besor caravan-bay hookup → no; bungalow `electric_outlet`, PITCH
+hookup, site-wide נקודות חשמל → yes.
+
+**Decision.** The judge can sift amenity −0.7 listing noise if listing
+hits are in the call. Prod still −0.8 and still skips amenity-only
+fits — not wired. Despite-split few-shot did not unglue the live
+Mamshit review. design.md amenity gate; claims.md split.
+
 ### 7. Does loosening the amenity gate −0.8 → −0.7 catch electricity without tent-as-desert?
 
 **Question.** `electric_hookup` sits at −0.704, outside −0.8, so with no

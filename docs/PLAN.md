@@ -6,6 +6,18 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-07, judge sifts amenity −0.7)
+
+**Judge can sift amenity −0.7 listing hits; despite-split did not
+unglue Mamshit.** After populate-claims: 59/60 vs gold (1 gold-string
+miss on Horshat Tal night-noise ban). Desert tents dropped; electricity
+outlets / PITCH / site points kept; Besor caravan-bay dropped. Mamshit
+despite claim still glued at −0.577 for `"desert"`. Prod amenity gate
+stays −0.8 until the planner sends listing-only fits through the judge.
+experiments.md 2026-09-07 §8. Supersedes the “judge cannot veto a
+stated amenity” reason in the −0.7 note below — it can, if it sees
+them; it currently does not.
+
 ### Done (2026-09-07, amenity gate −0.7)
 
 **Do not loosen amenity −0.8 → −0.7.** `"electricity"` extras are real
