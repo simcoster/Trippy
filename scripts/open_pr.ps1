@@ -27,8 +27,21 @@ function ConvertTo-TitleFromBranch([string] $Name) {
 }
 
 function Wait-ChecksReported([string] $PrUrl) {
+    # `gh pr checks` writes "no checks reported" to stderr and exits 1 while
+    # GitHub is still attaching the run. $ErrorActionPreference = 'Stop' turns
+    # that stderr into a terminating NativeCommandError, so swallow it and
+    # retry — same as `|| true` in open_pr.sh.
     for ($i = 0; $i -lt 24; $i++) {
-        $json = gh pr checks $PrUrl --json name 2>$null
+        $json = $null
+        $prev = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
+        try {
+            $json = gh pr checks $PrUrl --json name 2>$null
+        } catch {
+            $json = $null
+        } finally {
+            $ErrorActionPreference = $prev
+        }
         if ($json -and $json.Trim() -ne '[]') { return $true }
         Start-Sleep -Seconds 5
     }
