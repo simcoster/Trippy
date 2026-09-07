@@ -6,6 +6,16 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-07)
+
+**Availability type match lowercases the 30B view.** Ma'ayan Harod's lodging
+panel stores `מתחם PITCH`; the booking engine offers `מתחם pitch`. Exact SQL
+misses (Postgres is case-sensitive) and the 30B pick must copy a candidate
+exactly, so it returned null and 17 pitches were skipped. The name and the
+candidate list are now lowercased for that call; the original catalog casing
+is restored before the alias is stored. design.md "The rate-card listing
+match runs on the 235B".
+
 ### Done (2026-09-06, night)
 
 **Two rate lines can no longer collapse onto one product.** `colliding_rows`
