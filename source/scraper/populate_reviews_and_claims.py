@@ -1,12 +1,12 @@
 """Split Google reviews into claims and upsert into Postgres.
 
 30B visit gate first: ads / history dumps are stored on `reviews` with
-skip_reason and are not split. One 235B splitter call per kept review.
-Drops claims with confidence < 0.5. Does not store aspect or locus.
+skip_reason and is_relevant=false and are not split. One 235B splitter
+call per kept review. Drops claims with confidence < 0.5.
 
-CLI fetches from legacy Place Details (newest weekly; --most-relevant to
-also seed Google's best-of 5). Tests pass a reviews dict into
-populate_reviews_and_claims; the CLI does not read JSON files.
+`just scrape-reviews` only fetches Place Details (newest + most_relevant)
+into `reviews`. `just populate-claims` classifies those rows. Tests may
+still pass a reviews dict into populate_reviews_and_claims.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
-    record_scrape_cost,
 )
 from source.scraper.tls import ssl_context
 
@@ -164,23 +163,31 @@ Schema:
 
 UPSERT_REVIEW_SQL = """
 INSERT INTO reviews (
-    campsite_id, source, author, rating, text, published_at, review_uid
+    campsite_id, source, author, rating, text, published_at, review_uid,
+    is_relevant
 ) VALUES (
     %(campsite_id)s, %(source)s, %(author)s, %(rating)s, %(text)s,
-    %(published_at)s, %(review_uid)s
+    %(published_at)s, %(review_uid)s,
+    CASE WHEN btrim(%(text)s) = '' THEN FALSE ELSE NULL END
 )
 ON CONFLICT (review_uid) DO UPDATE
 SET author = EXCLUDED.author,
     rating = EXCLUDED.rating,
     text = EXCLUDED.text,
-    published_at = EXCLUDED.published_at
+    published_at = EXCLUDED.published_at,
+    is_relevant = CASE
+        WHEN btrim(EXCLUDED.text) = '' THEN FALSE
+        WHEN reviews.text IS DISTINCT FROM EXCLUDED.text THEN NULL
+        ELSE reviews.is_relevant
+    END
 RETURNING id, skip_reason;
 """
 
 UPDATE_REVIEW_SKIP_SQL = """
 UPDATE reviews
 SET skip_reason = %(skip_reason)s,
-    skip_note = %(skip_note)s
+    skip_note = %(skip_note)s,
+    is_relevant = %(is_relevant)s
 WHERE id = %(review_id)s
 """
 
@@ -429,6 +436,7 @@ def set_review_skip(
     review_id: int,
     skip_reason: str | None,
     skip_note: str | None,
+    is_relevant: bool | None,
 ) -> None:
     cur.execute(
         UPDATE_REVIEW_SKIP_SQL,
@@ -436,6 +444,7 @@ def set_review_skip(
             "review_id": review_id,
             "skip_reason": skip_reason,
             "skip_note": skip_note,
+            "is_relevant": is_relevant,
         },
     )
 
@@ -516,6 +525,42 @@ def upsert_review(cur, *, campsite_id: int, review: dict) -> tuple[int, str | No
     return review_id, existing_skip
 
 
+def store_fetched_reviews(
+    campsite_id: int,
+    reviews: dict,
+    *,
+    conn=None,
+    place: str | None = None,
+    source: str = DEFAULT_SOURCE,
+    usage: LlmUsage | None = None,
+    **_kwargs: object,
+) -> dict:
+    """Upsert Google reviews. No visit gate, split, or embed."""
+    del place, usage, _kwargs
+    items = reviews_from_dict(reviews, source=source)
+    own_conn = conn is None
+    if own_conn:
+        config = load_config() if CONFIG_PATH.exists() else {}
+        conn = psycopg.connect(database_url(config))
+    try:
+        with conn.cursor() as cur:
+            for review in items:
+                upsert_review(cur, campsite_id=campsite_id, review=review)
+        if own_conn:
+            conn.commit()
+    except Exception:
+        if own_conn:
+            conn.rollback()
+        raise
+    finally:
+        if own_conn:
+            conn.close()
+    log(
+        f"Stored campsite_id={campsite_id}: {len(items)} review(s), no claims."
+    )
+    return {"campsite_id": campsite_id, "reviews": len(items), "claims": 0}
+
+
 def replace_claims(
     cur,
     *,
@@ -580,8 +625,17 @@ def populate_reviews_and_claims(
                 )
                 text = (review.get("text") or "").strip()
                 if not text:
-                    log(f"  review {i}/{total} id={review_id}: empty text, stored only")
-                    review_rows.append((review_id, review, []))
+                    set_review_skip(
+                        cur,
+                        review_id=review_id,
+                        skip_reason=None,
+                        skip_note=None,
+                        is_relevant=False,
+                    )
+                    log(
+                        f"  review {i}/{total} id={review_id}: "
+                        f"empty text, is_relevant=false"
+                    )
                     continue
                 if existing_skip:
                     cur.execute(
@@ -601,6 +655,7 @@ def populate_reviews_and_claims(
                         review_id=review_id,
                         skip_reason=SKIP_REASON_NOT_PERSONAL,
                         skip_note=skip_note,
+                        is_relevant=False,
                     )
                     cur.execute(
                         DELETE_CLAIMS_FOR_REVIEW_SQL, {"review_id": review_id}
@@ -612,7 +667,11 @@ def populate_reviews_and_claims(
                     )
                     continue
                 set_review_skip(
-                    cur, review_id=review_id, skip_reason=None, skip_note=None
+                    cur,
+                    review_id=review_id,
+                    skip_reason=None,
+                    skip_note=None,
+                    is_relevant=True,
                 )
                 log(f"  splitting review {i}/{total} id={review_id}")
                 try:
@@ -668,12 +727,50 @@ def populate_reviews_and_claims(
     return result
 
 
-def reviews_sorts_to_fetch(*, most_relevant: bool = False) -> list[str]:
-    """Weekly default is newest only; most_relevant is an infrequent seed."""
-    sorts = [REVIEWS_SORT_NEWEST]
-    if most_relevant:
-        sorts.append(REVIEWS_SORT_MOST_RELEVANT)
-    return sorts
+def reviews_sorts_to_fetch(*, most_relevant: bool = True) -> list[str]:
+    """Always newest then most_relevant. `most_relevant` is kept for callers."""
+    del most_relevant
+    return [REVIEWS_SORT_NEWEST, REVIEWS_SORT_MOST_RELEVANT]
+
+
+def drop_duplicate_reviews(reviews: list[dict]) -> list[dict]:
+    """Keep the first copy. A most_relevant review can also be newest."""
+    seen: set[tuple] = set()
+    kept: list[dict] = []
+    for review in reviews:
+        if not isinstance(review, dict):
+            continue
+        norm = normalize_review_dict(review)
+        published = (
+            norm["published_at"].isoformat() if norm["published_at"] is not None else ""
+        )
+        key = (norm["author"] or "", published, norm["text"])
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(review)
+    return kept
+
+
+def concat_review_payloads(parts: list[dict]) -> dict | None:
+    """`[newest reviews] + [most_relevant reviews]`, then drop duplicates."""
+    usable = [part for part in parts if part.get("reviews") is not None]
+    if not usable:
+        return None
+    chained: list[dict] = []
+    for part in usable:
+        chained.extend(
+            review
+            for review in part.get("reviews") or []
+            if isinstance(review, dict)
+        )
+    first = usable[0]
+    return {
+        "name": first.get("name"),
+        "place_id": first.get("place_id"),
+        "reviews_sort": f"{REVIEWS_SORT_NEWEST}+{REVIEWS_SORT_MOST_RELEVANT}",
+        "reviews": drop_duplicate_reviews(chained),
+    }
 
 
 def google_review_from_place_review(review: dict) -> dict:
@@ -741,12 +838,12 @@ def refresh_google_reviews_for_campsite(
     client: httpx.Client,
     api_key: str,
     populate_fn: Any | None = None,
-    usage: LlmUsage | None = None,
 ) -> dict[str, Any]:
-    """Fetch Place Details reviews and ingest. Default sort is newest.
+    """Fetch newest + most_relevant, concat, store reviews. No LLM.
 
-    `usage`, when given, collects the LLM calls of every ingest for the run.
+    `most_relevant` is ignored (always both sorts).
     """
+    del most_relevant
     place_id = site.get("google_place_id")
     campsite_id = int(site["id"])
     name = str(site.get("name") or "")
@@ -754,9 +851,9 @@ def refresh_google_reviews_for_campsite(
         log(f"  reviews: skip id={campsite_id} (no google_place_id)")
         return {"campsite_id": campsite_id, "sorts": [], "skipped": "no_place_id"}
 
-    ingest = populate_fn or populate_reviews_and_claims
-    sorts = reviews_sorts_to_fetch(most_relevant=most_relevant)
-    ingested: list[dict] = []
+    ingest = populate_fn or store_fetched_reviews
+    sorts = reviews_sorts_to_fetch()
+    parts: list[dict] = []
     for sort in sorts:
         log(f"  reviews: {name}  place_id={place_id}  sort={sort}")
         body = fetch_place_details(
@@ -767,20 +864,24 @@ def refresh_google_reviews_for_campsite(
         if payload is None:
             log(f"    details status={status}  no result")
             continue
-        n = len(payload["reviews"])
-        log(f"    {n} review(s)")
-        # Forwarded only when given, so the call stays exactly what the
-        # populate_fn tests expect.
-        extra = {"usage": usage} if usage is not None else {}
-        result = ingest(
-            campsite_id,
-            payload,
-            conn=conn,
-            place=name,
-            **extra,
-        )
-        ingested.append({"reviews_sort": sort, **result})
-    return {"campsite_id": campsite_id, "sorts": ingested}
+        log(f"    {len(payload['reviews'])} review(s)")
+        parts.append(payload)
+    combined = concat_review_payloads(parts)
+    if combined is None:
+        return {"campsite_id": campsite_id, "sorts": [], "skipped": "no_reviews"}
+    log(f"    concatenated {len(combined['reviews'])} review(s)")
+    extra: dict[str, Any] = {}
+    result = ingest(
+        campsite_id,
+        combined,
+        conn=conn,
+        place=name,
+        **extra,
+    )
+    return {
+        "campsite_id": campsite_id,
+        "sorts": [{"reviews_sort": combined["reviews_sort"], **result}],
+    }
 
 
 def fetch_sites_for_reviews(
@@ -815,13 +916,8 @@ def populate_google_reviews(
     limit: int | None = None,
     pause_seconds: float = DEFAULT_PAUSE_SECONDS,
     populate_fn: Any | None = None,
-    usage: LlmUsage | None = None,
 ) -> dict[str, Any]:
-    """Fetch Place Details for each campsite with google_place_id and ingest.
-
-    `usage`, when given, accumulates every LLM call across all campsites so the
-    CLI can report one cost for the run.
-    """
+    """Fetch Place Details for each campsite with google_place_id and store reviews."""
     own_conn = conn is None
     own_client = client is None
     if own_conn:
@@ -839,8 +935,10 @@ def populate_google_reviews(
         if not sites:
             log("No campsites with google_place_id")
             return {"sites": []}
-        mode = "newest + most_relevant" if most_relevant else "newest only"
-        log(f"Refreshing Google reviews ({mode}) for {len(sites)} campsite(s)")
+        log(
+            "Refreshing Google reviews (newest + most_relevant) "
+            f"for {len(sites)} campsite(s)"
+        )
         for i, site in enumerate(sites):
             if i and pause_seconds:
                 time.sleep(pause_seconds)
@@ -852,7 +950,6 @@ def populate_google_reviews(
                     client=client,
                     api_key=key,
                     populate_fn=populate_fn,
-                    usage=usage,
                 )
             )
         conn.commit()
@@ -890,9 +987,9 @@ def lookup_campsite_id(conn, name: str) -> tuple[int, str]:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Fetch Google reviews from legacy Place Details and store claims. "
-            "Default is newest (weekly). JSON files are for tests only, "
-            "via populate_reviews_and_claims()."
+            "Fetch Google reviews from legacy Place Details into the reviews "
+            "table. Two calls per site (newest, then most_relevant), "
+            "concatenated. Does not classify or split claims."
         )
     )
     parser.add_argument("--campsite-id", type=int, default=None)
@@ -904,10 +1001,7 @@ def main() -> None:
     parser.add_argument(
         "--most-relevant",
         action="store_true",
-        help=(
-            "Also fetch most_relevant reviews (seed). "
-            "Default weekly run is newest only."
-        ),
+        help="Ignored: both newest and most_relevant are always fetched.",
     )
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
@@ -918,20 +1012,12 @@ def main() -> None:
         if campsite_id is None and args.name:
             campsite_id, db_name = lookup_campsite_id(conn, args.name)
             log(f"Campsite {campsite_id}: {db_name}")
-        usage = LlmUsage()
         populate_google_reviews(
             conn=conn,
             campsite_id=campsite_id,
             most_relevant=args.most_relevant,
             limit=args.limit,
-            usage=usage,
         )
-    # Recorded here, not in the library function: tests drive that with mocks.
-    if usage.chat_calls or usage.embed_calls:
-        log(usage.summary(prefix="Reviews scrape total: "))
-    written = record_scrape_cost("scrape-reviews", usage)
-    if written:
-        log(f"cost report appended to {written}")
 
 
 if __name__ == "__main__":

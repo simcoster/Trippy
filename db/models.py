@@ -138,6 +138,11 @@ class Review(Base):
             "skip_reason",
             postgresql_where=text("skip_reason IS NOT NULL"),
         ),
+        Index(
+            "reviews_unclassified_idx",
+            "campsite_id",
+            postgresql_where=text("is_relevant IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -152,6 +157,7 @@ class Review(Base):
     review_uid: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     skip_reason: Mapped[str | None] = mapped_column(Text)
     skip_note: Mapped[str | None] = mapped_column(Text)
+    is_relevant: Mapped[bool | None] = mapped_column(Boolean)
 
     campsite: Mapped[Campsite] = relationship(back_populates="reviews")
     claims: Mapped[list[Claim]] = relationship(back_populates="review")

@@ -1,4 +1,4 @@
-"""Google Place Details review fetch: newest weekly, most_relevant opt-in."""
+"""Google Place Details review fetch: newest then most_relevant, concatenated."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from source.scraper.populate_reviews_and_claims import (
     DETAILS_URL,
     REVIEWS_SORT_MOST_RELEVANT,
     REVIEWS_SORT_NEWEST,
+    concat_review_payloads,
+    drop_duplicate_reviews,
     fetch_place_details,
     google_review_from_place_review,
     refresh_google_reviews_for_campsite,
@@ -21,10 +23,26 @@ from source.scraper.populate_reviews_and_claims import (
 PLACE_ID = "ChIJDUZZZ2-8HhURv7LbSjS_yG0"
 
 
-def test_reviews_sorts_newest_only_unless_flag():
-    assert reviews_sorts_to_fetch() == [REVIEWS_SORT_NEWEST]
-    assert reviews_sorts_to_fetch(most_relevant=False) == [REVIEWS_SORT_NEWEST]
-    assert reviews_sorts_to_fetch(most_relevant=True) == [
+def _details(reviews: list[dict]) -> SimpleNamespace:
+    return SimpleNamespace(
+        json=lambda: {
+            "status": "OK",
+            "result": {
+                "name": "חורשת טל",
+                "place_id": PLACE_ID,
+                "reviews": reviews,
+            },
+        },
+        raise_for_status=lambda: None,
+    )
+
+
+def test_reviews_sorts_are_always_newest_then_most_relevant():
+    assert reviews_sorts_to_fetch() == [
+        REVIEWS_SORT_NEWEST,
+        REVIEWS_SORT_MOST_RELEVANT,
+    ]
+    assert reviews_sorts_to_fetch(most_relevant=False) == [
         REVIEWS_SORT_NEWEST,
         REVIEWS_SORT_MOST_RELEVANT,
     ]
@@ -101,20 +119,52 @@ def test_refresh_skips_without_place_id():
     populate.assert_not_called()
 
 
-def test_refresh_default_calls_newest_only():
+def test_drop_duplicate_reviews_when_most_relevant_is_also_newest():
+    newest = {"author": "A", "published_utc": "2026-09-01T00:00:00+00:00", "text": "hot water"}
+    relevant = {
+        "author": "A",
+        "published_utc": "2026-09-01T00:00:00+00:00",
+        "text": "hot water",
+        "rating": 5,
+    }
+    assert drop_duplicate_reviews([newest, relevant]) == [newest]
+
+
+def test_concat_review_payloads_newest_then_relevant_dedupes():
+    newest = {
+        "name": "חורשת טל",
+        "place_id": PLACE_ID,
+        "reviews": [
+            {"author": "A", "published_utc": "1", "text": "new"},
+            {"author": "B", "published_utc": "2", "text": "shared"},
+        ],
+    }
+    relevant = {
+        "name": "חורשת טל",
+        "place_id": PLACE_ID,
+        "reviews": [
+            {"author": "B", "published_utc": "2", "text": "shared"},
+            {"author": "C", "published_utc": "3", "text": "best"},
+        ],
+    }
+    combined = concat_review_payloads([newest, relevant])
+    assert combined is not None
+    assert [r["text"] for r in combined["reviews"]] == ["new", "shared", "best"]
+    assert combined["reviews_sort"] == "newest+most_relevant"
+
+
+def test_refresh_fetches_both_sorts_concats_and_ingests_once():
     client = MagicMock()
-    client.get.return_value = SimpleNamespace(
-        json=lambda: {
-            "status": "OK",
-            "result": {
-                "name": "חורשת טל",
-                "place_id": PLACE_ID,
-                "reviews": [{"author_name": "A", "rating": 5, "time": 1, "text": "x"}],
-            },
-        },
-        raise_for_status=lambda: None,
-    )
-    populate = MagicMock(return_value={"campsite_id": 1, "reviews": 1, "claims": 0})
+    client.get.side_effect = [
+        _details([{"author_name": "A", "rating": 5, "time": 1, "text": "new"}]),
+        _details(
+            [
+                {"author_name": "A", "rating": 5, "time": 1, "text": "new"},
+                {"author_name": "C", "rating": 4, "time": 3, "text": "best"},
+            ]
+        ),
+    ]
+    populate = MagicMock(return_value={"campsite_id": 1, "reviews": 2, "claims": 0})
     refresh_google_reviews_for_campsite(
         MagicMock(),
         {"id": 1, "name": "חורשת טל", "google_place_id": PLACE_ID},
@@ -122,24 +172,20 @@ def test_refresh_default_calls_newest_only():
         api_key="fake-key",
         populate_fn=populate,
     )
-    assert client.get.call_count == 1
-    assert client.get.call_args.kwargs["params"]["reviews_sort"] == "newest"
+    sorts = [call.kwargs["params"]["reviews_sort"] for call in client.get.call_args_list]
+    assert sorts == ["newest", "most_relevant"]
     populate.assert_called_once()
+    payload = populate.call_args.args[1]
+    assert [r["text"] for r in payload["reviews"]] == ["new", "best"]
+    assert payload["reviews_sort"] == "newest+most_relevant"
 
 
-def test_refresh_most_relevant_flag_fetches_both_sorts():
+def test_refresh_most_relevant_flag_is_a_noop():
     client = MagicMock()
-    client.get.return_value = SimpleNamespace(
-        json=lambda: {
-            "status": "OK",
-            "result": {
-                "name": "חורשת טל",
-                "place_id": PLACE_ID,
-                "reviews": [],
-            },
-        },
-        raise_for_status=lambda: None,
-    )
+    client.get.side_effect = [
+        _details([]),
+        _details([]),
+    ]
     populate = MagicMock(return_value={"campsite_id": 1, "reviews": 0, "claims": 0})
     refresh_google_reviews_for_campsite(
         MagicMock(),
@@ -151,4 +197,4 @@ def test_refresh_most_relevant_flag_fetches_both_sorts():
     )
     sorts = [call.kwargs["params"]["reviews_sort"] for call in client.get.call_args_list]
     assert sorts == ["newest", "most_relevant"]
-    assert populate.call_count == 2
+    populate.assert_called_once()
