@@ -6,6 +6,31 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-07, deploy_design)
+
+**Hosting choices live in `docs/deploy_design.md`.** Why a VM, self-hosted
+pgvector, one image / two app services, no Serverless Jobs, no Terraform,
+static IP, Nebius-only stop. `docs/deploy.md` stays the runbook.
+
+### Done (2026-09-07, jobs service)
+
+**Chat and ingest are two Compose services, one image.** `api` runs Streamlit;
+`jobs` runs `source.ops.job_server` (FastAPI on 8080, not published). Streamlit
+sets `JOBS_URL` and does not `Popen` scrapers. `just streamlit` without that
+env still runs jobs in-process. Supersedes the same-day Nebius VM note that
+spawned scrapes inside the Streamlit container.
+
+### Done (2026-09-07, Nebius VM)
+
+**Streamlit + self-hosted Postgres on a Nebius VM, files only.** eu-north1
+`cpu-e2` / `2vcpu-8gb`, Postgres on a standalone network SSD, Streamlit Jobs
+sidebar for scrape/clear (one subprocess at a time). GitHub Actions YAML
+starts the VM ~07:00 IL and stops it ~23:00 IL after a dump; dormant until
+repo variables/secrets are set. Runbook: `docs/deploy.md`. No Terraform, no
+Telegram, no live Nebius calls from this change. Supersedes TODO.md §5
+“managed Postgres” for this phase; `docs/scaling.md` remains the later
+reliability target.
+
 ### Done (2026-09-07, date_intent few-shots)
 
 **Extractor date_intent few-shots for הקרוב / הבא / בעוד N שבועות.** The 30B

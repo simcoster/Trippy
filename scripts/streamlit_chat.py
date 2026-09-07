@@ -47,6 +47,7 @@ from langchain_core.outputs import LLMResult
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
+from source.ops import job_client as scrape_jobs
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
@@ -488,11 +489,29 @@ def _init_session() -> None:
         st.session_state.display = []
     if "heavy_path" not in st.session_state:
         st.session_state.heavy_path = "extractor"
+    if "pending_job_id" not in st.session_state:
+        st.session_state.pending_job_id = None
 
 
 def _reset_conversation() -> None:
     st.session_state.graph_messages = []
     st.session_state.display = []
+
+
+@st.fragment(run_every="2s")
+def _job_status_fragment() -> None:
+    snap = scrape_jobs.status()
+    if not snap:
+        st.info("No job started yet.")
+        return
+    label = snap.get("label") or snap.get("job_id")
+    if snap.get("running"):
+        st.caption(f"Running: {label} (pid {snap.get('pid')})")
+    else:
+        st.caption(f"Last: {label} · exit {snap.get('exit_code')}")
+    tail = snap.get("log_tail") or ""
+    if tail:
+        st.code(tail, language=None)
 
 
 def _message_preview(msg: BaseMessage, max_len: int = 400) -> str:
@@ -934,12 +953,85 @@ def invoke_agent(
     return _last_ai_reply(final_messages, stop_after=stop_after), trace
 
 
+def _render_jobs_sidebar() -> None:
+    st.subheader("Jobs")
+    st.caption(
+        "One at a time. On Compose, scrapes run in the jobs service; "
+        "locally without JOBS_URL they still spawn here."
+    )
+    site_raw = st.number_input(
+        "Site / campsite id",
+        min_value=0,
+        value=0,
+        step=1,
+        help="0 means all sites. Passed as --site or --campsite-id when the job accepts it.",
+    )
+    site_id = int(site_raw) or None
+
+    current = scrape_jobs.status()
+    running = bool(current and current.get("running"))
+
+    pending = st.session_state.get("pending_job_id")
+    if pending:
+        job = scrape_jobs.spec(pending)
+        st.warning(job.confirm or f"Run {job.label}?")
+        col_ok, col_no = st.columns(2)
+        if col_ok.button("Confirm", key="job_confirm", width="stretch"):
+            try:
+                scrape_jobs.start(pending, site_id=site_id)
+            except RuntimeError as exc:
+                st.error(str(exc))
+            st.session_state.pending_job_id = None
+            st.rerun()
+        if col_no.button("Cancel", key="job_confirm_no", width="stretch"):
+            st.session_state.pending_job_id = None
+            st.rerun()
+
+    st.markdown("**Scrape**")
+    for job in scrape_jobs.JOBS:
+        if job.group != "scrape":
+            continue
+        if st.button(
+            job.label,
+            key=f"job_{job.id}",
+            width="stretch",
+            disabled=running,
+        ):
+            try:
+                scrape_jobs.start(job.id, site_id=site_id)
+            except RuntimeError as exc:
+                st.error(str(exc))
+            st.rerun()
+
+    st.markdown("**Clear**")
+    for job in scrape_jobs.JOBS:
+        if job.group != "clear":
+            continue
+        if st.button(
+            job.label,
+            key=f"job_{job.id}",
+            width="stretch",
+            disabled=running,
+        ):
+            st.session_state.pending_job_id = job.id
+            st.rerun()
+
+    if running:
+        if st.button("Stop running job", width="stretch"):
+            try:
+                scrape_jobs.cancel()
+            except RuntimeError as exc:
+                st.error(str(exc))
+            st.rerun()
+
+    _job_status_fragment()
+
+
 _init_session()
 
 st.title("Trippy agent")
 st.caption(
-    f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
-    "production remains Telegram"
+    f"Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius"
 )
 
 with st.sidebar:
@@ -964,10 +1056,12 @@ with st.sidebar:
         )
         or "extractor"
     )
-    st.caption("Telegram still uses the full path.")
     if st.button("Reset conversation", width="stretch"):
         _reset_conversation()
         st.rerun()
+
+    st.divider()
+    _render_jobs_sidebar()
 
     st.divider()
     st.subheader("MCP prompt")

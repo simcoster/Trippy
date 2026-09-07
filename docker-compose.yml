@@ -37,6 +37,40 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  jobs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trippy-jobs
+    environment:
+      - DATABASE_URL=postgresql://trippy:trippy@db:5432/trippy
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - trippy_venv:/app/.venv
+    command:
+      - /app/.venv/bin/python
+      - -m
+      - source.ops.job_server
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   trippy_pgdata:
   trippy_venv:

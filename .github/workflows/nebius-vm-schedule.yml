@@ -1,0 +1,93 @@
+name: Nebius VM schedule
+
+# Dormant until you set GitHub variables (see docs/deploy.md).
+# Cron is UTC: 04:00 ≈ 07:00 IDT, 20:00 ≈ 23:00 IDT (Israel DST).
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+    - cron: "0 20 * * *"
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: start, stop, or snapshot
+        required: true
+        default: start
+        type: choice
+        options:
+          - start
+          - stop
+          - snapshot
+
+concurrency:
+  group: nebius-vm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  start:
+    if: >-
+      vars.NEBIUS_INSTANCE_ID != '' && (
+        github.event.schedule == '0 4 * * *' ||
+        (github.event_name == 'workflow_dispatch' && inputs.action == 'start')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start VM
+        env:
+          NEBIUS_CREDENTIALS: ${{ secrets.NEBIUS_CREDENTIALS }}
+          SA_ID: ${{ secrets.NEBIUS_SA_ID }}
+          PROJECT_ID: ${{ vars.NEBIUS_PROJECT_ID }}
+          INSTANCE_ID: ${{ vars.NEBIUS_INSTANCE_ID }}
+          SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          VM_HOST: ${{ vars.VM_SSH_HOST }}
+        run: bash deploy/gh-vm.sh start
+
+  stop:
+    if: >-
+      vars.NEBIUS_INSTANCE_ID != '' && (
+        github.event.schedule == '0 20 * * *' ||
+        (github.event_name == 'workflow_dispatch' && inputs.action == 'stop')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Dump, compose stop, stop VM
+        env:
+          NEBIUS_CREDENTIALS: ${{ secrets.NEBIUS_CREDENTIALS }}
+          SA_ID: ${{ secrets.NEBIUS_SA_ID }}
+          PROJECT_ID: ${{ vars.NEBIUS_PROJECT_ID }}
+          INSTANCE_ID: ${{ vars.NEBIUS_INSTANCE_ID }}
+          SSH_PRIVATE_KEY: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+          VM_HOST: ${{ vars.VM_SSH_HOST }}
+        run: bash deploy/gh-vm.sh stop
+
+  snapshot:
+    if: >-
+      vars.NEBIUS_DATA_DISK_ID != '' && (
+        github.event.schedule == '0 3 * * 0' ||
+        (github.event_name == 'workflow_dispatch' && inputs.action == 'snapshot')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Snapshot data disk
+        env:
+          NEBIUS_CREDENTIALS: ${{ secrets.NEBIUS_CREDENTIALS }}
+          SA_ID: ${{ secrets.NEBIUS_SA_ID }}
+          PROJECT_ID: ${{ vars.NEBIUS_PROJECT_ID }}
+          DATA_DISK_ID: ${{ vars.NEBIUS_DATA_DISK_ID }}
+        run: bash deploy/gh-vm.sh snapshot

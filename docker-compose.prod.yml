@@ -1,0 +1,55 @@
+# Prod overlay. Use with the base file, on the Nebius VM only:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Streamlit is published on the host loopback. Reach it with:
+#   ssh -L 8501:127.0.0.1:8501 ubuntu@<static-ip>
+# Inside the container it listens on 0.0.0.0 so Docker can forward; the host
+# bind is what keeps it off the public interface.
+
+services:
+  db:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes: !override
+      - /var/lib/trippy/pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  api:
+    container_name: trippy-app
+    ports: !override
+      - "127.0.0.1:8501:8501"
+    environment:
+      DATABASE_URL: postgresql://trippy:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-trippy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      JOBS_URL: http://jobs:8080
+    env_file:
+      - .env
+    volumes: !reset []
+    command:
+      - /app/.venv/bin/streamlit
+      - run
+      - scripts/streamlit_chat.py
+      - --server.address
+      - 0.0.0.0
+      - --server.port
+      - "8501"
+      - --server.headless
+      - "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      jobs:
+        condition: service_healthy
+    restart: unless-stopped
+
+  jobs:
+    environment:
+      DATABASE_URL: postgresql://trippy:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-trippy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    env_file:
+      - .env
+    volumes: !override
+      - /var/lib/trippy/logs:/app/logs
+    restart: unless-stopped

@@ -1,0 +1,64 @@
+#cloud-config
+# Paste into the Nebius VM create form (cloud-init user data).
+# Replace the ssh key. Device id must match the data disk attach: trippy-pgdata.
+
+users:
+  - name: ubuntu
+    groups: [sudo, docker]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - REPLACE_WITH_YOUR_SSH_PUBLIC_KEY
+
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - jq
+  - awscli
+
+write_files:
+  - path: /usr/local/sbin/trippy-mount-data.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      DISK=/dev/disk/by-id/virtio-trippy-pgdata
+      for _ in $(seq 1 60); do
+        if [[ -e "$DISK" ]]; then
+          break
+        fi
+        sleep 1
+      done
+      if [[ ! -e "$DISK" ]]; then
+        echo "data disk $DISK not found" >&2
+        exit 1
+      fi
+      if ! blkid "$DISK" >/dev/null 2>&1; then
+        mkfs.ext4 -L trippy-data "$DISK"
+      fi
+      mkdir -p /var/lib/trippy
+      if ! grep -q 'LABEL=trippy-data' /etc/fstab; then
+        echo 'LABEL=trippy-data /var/lib/trippy ext4 defaults,nofail 0 2' >> /etc/fstab
+      fi
+      mount -a
+      mkdir -p /var/lib/trippy/pgdata /var/lib/trippy/backups /var/lib/trippy/logs
+      # postgres uid in pgvector/pgvector:pg16
+      chown -R 999:999 /var/lib/trippy/pgdata
+      chmod 700 /var/lib/trippy/pgdata
+
+runcmd:
+  - [ /usr/local/sbin/trippy-mount-data.sh ]
+  - [ systemctl, enable, --now, docker ]
+  - [ usermod, -aG, docker, ubuntu ]
+  - [ mkdir, -p, /opt/trippy ]
+  - [ chown, ubuntu:ubuntu, /opt/trippy ]
+
+final_message: |
+  Data disk mounted at /var/lib/trippy. Clone the repo to /opt/trippy,
+  copy .env (see deploy/env.example), then:
+    cd /opt/trippy
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \
+      /app/.venv/bin/alembic upgrade head

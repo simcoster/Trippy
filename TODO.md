@@ -39,9 +39,11 @@ Two process types, not one box:
 | Process | Role |
 |---------|------|
 | **Bot** | Streamlit chat → LangGraph. Not Telegram unless wiring it is trivial (`main.py` webhook already exists). |
-| **Jobs** | `just scrape-*` on a schedule (availability, prices, reviews). Separate so a scrape cannot stall chat. |
+| **Jobs** | `just scrape-*` CLIs in a second Compose service, triggered from Streamlit. |
 
-Phase 1 is a Streamlit server + managed Postgres. Telegram, async webhook ack, and a job runner can wait. `docs/scaling.md` is the later target; do not block phase 1 on it.
+Phase 1 is Streamlit + a jobs worker + **self-hosted** Postgres on Nebius
+(`docs/deploy.md` runbook, `docs/deploy_design.md` why). Telegram can wait.
+`docs/scaling.md` is the later target.
 
 ## 6. README with design choices
 
