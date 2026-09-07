@@ -44,12 +44,12 @@ branch name:
     git checkout -b "$branch"
     git push -u origin "$branch"
 
-# Push the current branch, open a PR into main, then switch back to main
+# Push the current branch, open a PR into main, wait for CI (stays on the branch)
 [windows]
 pr *title:
     powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/open_pr.ps1 {{ if title == "" { "" } else { "-Title " + quote(title) } }}
 
-# Push the current branch, open a PR into main, then switch back to main
+# Push the current branch, open a PR into main, wait for CI (stays on the branch)
 [unix]
 pr *title:
     bash scripts/open_pr.sh {{ if title == "" { "" } else { quote(title) } }}

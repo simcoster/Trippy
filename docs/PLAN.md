@@ -6,6 +6,22 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-07, date_intent few-shots)
+
+**Extractor date_intent few-shots for הקרוב / הבא / בעוד N שבועות.** The 30B
+already emitted intent and `resolve_dates` did the calendar; it labelled
+`שישי הקרוב` as `when=next` and dropped `weeks_from_now` on `בעוד שבועיים`.
+Three shots + `weeks_from_now: N` in the schema: 25/25 on the 30B (5 prompts ×
+5 trials, today frozen to Mon 7 Sep). Stayed on 30B; no second date-only call.
+experiments.md 2026-09-07 §1. `test_extractor_date_intent_karov.py`.
+
+### Done (2026-09-07, just pr)
+
+**`just pr` stays on the feature branch.** Title defaults to the branch name
+(hyphens to spaces); a `just pr "Title"` argument still overrides. After create
+it waits for GitHub checks and prints pass or the failed job logs. No checkout
+of main.
+
 ### Done (2026-09-07, empty reviews)
 
 **Empty review text is `is_relevant = false`.** scrape-reviews upsert sets it on

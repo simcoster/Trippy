@@ -11,11 +11,15 @@ unless the user asked for that specific run in this conversation.
 
 - Permission for one run does not carry over to the next, even on an isolated
   schema, even at the same cost.
-- "Checking that my change works" is not a reason. `pytest -m "not llm"` is
-  the verification the agent may run unasked; anything past that is stated as
-  unverified, with the command offered for the user to run.
-- When a run seems worth doing, say so in one line with the expected duration
-  and cost, and wait for a yes.
+- **LLM tests are allowed without waiting**, as long as the planned call
+  count is under 100 (count parametrized trials). `pytest -m llm` on a
+  focused file is the usual form. CI still excludes them (`pytest -m
+  "not llm"`).
+- Scrapes, ingest, and other jobs that run for minutes still need an
+  explicit yes. "Checking that my change works" is not a reason to
+  scrape. For non-LLM verification, `pytest -m "not llm"` is enough.
+- When a scrape or a >100-call LLM job seems worth doing, say so in one
+  line with the expected duration and cost, and wait for a yes.
 
-Context: an eight-minute, ~120-call ingest was launched as a "smoke run" after
-the user had authorised only an earlier experiment.
+Context: an eight-minute, ~120-call ingest was launched as a "smoke run"
+after the user had authorised only an earlier experiment.

@@ -751,3 +751,23 @@ Everything currently in scope is server-rendered, which is why
   `python -m source.scraper.info_site.scrape` — but the two copies have not been
   hoisted into one place yet. That is also the sixth copy of the same
   `_ssl_context` helper in the repo; hoisting them is a separate cleanup.
+
+## Query extractor: date_intent
+
+The 30B extractor emits a `date_intent` only; `resolve_dates` turns it into
+ISO stay windows. It does not invent calendars.
+
+Hebrew clocks that used to be mislabelled, and the intents they must emit:
+
+| user said | intent |
+|---|---|
+| הקרוב / הזה / coming | `when=this` (this ISO week, if that weekday is still ahead) |
+| הבא / next | `when=next` (next ISO week, not this week's upcoming day) |
+| בעוד N שבועות / in N weeks | `weeks_from_now=N`, and no `when` |
+
+The 30B mapped `שישי הקרוב` to `when=next` and dropped `weeks_from_now` on
+`סוף השבוע בעוד שבועיים` because the prompt stated those rules and never
+demonstrated them. Three few-shots plus `weeks_from_now: N` in the schema
+held 25/25 at temperature 0 (experiments.md 2026-09-07 §1), so the extractor
+stays on the 30B and date intent is not a second LLM call.
+
