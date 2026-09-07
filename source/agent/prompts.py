@@ -88,8 +88,8 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
         "kind": "weekday" | "weekend" | "on" | null,
         "weekday": "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday" | null,
         "when": "this" | "next" | null,
-        "weeks_from_now": 3 | null,
-        "horizon_days": 30 | null,
+        "weeks_from_now": N | null,
+        "horizon_days": N | null,
         "on": "YYYY-MM-DD" | "today" | null,
         "nights": 1
       }} | null,
@@ -111,9 +111,9 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        emit date.start / date.end for relative phrases. A resolve_dates tool
        turns intent into stay windows after you reply.
        - "next" / "הבא" → when="next" (next calendar week, not this week's
-         upcoming weekday).
+         upcoming weekday). "הקרוב" is not "הבא".
        - "this" / "הזה" / "הקרוב" / "coming" → when="this" (this ISO week,
-         if that weekday is still ahead).
+         if that weekday is still ahead). "בשישי הקרוב" is this Friday.
        - Named weekday with no this/next (e.g. "בשבת", "on Saturday") →
          kind="weekday", that weekday, when="this" if that day is still
          ahead this week, else when="next". nights from stay length.
@@ -124,7 +124,8 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        - Named span ("Thursday to Saturday", "מחורי עד שבת") →
          kind="weekday", weekday=check-in day, nights=checkout-minus-check-in
          (Thu→Sat → weekday="thursday", nights=2). Not kind=weekend.
-       - "בעוד N שבועות" / "in N weeks" → weeks_from_now=N.
+       - "בעוד N שבועות" / "in N weeks" → weeks_from_now=N. Do not emit
+         when if weeks_from_now is set — the offset is the only clock.
        - "סופ״ש בחודש הקרוב" / weekends in the coming month → kind="weekend",
          horizon_days=30 (nights default 1, Friday→Saturday). horizon_days
          only when they asked for several dates over a span — never for a
@@ -246,6 +247,36 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     Output:
     {{
       "date_intent": {{"kind": "weekend", "when": "this", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": []
+    }}
+
+    Example:
+    Input: "בשישי הקרוב"
+    Output:
+    {{
+      "date_intent": {{"kind": "weekday", "weekday": "friday", "when": "this", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": []
+    }}
+
+    Example:
+    Input: "בשישי הבא"
+    Output:
+    {{
+      "date_intent": {{"kind": "weekday", "weekday": "friday", "when": "next", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": []
+    }}
+
+    Example:
+    Input: "סוף השבוע בעוד שבועיים"
+    Output:
+    {{
+      "date_intent": {{"kind": "weekend", "weeks_from_now": 2, "nights": 1}},
       "campsite": null,
       "numeric_constraints": [],
       "semantic_constraints": []

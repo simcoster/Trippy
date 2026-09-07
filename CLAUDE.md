@@ -13,6 +13,7 @@ source. Each file is imported here; edit the rule there, not in this file.
 @.cursor/rules/ruff.mdc
 @.cursor/rules/agent-temp-files.mdc
 @.cursor/rules/no-unasked-scrape-runs.mdc
+@.cursor/rules/name-matches-what-file-does.mdc
 
 ## Orientation
 
@@ -24,7 +25,8 @@ source. Each file is imported here; edit the rule there, not in this file.
   `docker volume rm trippy_trippy_venv`, then `docker compose up -d --build`.
   Never `docker compose down -v` — it destroys the database volume too.
 - `pytest -m "not llm"` is the no-token test run; `llm`-marked tests call
-  Nebius.
+  Nebius. The agent may run `llm` tests locally when the planned call
+  count is under 100; CI still uses `not llm`.
 - Every `scrape-*` run prints its LLM cost by role and model and appends one
   JSON line to `reports/scrape_costs.jsonl`. A new LLM call site must pass
   `role=` and `model=` to `LlmUsage.add_chat` / `add_embed`, or the report

@@ -7,6 +7,35 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-07
+
+### 1. Do date-intent few-shots fix הקרוב vs הבא and בעוד שבועיים?
+
+**Question.** Five live camping queries had the 30B emit a `date_intent` that
+`resolve_dates` then computed correctly — but two intents were wrong:
+`שישי הקרוב` → `when=next` (should be `this`), and `סוף השבוע בעוד שבועיים`
+dropped `weeks_from_now` and used `when=next`. The prompt already stated both
+rules and had no few-shots. Do three examples plus a schema/precedence tweak
+hold, or does date extraction need the 235B / its own call?
+
+**Setup.** Production extractor prompt only. `today` frozen to Monday 2026-09-07
+in the test (prompt + `resolve_dates`). Five prompts × five trials at
+temperature 0 on the 30B (`planner_model`). No planner, no writes.
+
+| prompt | expected stay |
+|---|---|
+| בשישי הקרוב | Fri 11 Sep (`when=this`) |
+| בשישי הבא | Fri 18 Sep (`when=next`) |
+| סוף השבוע בעוד שבועיים | Fri 25 Sep (`weeks_from_now=2`) |
+| יש מקום בחורשת טל לזוג בשישי הקרוב עד 400 שקל ללילה? | Fri 11 Sep |
+| משהו שקט במדבר לזוג, אפשר להביא כלב, סוף השבוע בעוד שבועיים | Fri 25 Sep |
+
+**Result.** **25/25.** Bare phrases and the two original queries. 58 s. No
+writes.
+
+**Decision.** Keep the 30B. Do not split date intent into a second call.
+design.md "Query extractor: date_intent".
+
 ## 2026-09-06
 
 ### 1. Does the lodging panel parse structurally, or does it need a model?

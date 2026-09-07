@@ -1,0 +1,22 @@
+---
+description: After a substantial edit, check that the filename still names what the file does; if not, suggest a rename
+alwaysApply: true
+---
+
+# Filename must still say what the file does
+
+When you make a **substantial** change to a file — new responsibility, new public surface, or the file now primarily does something else — stop and ask whether the current name still describes that job. If it does not, **suggest a rename** and wait for a yes. Do not rename unasked.
+
+A substantial change is a shift in what the file *is for*, not a bugfix, a helper, or an extra case inside the same job.
+
+```text
+# BAD — extractor.py now also resolves calendar dates and you ship it under
+# the old name with no comment
+# (filename no longer matches)
+
+# GOOD — after the change, say so and wait
+# "extractor.py now owns date resolution as well as extraction.
+# Rename to date_resolve.py (or similar)? "
+```
+
+Do not suggest a rename for a one-line fix, a new private helper, or extra coverage of the same responsibility. If several files moved together, name the set, not one file in isolation.
