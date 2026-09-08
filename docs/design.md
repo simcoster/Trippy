@@ -303,15 +303,20 @@ guards it. If ranges become common, the alternative is a `qualifier_max` column.
 
 ### Experiments live in the `experiments` schema
 
-Production schema is not changed to try something out. The testbeds create their
-tables in a separate `experiments` schema — never in `public`, and never via an
-Alembic migration — and their connections set
-`options="-csearch_path=experiments"`:
+Production schema is not changed to try something out. `just
+setup-experiments copy` rebuilds `experiments` as a copy of `public`
+(tables, rows, views; FKs stay inside the schema). `--empty table,…`
+truncates after the copy. Scrapes, search and the planner then run with
+`TRIPPY_SCHEMA=experiments`, which makes `db.connect.connect` set
+`search_path=experiments,extensions`:
 
 ```
-uv run python -m temp.rules_ingest_testbed --reset --rules --amenities --report
-uv run python -m temp.split_campsites_testbed --reset --guards --ingest --report
+just setup-experiments copy
+just on-experiments scrape-info -- --site 2
 ```
+
+Pytest still clones an **empty subset** of tables in the fixture
+(`experiments_schema.TABLES`); that path does not copy production rows.
 
 **No foreign key crosses between the two schemas, in either direction.** That is
 the part doing the work. While the testbeds lived in `public` under a `test_*`
@@ -613,7 +618,23 @@ service_center_regular_hours  rule     false     its hours are "as needed"
 ```
 
 The drop is printed, so a fact the schema cannot hold is visible rather than
-silently stored as an empty row.
+silently stored as an empty row. A sentence that only points at hours published
+elsewhere is the same kind of non-statement, even when the model gives it a
+polarity (`entry_allowed` true). The prompt now says emit nothing:
+
+```
+ניתן להגיע לחניון הלילה בהתאם לשעות הכניסה המפורסמות באתר  -> nothing
+you may only enter during visiting hours                    -> nothing
+```
+
+### Natural setting is an amenity
+
+The unit tooltip prompt already generalised a named place (`מול הכינרת` →
+`near_the_kineret` + `near_a_lake` + `near_water`). The site-level extractor did
+not, so Akhziv's `בקרבת הים` was skipped as brochure (experiments.md 2026-09-08
+§4). Sea, desert and forest are amenities like any other — retrieve already
+searches that shelf — not a fourth category. The site prompt now carries the
+same keep-and-generalise rule.
 
 ### `שעות כניסה ויציאה` is cut in half before extraction
 
@@ -729,6 +750,31 @@ had been empty. The cap is now 8000 and a `finish_reason == "length"` raises a
 message that says truncation, because the parse error sent us looking in the
 wrong place.
 
+### The `מידע למבקר` accordion
+
+wrapUseInfo already carries hours, the booking iframe and the dog icon.
+The accordion tab of the same name is a different source: a bullet list
+of site-wide visitor rules (no generators, no glass, max consecutive
+nights, reservation only, …) that is **not** in the static HTML.
+
+It is fetched the same way as `אפשרויות לינה` — `fetch_panel(...,
+title="מידע למבקר")` reads that tab's own `data-cnt` — and parsed into
+one `Section`, same shape as `מה בחניון?`, then the ordinary extract →
+resolve → upsert path. Measured on Akhziv after the prompt and naming
+fixes: 36 stored statements, 28/29 gold lines, $0.009
+(experiments.md 2026-09-08 §5; first run was 26/29, $0.014, §4).
+The visiting-hours pointer is emit-nothing. Reservation is
+`entry_by_reservation_only`. The 18:00 surcharge cutoff is
+`late_check_in_end_time` — the 235B judge was offered `check_in_end_time`
+and said no (few-shot in `ADJUDICATE_SYSTEM_PROMPT`). `cant_` / `cannot_`
+in a subject name rewrite to `can_` with polarity false rather than
+dropping the statement (`naming.to_positive_subject`). Open: 50% and
+100% share `late_check_in_fee_percent` so the 100 is CONFLICTING;
+southern-only Shabbat still merges into the site-wide row; there is
+no kilogram or calendar-date qualifier unit.
+
+`test_visitor_info_panel.py` pins the parse against a captured panel.
+
 ### Sources not yet ingested
 
 The `נהלים, טפסים ומידע כללי` and `מידע לקבוצות` panels link PDFs that hold real
@@ -736,20 +782,17 @@ rules — quiet hours (`מדיניות חניונים שקטים`), group conduc
 They need a PDF text dependency, which the project does not have, and the documents
 are Hebrew RTL so extraction quality is unproven.
 
-Both those panels and `אפשרויות לינה` are AJAX-loaded. Recorded here so nobody has
+`אפשרויות לינה` and `מידע למבקר` are AJAX-loaded. Recorded here so nobody has
 to rediscover it:
 
 ```
 GET /ajax-handler-wp-loadmore.php
     ?action=my_repeater_show_more
     &post_id=<body[data-id], via info_site.parse.parse_wp_post_id>
-    &offset=<0-based panel index>
+    &offset=<the tab's own data-cnt, never assumed>
     &nonce=<my_repeater_field_nonce, from an inline page script>
 Response: {"content": "<html>"}
 ```
-
-Everything currently in scope is server-rendered, which is why
-`rules_ingest/fetch.py` is a plain GET.
 
 ### Known inconsistencies left alone
 

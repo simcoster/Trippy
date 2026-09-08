@@ -33,6 +33,8 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
+from db.connect import connect
+
 # Allow `uv run python scripts/...` to import sibling scripts.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_db import check_db  # noqa: E402
@@ -113,7 +115,7 @@ def main() -> None:
     _log("Site-level rules, info_website_names and list_prices are left in place.")
 
     try:
-        with psycopg.connect(url, connect_timeout=10) as conn:
+        with connect(url, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(COUNTS)
                 before = cur.fetchone()

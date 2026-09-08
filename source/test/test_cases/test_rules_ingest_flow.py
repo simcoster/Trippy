@@ -158,7 +158,7 @@ def test_extractor_polarity_survives_when_the_name_implied_nothing():
 def test_an_unresolvable_subject_is_skipped_not_fatal():
     extractor = make_extractor(
         extract_of(
-            RuleStatement(subject="cant_be_without_muzzle", polarity=True),
+            RuleStatement(subject="pets_not_on_leash", polarity=True),
             RuleStatement(subject="shower", polarity=True),
         )
     )

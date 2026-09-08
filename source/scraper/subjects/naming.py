@@ -37,14 +37,12 @@ _NEGATIVE_SUFFIXES: tuple[tuple[str, str], ...] = (
 # Prefixes: `no_pets` → `pets_allowed`, polarity False.
 _NEGATIVE_PREFIXES: tuple[str, ...] = ("no_", "not_", "never_", "without_")
 
-# Present anywhere and not rewritable into a clean positive.
+# Present anywhere and not rewritable into a clean positive. `cant_` /
+# `cannot_` are rewritten to `can_` (polarity False) before this runs.
+# Infix `_without_` is not here: it dropped `entry_without_reservation_allowed`.
+# Prefix `without_` still rewrites `without_electricity` → `electricity_allowed`.
 _UNSALVAGEABLE: tuple[str, ...] = (
     "_not_",
-    "cant_",
-    "_cant",
-    "cannot_",
-    "_cannot",
-    "_without_",
     "_no_",
     "_never_",
 )
@@ -73,7 +71,8 @@ def to_positive_subject(name: str) -> tuple[str | None, bool | None]:
         no_pets                 -> ("pets_allowed", False)
         towels_not_included     -> ("towels_included", False)
         dogs_must_wear_a_muzzle -> ("dogs_must_wear_a_muzzle", None)
-        cant_be_without_muzzle  -> (None, False)
+        cant_be_without_muzzle  -> ("can_be_without_muzzle", False)
+        cannot_enter_the_pool   -> ("can_enter_the_pool", False)
     """
     text = normalize_alias(name)
     if not text:
@@ -97,10 +96,28 @@ def to_positive_subject(name: str) -> tuple[str | None, bool | None]:
                 stem = f"{stem}_allowed"
             return _settle(stem), False
 
+    # `cant_be_without_muzzle` is "can be without a muzzle" with polarity
+    # false — the guest must wear one. Token-aligned so `scant_` / `recant_`
+    # are not rewritten; `cannot_` before `cant_` so `cannot_enter` does
+    # not become `can_ot_enter`.
+    rewritten = _rewrite_cant_to_can(text)
+    if rewritten != text:
+        settled = _settle(rewritten)
+        return (settled, False) if settled is not None else (None, False)
+
     if any(token in f"_{text}_" for token in _UNSALVAGEABLE):
         return None, False
 
     return text, None
+
+
+def _rewrite_cant_to_can(text: str) -> str:
+    """`cant_` / `cannot_` → `can_`, only as whole underscore tokens."""
+    if text.startswith("cannot_"):
+        text = "can_" + text[len("cannot_") :]
+    elif text.startswith("cant_"):
+        text = "can_" + text[len("cant_") :]
+    return text.replace("_cannot_", "_can_").replace("_cant_", "_can_")
 
 
 def _settle(text: str) -> str | None:

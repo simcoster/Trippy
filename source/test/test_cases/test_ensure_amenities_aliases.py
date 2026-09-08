@@ -76,7 +76,7 @@ def test_a_dropped_name_is_simply_absent_from_the_mapping(_register):
     """An unrewritable negative resolves to nothing; callers filter on presence."""
     conn, _cursor = make_conn({})
     with patch("source.scraper.subjects.resolve.resolve_subject", return_value=None):
-        mapping = ensure_amenities(conn, MagicMock(), ["cant_be_without_muzzle"])
+        mapping = ensure_amenities(conn, MagicMock(), ["pets_not_on_leash"])
     assert mapping == {}
 
 

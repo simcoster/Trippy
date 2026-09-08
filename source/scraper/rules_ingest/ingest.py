@@ -1,9 +1,9 @@
 """
 Ingest site-level rules and amenities from parks.org.il camping info pages.
 
-Reads the static page (no AJAX tabs — per-unit data comes from the availability
-scrape), splits it into sections, extracts statements, resolves each subject
-against `subject_vectors`, and upserts into `campsite_rules`.
+Reads the static page plus the AJAX `מידע למבקר` tab (`אפשרויות לינה` is
+ingested by rooms.py). Splits into sections, extracts statements, resolves
+each subject against `subject_vectors`, and upserts into `campsite_rules`.
 
   uv run python -m source.scraper.rules_ingest.ingest --limit 1
 """
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from collections import Counter
@@ -22,9 +21,9 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
-import psycopg
 from dotenv import load_dotenv
 
+from db.connect import connect, database_url
 from db.models import QualifierUnit
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
@@ -40,6 +39,7 @@ from source.scraper.rules_ingest.db import (
 from source.scraper.rules_ingest.explain import ConflictExplanation
 from source.scraper.rules_ingest.fetch import fetch_page_html
 from source.scraper.rules_ingest.llm import RuleExtractorLLMClient
+from source.scraper.rules_ingest.lodging import fetch_panel
 from source.scraper.rules_ingest.report import SiteRun, write_run_report
 from source.scraper.rules_ingest.resolve_conflicts import (
     ConflictResolution,
@@ -48,7 +48,12 @@ from source.scraper.rules_ingest.resolve_conflicts import (
     resolve_page_conflicts,
 )
 from source.scraper.rules_ingest.schemas import miscategorised_rule
-from source.scraper.rules_ingest.sections import Section, parse_sections
+from source.scraper.rules_ingest.sections import (
+    VISITOR_INFO_TITLE,
+    Section,
+    parse_sections,
+    parse_visitor_info_panel,
+)
 from source.scraper.rules_ingest.subcamps import (
     load_subcamps,
     subcamp_prompt,
@@ -236,13 +241,6 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
         return json.load(f)
 
 
-def database_url(config: dict) -> str:
-    url = os.environ.get("DATABASE_URL") or config.get("database_url")
-    if not url:
-        raise RuntimeError("No database_url in config or DATABASE_URL env")
-    return url.replace("@db:", "@localhost:")
-
-
 def fetch_campsites(
     config: dict, *, limit: int, sites: list[int] | None = None
 ) -> list[dict]:
@@ -261,7 +259,7 @@ def fetch_campsites(
         where += " AND id = ANY(%s)"
         params.append(list(sites))
     params.append(limit)
-    with psycopg.connect(database_url(config)) as conn, conn.cursor() as cur:
+    with connect(database_url(config)) as conn, conn.cursor() as cur:
         cur.execute(
             f"SELECT id, name, url FROM campsites WHERE {where} ORDER BY id LIMIT %s",
             params,
@@ -466,6 +464,21 @@ def _resolve_statements(
     return rules, dropped
 
 
+def _ajax_visitor_info(site_url: str, html: str) -> list[Section]:
+    """The `מידע למבקר` accordion tab, or [] if the page has none / fetch fails."""
+    try:
+        panel = fetch_panel(site_url, html, title=VISITOR_INFO_TITLE)
+    except httpx.HTTPError as exc:
+        print(f"    visitor-info panel fetch failed: {exc}")
+        return []
+    if not panel:
+        return []
+    sections = parse_visitor_info_panel(panel, source_url=site_url)
+    if sections:
+        print(f"    visitor-info panel: {len(sections[0].text):,} chars")
+    return sections
+
+
 def ingest_site(
     conn,
     site: dict,
@@ -480,6 +493,7 @@ def ingest_site(
     report: SiteReport | None = None,
 ) -> int:
     parsed = parse_sections(html, source_url=site["url"])
+    parsed.extend(_ajax_visitor_info(site["url"], html))
     sections = sections_to_extract(parsed)
     parked = [s.title for s in parsed if s not in sections]
     print(f"    {len(sections)} section(s): {', '.join(s.title for s in sections)}")
@@ -619,7 +633,7 @@ def run(
     run_started = time.monotonic()
 
     print(f"Ingesting rules for {len(campsites)} campsite(s)")
-    with psycopg.connect(database_url(config)) as conn:
+    with connect(database_url(config)) as conn:
         for site in campsites:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}")

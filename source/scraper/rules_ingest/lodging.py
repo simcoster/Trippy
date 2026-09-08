@@ -140,15 +140,20 @@ def parse_lodging_blocks(panel_html: str) -> list[Block]:
     return blocks
 
 
-def panel_request(html: str) -> PanelRequest | None:
-    """The lodging panel's request triple, or None if the page does not offer it."""
+def panel_request(html: str, *, title: str = PANEL_TITLE) -> PanelRequest | None:
+    """The named accordion panel's request triple, or None if the page lacks it.
+
+    `title` defaults to `אפשרויות לינה`. Other tabs (`מידע למבקר`, …) share
+    the same loadmore endpoint; the offset is that tab's own `data-cnt`,
+    which differs per site, so it is never assumed.
+    """
     post_id = parse_wp_post_id(html) or ""
     nonce_match = _NONCE_RE.search(html)
     if not (post_id and nonce_match):
         return None
     soup = BeautifulSoup(html, "html.parser")
     for link in soup.select("a[data-cnt]"):
-        if PANEL_TITLE in fold(link.get_text(" ", strip=True)):
+        if title in fold(link.get_text(" ", strip=True)):
             offset = (link.get("data-cnt") or "").strip()
             # Read from the anchor, never assumed: panel order differs per site.
             if offset:
@@ -156,9 +161,11 @@ def panel_request(html: str) -> PanelRequest | None:
     return None
 
 
-def fetch_panel(site_url: str, html: str) -> str | None:
-    """Fetch the panel body for an already-fetched info page."""
-    request = panel_request(html)
+def fetch_panel(
+    site_url: str, html: str, *, title: str = PANEL_TITLE
+) -> str | None:
+    """Fetch the named panel body for an already-fetched info page."""
+    request = panel_request(html, title=title)
     if request is None:
         return None
     query = urlencode(

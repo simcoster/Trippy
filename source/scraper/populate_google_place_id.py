@@ -14,9 +14,9 @@ import time
 from typing import Any
 
 import httpx
-import psycopg
 from dotenv import load_dotenv
 
+from db.connect import connect
 from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -155,7 +155,7 @@ def populate_google_place_ids(
     own_conn = conn is None
     own_client = client is None
     if own_conn:
-        conn = psycopg.connect(database_url())
+        conn = connect(database_url())
     if own_client:
         client = httpx.Client(verify=ssl_context(), timeout=30.0)
     key = api_key if api_key is not None else google_api_key()

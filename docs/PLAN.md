@@ -6,6 +6,52 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-08, experiments harness)
+
+**`TRIPPY_SCHEMA=experiments` points scrapes and search at a full
+copy of `public`.** `db.connect.connect` is the one `psycopg.connect`
+wrapper; `scripts/setup_experiments.py copy` rebuilds the schema
+(DDL + rows + views), `--empty` truncates named tables after. `just
+on-experiments scrape-info -- --site 2`. No custom clone scripts.
+Supersedes ad-hoc `clone_tables` + seed in experiment scripts.
+
+### Done (2026-09-08, visitor-info extract re-run)
+
+**`cant_` rewrites to `can_` (polarity false); the 18:00 late-fee
+cutoff is its own subject.** `to_positive_subject` rewrites token
+`cant_` / `cannot_` instead of dropping them
+(`cant_be_without_muzzle` → `can_be_without_muzzle` false). The merge
+judge (235B) has a few-shot that 18:00 is not `check_in_end_time`.
+Live Akhziv re-extract in `experiments`: 36 stored, 28/29 gold
+(the visiting-hours pointer is the only miss, as asked), 0 naming
+drops, `$0.009`, 70 s. Report:
+`reports/visitor_info_ingest/2026-09-08_154130.md`. experiments.md
+2026-09-08 §5. Supersedes the reservation-drop and 18:00-merge notes
+in the visitor-info accordion entry below.
+
+### Done (2026-09-08, visitor-info prompt follow-ups)
+
+**Sea/desert/forest are amenities; infix `_without_` no longer drops;
+visiting-hours pointers are non-statements.** Site extract now keep-and-
+generalises a natural setting the way the unit prompt already did, so
+`בקרבת הים` is `sea` + `near_water`, not brochure. `_without_` in the
+middle of a name (`entry_without_reservation_allowed`) is kept; prefix
+`without_electricity` is still rewritten. "You may only enter during
+visiting hours" is emit-nothing, like a pointer at another section.
+experiments.md 2026-09-08 §4. No new category: retrieve already searches
+amenities.
+
+### Done (2026-09-08, visitor-info accordion)
+
+**`מידע למבקר` is fetched and extracted like `מה בחניון?`.** The tab
+is AJAX (`data-cnt` per site, same loadmore endpoint as lodging). One
+section, one extract call. Akhziv experiment: 46 rows in
+`experiments.campsite_rules`, 26/29 gold lines, $0.014, 193 s.
+Reservation-required was dropped by the positive-phrasing guard;
+18:00 late-fee cutoff merged into `check_in_end_time`.
+experiments.md 2026-09-08 §4. Report:
+`reports/visitor_info_ingest/2026-09-08_142435.md`.
+
 ### Done (2026-09-08, just pr merges on green CI)
 
 **`just pr` squash-merges with `--admin` after CI passes, then checks

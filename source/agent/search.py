@@ -7,11 +7,11 @@ from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
-import psycopg
 from dotenv import load_dotenv
 from langchain_core.tools import StructuredTool
 from pgvector.psycopg import register_vector
 
+from db.connect import connect
 from db.models import SubjectCategory
 from source.agent.constraints import claim_recency, today_il
 from source.agent.dates import _parse_iso_day, iso_day, stay_night_starts
@@ -175,7 +175,7 @@ def _load_list_prices(type_ids: list[int]) -> dict[int, list[SimpleNamespace]]:
         WHERE at.id = ANY(%s)
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (type_ids,))
                 rows = cur.fetchall()
@@ -248,7 +248,7 @@ def search_open_slots(
     }
     _record_open_slots_query(query_record)
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
                 rows = cur.fetchall()
@@ -337,7 +337,7 @@ def lookup_campsite_by_name(name: str) -> list[dict]:
         LIMIT 5
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (like_patterns,))
                 rows = cur.fetchall()
@@ -372,7 +372,7 @@ def search_campsites(numeric_constraints):
         LIMIT 50
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql)
                 rows = cur.fetchall()
@@ -438,7 +438,7 @@ def search_stated_amenities(
         LIMIT %s
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)
@@ -500,7 +500,7 @@ def search_site_amenities(
         LIMIT %s
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)
@@ -572,7 +572,7 @@ def search_campsite_rules(
         """
         params = [ids, vec_literal, vec_literal, limit]
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)
@@ -670,7 +670,7 @@ def search_review_claims(
         )
     try:
         today = today_il()
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)

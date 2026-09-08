@@ -22,10 +22,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import psycopg
 from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 
+from db.connect import connect
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_30B_MODEL,
     QWEN_INSTRUCT_MODEL,
@@ -554,7 +554,7 @@ def store_fetched_reviews(
     own_conn = conn is None
     if own_conn:
         config = load_config() if CONFIG_PATH.exists() else {}
-        conn = psycopg.connect(database_url(config))
+        conn = connect(database_url(config))
     try:
         with conn.cursor() as cur:
             for review in items:
@@ -622,7 +622,7 @@ def populate_reviews_and_claims(
     own_conn = conn is None
     if own_conn:
         config = load_config() if CONFIG_PATH.exists() else {}
-        conn = psycopg.connect(database_url(config))
+        conn = connect(database_url(config))
     register_vector(conn)
     chat = chat_client or make_nebius_openai_client()
     embed_client = embedder or ClaimsEmbeddingLLMClient(chat)
@@ -935,7 +935,7 @@ def populate_google_reviews(
     own_client = client is None
     if own_conn:
         config = load_config() if CONFIG_PATH.exists() else {}
-        conn = psycopg.connect(database_url(config))
+        conn = connect(database_url(config))
     if own_client:
         client = httpx.Client(verify=ssl_context(), timeout=30.0)
     key = api_key if api_key is not None else google_api_key()
@@ -1020,7 +1020,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config() if CONFIG_PATH.exists() else {}
-    with psycopg.connect(database_url(config)) as conn:
+    with connect(database_url(config)) as conn:
         campsite_id = args.campsite_id
         if campsite_id is None and args.name:
             campsite_id, db_name = lookup_campsite_id(conn, args.name)

@@ -19,6 +19,9 @@ source. Each file is imported here; edit the rule there, not in this file.
 
 - `just --list` is the command surface. Data-loading recipes are all
   `scrape-<thing>`; `update-tables` applies Alembic migrations.
+  Isolated scrapes: `just setup-experiments copy`, then
+  `just on-experiments scrape-info -- --site 2`
+  (`TRIPPY_SCHEMA=experiments`).
 - Local Postgres (pgvector) runs via `docker compose up -d`; `.env` holds
   secrets and is git-ignored. `/app/.venv` in the `api` container is a named
   volume, so after a dependency change run `docker compose down`,

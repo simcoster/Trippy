@@ -8,6 +8,8 @@ import sys
 import psycopg
 from dotenv import load_dotenv
 
+from db.connect import connect
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -46,7 +48,7 @@ def main() -> None:
     host_part = url.split("@")[-1] if "@" in url else url
     _log(f"Connecting to Postgres at {host_part} ...")
     try:
-        with psycopg.connect(url, connect_timeout=10) as conn:
+        with connect(url, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """

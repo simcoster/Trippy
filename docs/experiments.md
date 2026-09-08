@@ -105,6 +105,72 @@ second call; 2× token cost, faster on this run. `planner_node` stays
 SQL — the old name `planner_model` was the extract chat client.
 design.md "Query extractor: date_intent".
 
+### 4. Does `מידע למבקר` extract on the same pipeline as `מה בחניון?`?
+
+**Question.** The accordion tab is AJAX-loaded and was not in
+`parse_sections`. wrapUseInfo already has hours, booking and the dog
+icon; is the tab a richer visitor-rules list, and does one extract
+call on the bullet list recover the facts?
+
+**Setup.** Akhziv only
+(`https://www.parks.org.il/camping/…אכזיב…`). `experiments` schema
+reset (`clone_tables` of campsites / subject_vectors / campsite_rules),
+parent campsite 2 copied from `public`, vocabulary seeded (234
+subjects). Production not written. One `RuleExtractorLLMClient` call
+on the panel body, then resolve + upsert. Gold = the 28 `<li>` plus
+the caravan paragraph. 35 chat / 41 embed, 193 s, **$0.014**. Report:
+`reports/visitor_info_ingest/2026-09-08_142435.md`.
+
+**Result.** 47 statements, 46 stored, 1 dropped. 26/29 gold lines
+covered. The three "misses": caravan-closed **was** stored (matcher
+false negative on `<strong>` whitespace); reservation-required
+dropped (`entry_without_reservation_allowed` failed the positive-
+phrasing guard); "in the national park by the sea" correctly skipped.
+Wrong merge: `late_entry_exit_end_time` 18:00 → `check_in_end_time`
+(20:30 on the hours section). `gas_balloons_max_weight` 10 **meters**;
+lifeguard `15/10` → 15.1 days. Southern-only Shabbat collapsed onto
+site-wide `shabbat_observance_suitable_allowed` true.
+
+**Decision.** Fetch + parse shipped into `ingest_site` (same path as
+`מה בחניון?`). Open: reservation drop, 18:00→check-in over-merge
+(will CONFLICTING against wrapUseInfo hours), no kg/date units.
+design.md "The `מידע למבקר` accordion".
+
+### 5. After the prompt and naming fixes, does Akhziv visitor-info still drop reservation and merge 18:00 into check-in?
+
+**Question.** The first run (§4) dropped `entry_without_reservation_allowed`
+on infix `_without_`, skipped the sea line as brochure, and the 235B
+judge merged `late_entry_exit_end_time` 18:00 into `check_in_end_time`.
+Prompts now keep sea/desert/forest as amenities, treat visiting-hours
+pointers as emit-nothing, and keep infix `_without_`. Naming rewrites
+`cant_` / `cannot_` → `can_` (polarity false) instead of dropping.
+The judge prompt has a few-shot that a late-arrival surcharge hour is
+not check-in. Does a re-extract recover reservation and sea, skip the
+hours pointer, and keep 18:00 off `check_in_end_time`?
+
+**Setup.** Same as §4: Akhziv only, `experiments` schema reset
+(`clone_tables` of campsites / subject_vectors / campsite_rules),
+campsite 2 copied, 234 subjects seeded from `public`. Production not
+written. One `RuleExtractorLLMClient` (235B) call on the panel, then
+resolve (`SubjectAdjudicatorLLMClient` judge 235B / classify 30B) +
+upsert. 21 chat / 33 embed, 70 s, **$0.009**. Report:
+`reports/visitor_info_ingest/2026-09-08_154130.md`.
+
+**Result.** 39 statements, 36 stored, **0 naming drops**. 28/29 gold
+lines. The only miss is `ניתן להגיע לחניון הלילה בהתאם לשעות הכניסה
+המפורסמות באתר` (emit-nothing, as asked). Reservation stored as
+`entry_by_reservation_only` true. Sea stored (`near_water` merged
+into it). `late_check_in_end_time` 18:00 was offered `check_in_end_time`
+(−0.823) and the judge rejected it. 50% and 100% both named
+`late_check_in_fee_percent` — CONFLICTING, 100 dropped. Southern-only
+Shabbat still merged into site-wide `shabbat_observance_suitable_allowed`
+true. No muzzle line on this panel; `cant_` rewrite is unit-tested.
+
+**Decision.** Ship the `cant_` rewrite and the late-fee few-shot.
+Open: two fee percents on one subject; no kg/date units; Shabbat
+scope; `near_water` collapsed onto `sea`.
+design.md "The `מידע למבקר` accordion".
+
 ## 2026-09-07
 
 ### 8. After rebuilding claims, can the judge sift amenity −0.7 listing hits?
