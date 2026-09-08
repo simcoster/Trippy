@@ -59,6 +59,9 @@ here is about this unit, and that is what you are extracting.
   understood, and the row already records which unit it belongs to.
   `shower`, never `shower_in_bungalow` — unless the tooltip itself nests one
   amenity inside another, which the part/container rule below still covers.
+  The one exception is a vehicle hookup (next glossary bullet): retrieve
+  cannot see which unit the row belongs to, so the name itself has to say
+  it is a bay hookup, not a guest socket.
 - A facility the guest walks to (the site's toilet block, the campsite kitchen)
   is still stated here because it serves this unit. Extract it as an amenity;
   the site-level page states its own, and the two scopes are separate rows.
@@ -97,6 +100,18 @@ here is about this unit, and that is what you are extracting.
     -> tent        / amenity / false / null / none   (the guest supplies it)
   A unit whose name says `השכרת אוהל` is the opposite -- there the site does
   provide the tent.
+- Glossary: a private-caravan / trailer / RV bay with חיבור חשמל or חיבור מים
+  is a hookup for that vehicle, not campsite electricity or drinking water.
+  Retrieve matches the subject name, not the unit type, so the bay belongs
+  IN the name even though the row already records the unit. Do not also
+  emit the bare names.
+    "קיים חיבור חשמל ומים" on עמדת חניה לקרוואן פרטי
+      -> caravan_bay_electric_hookup / amenity / true
+      -> caravan_bay_water_hookup    / amenity / true
+  Never emit electric_hookup, electricity, water_hookup or water from that
+  sentence. A tent pitch or bungalow with חיבור חשמל / נקודת חשמל is still
+  electric_hookup / electric_outlet — that power is for the stay, not a
+  vehicle. Showers and toilets on the same listing stay bare nouns.
 
 {SYSTEM_PROMPT}"""
 

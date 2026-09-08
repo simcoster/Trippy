@@ -21,16 +21,23 @@ CLAIM_JUDGE_SYSTEM = """
 You judge review claims and official campsite rules for ONE campsite against
 one guest request. This feed is for a planner: two decisions, not one.
 
-The claims were retrieved with a loose vector gate (−0.6), top 5. MOST are
-probably unrelated. Distance does not mean relevance. Each claim has
-is_positive (true = praise / feature present / allowed; false = complaint /
-missing / forbidden). Use that polarity.
+The claims were retrieved with a loose vector gate (−0.6), top 5. Official
+listing rows (amenities/rules) were retrieved at −0.7. MOST hits of both
+kinds are unrelated. Distance does not mean relevance. Do not infer from
+the campsite name.
 
-Official campsite_rules are also retrieved by embedding. MOST are unrelated
-(tents and cabins will show up for a desert query). A rule has subject,
-polarity (true = allowed/provided, false = forbidden/not provided, null =
-quantity), and the source sentence. Use polarity. Do not infer from the
-campsite name.
+Each claim has is_positive (true = praise / feature present / allowed;
+false = complaint / missing / forbidden). Use that polarity.
+
+A rule has subject, polarity (true = allowed/provided, false =
+forbidden/not provided, null = quantity), and the source sentence. A
+tent/cabin/room/hut subject is lodging, not a location or a vibe.
+electric_stove / kettle is cooking, not campsite electricity.
+A caravan-bay /water hookup (עמדת חניה לקרוואן) only serves a
+guest who brought a caravan; it does not satisfy electricity for a
+tent/room stay. electric_outlet in a bungalow/room DOES. Site-wide
+נקודות חשמל and a PITCH tent with חיבור חשמל DO (limited coverage is a
+caveat, not a no).
 
 1. relevant_claims: every claim that is actually about the request, including
    complaints and forbiddens. Keep all of those. Do not keep passing mentions
@@ -50,7 +57,9 @@ campsite name.
      or a rule whose polarity is true (provided/allowed).
    - "Pets are not allowed" does NOT satisfy "pet friendly".
    - dogs_allowed with polarity false does NOT satisfy "pet friendly".
-   - A tent/cabin/room rule does NOT satisfy "desert".
+   - A tent/cabin/room rule does NOT satisfy "desert" or "quiet".
+   - electric_stove does NOT satisfy "electricity".
+   - A caravan-bay hookup does NOT satisfy "electricity" without a caravan.
    - "No electricity at the tent" does NOT satisfy "electricity".
    - A concessive aside counts ("despite being in the desert" satisfies
      "in the desert").
@@ -94,12 +103,6 @@ Output JSON only:
 
 def _norm(text: str) -> str:
     return " ".join((text or "").split())
-
-
-def _why_is_claim_only(entry: dict[str, Any]) -> bool:
-    return bool(entry.get("claim")) and not entry.get("stated_amenity") and not entry.get(
-        "site_amenity"
-    )
 
 
 def _why_query(entry: dict[str, Any]) -> str | None:
@@ -217,9 +220,11 @@ def apply_claim_rule_judgements(
     judge: Callable[..., dict[str, Any]] | None = None,
     search_rules: Callable[..., list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    """Filter claim-only fits that do not satisfy; keep relevant claims as evidence.
+    """Filter fits the judge says do not satisfy; keep relevant claims as evidence.
 
-    A stated amenity still wins: the judge never vetoes an official listing.
+    Listing hits at amenity −0.7 are recall (tent-as-desert, stove-as-
+    electricity). The judge sifts those too, not only claim-only why
+    (experiments.md 2026-09-07 §8).
     """
     fits = list(payload.get("fits") or [])
     if not fits:
@@ -236,9 +241,6 @@ def apply_claim_rule_judgements(
         cid = int(fit["campsite_id"])
         why = list(fit.get("why") or [])
         claims = list(fit.get("review_claims") or [])
-        if not claims and not any(_why_is_claim_only(w) for w in why):
-            kept.append(fit)
-            continue
         queries = list(
             dict.fromkeys(
                 q
@@ -247,6 +249,9 @@ def apply_claim_rule_judgements(
                 if isinstance(q, str) and q
             )
         )
+        if not queries:
+            kept.append(fit)
+            continue
         verdicts: list[dict[str, Any]] = []
         relevant_norm: set[str] = set()
         drop = False
@@ -270,8 +275,6 @@ def apply_claim_rule_judgements(
             verdicts.append({"query": query, **verdict})
             relevant_norm.update(_norm(t) for t in verdict.get("relevant_claims") or [])
         for entry in why:
-            if not _why_is_claim_only(entry):
-                continue
             query = _why_query(entry)
             if query is None:
                 continue

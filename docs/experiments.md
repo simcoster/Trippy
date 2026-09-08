@@ -7,6 +7,45 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-08
+
+### 1. Can the unit extractor name a caravan-bay hookup as not generic electricity?
+
+**Question.** `"electricity"` retrieves `electric_hookup` at −0.704 for
+עמדת חניה לקרוואן פרטי ("קיים חיבור חשמל ומים") and for מתחם PITCH
+tent power. The judge already drops the caravan bay for a tent stay.
+Can a small unit-prompt change make the extractor emit
+`caravan_bay_electric_hookup` / `caravan_bay_water_hookup` instead of
+bare `electric_hookup` / `water_hookup`, without renaming PITCH power?
+
+**Setup.** No writes. `RuleExtractorLLMClient` (235B) on
+`UNIT_PROMPT`. Listing:
+
+```
+עמדת חניה לקרוואן פרטי
+כניסה לחניון לילה עם קרוואן פרטי
+קיים חיבור חשמל ומים
+הרכב ההזמנה: עד 6 לנים בהרכב.
+```
+
+Control: `מתחם PITCH` / "אוהל בשטח. חיבור חשמל. שירותים ומקלחות משותפים."
+Current prompt vs the same prompt plus (1) a never-name-the-unit
+exception for vehicle hookups and (2) a few-shot of that listing.
+4 calls. Dump `temp/caravan_bay_hookup.json`.
+
+**Result.** Current caravan: `trailer_parking`,
+`campsite_entry_with_private_caravan`, **`electric_hookup`**,
+**`water_hookup`** (occupancy skipped). Proposed caravan:
+`trailer_parking`, **`caravan_bay_electric_hookup`**,
+**`caravan_bay_water_hookup`**. PITCH stayed `tent_pitch` +
+`electric_hookup` + toilets/showers both times. ~4–7 s/call, ~3500–3800
+in / 220–380 out, ≈$0.0009 each, **$0.0036** total.
+
+**Decision.** Ship the glossary and the never-name exception on
+`UNIT_PROMPT`. Classifier one-liner aligned (`caravan_bay_electric_hookup`,
+not `electric_hookup`) so resolve does not teach the old name.
+design.md "One tooltip, one pipeline".
+
 ## 2026-09-07
 
 ### 8. After rebuilding claims, can the judge sift amenity −0.7 listing hits?

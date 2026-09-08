@@ -6,6 +6,23 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-08, caravan-bay hookup names)
+
+**Caravan-bay חיבור חשמל ומים is `caravan_bay_electric_hookup` /
+`caravan_bay_water_hookup`, not bare `electric_hookup`.** Retrieve
+cannot see the unit type on the row, so the generic names looked like a
+guest socket. Unit prompt: one exception to never-name-the-unit, plus
+that listing as a few-shot. PITCH tent power stays `electric_hookup`.
+experiments.md 2026-09-08 §1. Stored rows unchanged until re-extract.
+
+### Done (2026-09-07, amenity gate −0.7 in prod)
+
+**Amenity retrieve −0.7; the judge sifts listing hits.** Same design as
+the §8 probe: outlets/hookups enter, tent-as-desert is retrieve noise
+the judge drops. `AMENITY_MATCH_MAX_DISTANCE = -0.7`. Amenity-only fits
+no longer skip the judge. experiments.md 2026-09-07 §8. Supersedes
+“prod stays −0.8 until listing-only fits go through the judge” above.
+
 ### Done (2026-09-07, judge sifts amenity −0.7)
 
 **Judge can sift amenity −0.7 listing hits; despite-split did not

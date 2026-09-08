@@ -77,16 +77,16 @@ def test_claim_only_fit_kept_when_judge_satisfies_and_evidence_filtered():
     assert out["fits"][0]["claim_judge"][0]["satisfies"] is True
 
 
-def test_amenity_fit_without_claims_skips_the_judge():
+def test_amenity_fit_without_claims_still_runs_the_judge():
     calls = {"n": 0}
 
     def _fn(**kwargs):
         calls["n"] += 1
         return {
             "relevant_claims": [],
-            "satisfies": False,
-            "satisfy_by": None,
-            "reason": "should not run",
+            "satisfies": True,
+            "satisfy_by": "rule",
+            "reason": "refrigerator provided",
         }
 
     fit = {
@@ -99,11 +99,12 @@ def test_amenity_fit_without_claims_skips_the_judge():
         judge=_fn,
         search_rules=lambda *a, **k: [],
     )
-    assert calls["n"] == 0
+    assert calls["n"] == 1
     assert out["fits"][0]["why"][0]["stated_amenity"] == "refrigerator"
+    assert out["fits"][0]["claim_judge"][0]["satisfies"] is True
 
 
-def test_stated_amenity_is_not_vetoed_when_judge_says_no():
+def test_stated_amenity_is_dropped_when_judge_says_no():
     fit = {
         "campsite_id": 4,
         "campsite": "Park",
@@ -117,11 +118,12 @@ def test_stated_amenity_is_not_vetoed_when_judge_says_no():
         judge=_judge(satisfies=False, relevant=[]),
         search_rules=lambda *a, **k: [],
     )
-    assert len(out["fits"]) == 1
-    assert "review_claims" not in out["fits"][0]
+    assert out["fits"] == []
+    assert out["rejected_count"] == 1
+    assert out["rejected"][0]["why"][-1]["reason"] == "claim_not_verified"
 
 
-def test_relevant_negative_stays_on_amenity_fit():
+def test_relevant_negative_stays_on_rejected_amenity_fit():
     fit = {
         "campsite_id": 1,
         "campsite": "Horshat Tal",
@@ -143,7 +145,7 @@ def test_relevant_negative_stays_on_amenity_fit():
         ),
         search_rules=lambda *a, **k: [],
     )
-    assert len(out["fits"]) == 1
-    assert [c["claim"] for c in out["fits"][0]["review_claims"]] == [
+    assert out["fits"] == []
+    assert [c["claim"] for c in out["rejected"][0]["review_claims"]] == [
         "Pets are not allowed at the site."
     ]
