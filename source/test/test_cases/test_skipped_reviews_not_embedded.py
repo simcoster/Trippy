@@ -213,7 +213,7 @@ def test_upsert_review_returns_none_skip_for_new_row():
     assert skip is None
 
 
-@patch("source.agent.search.psycopg.connect")
+@patch("source.agent.search.connect")
 @patch("source.agent.search.register_vector")
 def test_search_review_claims_excludes_skipped_reviews(_register_vector, connect):
     conn = MagicMock()

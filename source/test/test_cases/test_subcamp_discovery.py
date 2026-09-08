@@ -44,7 +44,7 @@ def run_upsert(config, saved):
     conn, cursor = mock_connection()
     with (
         patch.object(discover_sites, "load_subcamp_config", return_value=config),
-        patch.object(discover_sites.psycopg, "connect", return_value=conn),
+        patch.object(discover_sites, "connect", return_value=conn),
     ):
         written = discover_sites.upsert_subcamps(saved)
     params = [c.args[1] for c in cursor.execute.call_args_list]
