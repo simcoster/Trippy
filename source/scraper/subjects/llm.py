@@ -114,6 +114,8 @@ Examples:
 - term "barbecue_allowed", candidates ["barbecue", ...] -> {"match": null}
   (one asks whether grilling is permitted, the other names the equipment)
 - term "late_check_out_fee", candidates ["late_check_out_available", ...] -> {"match": null}
+- term "late_entry_exit_end_time", candidates ["check_in_end_time", ...] -> {"match": null}
+  (the hour a late-arrival surcharge starts is not the hour guests must arrive by)
 
 Schema:
 {"match": "<one of the candidate strings>" | null,
@@ -128,17 +130,19 @@ canonical label and category.
 Rules:
 - Output valid JSON only, without markdown wrappers.
 - category is 1 for an amenity (something the site provides or does not provide:
-  shower, refrigerator, electric_hookup, towels); 2 for a boolean rule (something
+  shower, refrigerator, electric_hookup, towels, sea, desert, forest); 2 for a
+  boolean rule (something
   a guest may, must, or must not do, answered yes or no: dogs_allowed,
   late_check_out_fee_required); 3 for a numeric rule (a time or a limit on a
   stay, answered by a number: quiet_hours_start, min_weekend_nights,
   check_out_time, adult_min_age).
 - canonical_name is lower snake_case English, and states the predicate.
 - ALWAYS phrase the name POSITIVELY. Negation is recorded separately, not in the
-  name. Never emit not_/no_/cant_/cannot_/without_/_forbidden/_banned names.
+  name. Never emit not_/no_/_forbidden/_banned names.
   - "no dogs allowed"          -> canonical_name "dogs_allowed"
   - "bring your own towels"    -> canonical_name "towels_included"
   - "dogs cannot be unmuzzled" -> canonical_name "dogs_must_wear_a_muzzle"
+  - "cant_be_without_muzzle"   -> canonical_name "can_be_without_muzzle"
 - Direction belongs in the name, not in a separate field:
   min_weekend_nights, max_occupancy, check_out_time, latest_arrival_time,
   pool_min_age, last_dogs_entry_time.

@@ -11,15 +11,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
 
 import httpx
-import psycopg
 from dotenv import load_dotenv
 
+from db.connect import connect, database_url
 from source.scraper.amenity_enrichment.llm import LlmUsage, record_scrape_cost
 from source.scraper.cli import add_site_argument, site_ids
 from source.scraper.info_site.classify import RateCardClassifier, classify_rows
@@ -59,13 +58,6 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
         return json.load(f)
 
 
-def database_url(config: dict) -> str:
-    url = os.environ.get("DATABASE_URL") or config.get("database_url")
-    if not url:
-        raise RuntimeError("No database_url in config or DATABASE_URL env")
-    return url.replace("@db:", "@localhost:")
-
-
 def fetch_campsites(config: dict, *, sites: list[int] | None = None) -> list[dict]:
     """The pages to scrape: the ones `sites` names, else the first `limit`.
 
@@ -84,7 +76,7 @@ def fetch_campsites(config: dict, *, sites: list[int] | None = None) -> list[dic
         ORDER BY id
         LIMIT %(limit)s
     """
-    with psycopg.connect(database_url(config)) as conn, conn.cursor() as cur:
+    with connect(database_url(config)) as conn, conn.cursor() as cur:
         cur.execute(
             sql,
             {"sites": list(sites or ()), "limit": len(sites) if sites else limit},
@@ -223,7 +215,7 @@ def run_prices(
     total = 0
 
     print(f"Scraping list prices for {len(campsites)} campsite(s)")
-    with psycopg.connect(database_url(config)) as conn:
+    with connect(database_url(config)) as conn:
         for site in campsites:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}")

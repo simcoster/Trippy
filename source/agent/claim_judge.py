@@ -40,8 +40,9 @@ tent/room stay. electric_outlet in a bungalow/room DOES. Site-wide
 caveat, not a no).
 
 1. relevant_claims: every claim that is actually about the request, including
-   complaints and forbiddens. Keep all of those. Do not keep passing mentions
-   or a different fact that happens to share a word.
+   complaints and forbiddens. Keep all of those even when satisfies is true
+   — nos are evidence for the recommender, not a planner veto. Do not keep
+   passing mentions or a different fact that happens to share a word.
    - "Pets are not allowed" IS relevant to "pet friendly" (it is about pets).
    - "Staff is friendly" / "family-friendly" is NOT relevant to "pet friendly".
    - "Campfires are allowed" is NOT relevant to "desert".
@@ -50,17 +51,21 @@ caveat, not a no).
      desert — not relevant.
    - Quote claim text exactly as given. Empty list if none are about it.
 
-2. satisfies: true only if the guest would get what they asked for, from at
-   least one relevant claim with matching polarity OR one campsite rule that
-   grants the request.
-   - Feature / vibe / permission → need is_positive true on a relevant claim,
+2. satisfies: true iff a relevant claim says yes OR a campsite rule
+   grants the request. A no never decides this. Complaints,
+   is_positive=false, polarity-false rules, and "not provided" do not veto
+   a yes; leave satisfies true and keep those nos in relevant_claims.
+   satisfies is false only when there is no granting claim and no granting
+   rule (unrelated hits, or only nos).
+   - Feature / vibe / permission → is_positive true on a relevant claim,
      or a rule whose polarity is true (provided/allowed).
-   - "Pets are not allowed" does NOT satisfy "pet friendly".
-   - dogs_allowed with polarity false does NOT satisfy "pet friendly".
+   - "Pets are not allowed" does NOT itself satisfy "pet friendly".
+   - dogs_allowed with polarity false does NOT itself satisfy "pet friendly".
    - A tent/cabin/room rule does NOT satisfy "desert" or "quiet".
    - electric_stove does NOT satisfy "electricity".
    - A caravan-bay hookup does NOT satisfy "electricity" without a caravan.
-   - "No electricity at the tent" does NOT satisfy "electricity".
+   - "No electricity at the tent" does NOT itself satisfy "electricity". If a
+     rule grants electricity, satisfies is still true.
    - A concessive aside counts ("despite being in the desert" satisfies
      "in the desert").
    - Limited coverage still satisfies ("electricity is available, though it
@@ -71,12 +76,12 @@ Request "pet friendly". Claim "Pets are not allowed at the site."
 is_positive=false. Rule dogs_allowed polarity=false.
 → {"relevant_claims": ["Pets are not allowed at the site."],
    "satisfies": false, "satisfy_by": null,
-   "reason": "mentions pets but forbids them; official rule forbids dogs"}
+   "reason": "no granting claim or rule; only forbids"}
 
 Request "pet friendly". Claim "The staff is friendly." is_positive=true.
 Rule dogs_allowed polarity=false.
 → {"relevant_claims": [], "satisfies": false, "satisfy_by": null,
-   "reason": "staff-friendly is not about pets; rule forbids dogs"}
+   "reason": "staff-friendly is not about pets; no granting pet rule"}
 
 Request "desert". Claim "Campfires are allowed." is_positive=true.
 Rule tent polarity=true.
@@ -88,6 +93,18 @@ desert with winds." is_positive=true. Rule tent polarity=true.
 → {"relevant_claims": ["The tent is clean despite being in the desert with winds."],
    "satisfies": true, "satisfy_by": "claim",
    "reason": "concessive aside states the site is in the desert"}
+
+Request "fridge". Claim "The kitchen fridge needs more shelves."
+is_positive=true. Rule refrigerator polarity=true, evidence "מקררים (3)".
+→ {"relevant_claims": ["The kitchen fridge needs more shelves."],
+   "satisfies": true, "satisfy_by": "rule",
+   "reason": "official listing provides fridges; complaint is a caveat"}
+
+Request "electricity". Claim "No electricity at the tent." is_positive=false.
+Rule electric_hookup polarity=true.
+→ {"relevant_claims": ["No electricity at the tent."],
+   "satisfies": true, "satisfy_by": "rule",
+   "reason": "official hookup grants it; the complaint is a caveat"}
 
 Request "electricity". Claim "Electricity is available, though it does
 not reach every spot." is_positive=true. Rule electric_hookup polarity=true.
@@ -136,7 +153,8 @@ def judge_site_request(
             "campsite": campsite,
             "note": (
                 "Most claims and rules are probably not about the request. "
-                "relevant_claims can be forbiddens; satisfies is stricter."
+                "Always use both lists. satisfies is true if any source "
+                "grants; nos belong in relevant_claims and do not veto."
             ),
             "claims": [
                 {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
@@ -222,9 +240,11 @@ def apply_claim_rule_judgements(
 ) -> dict[str, Any]:
     """Filter fits the judge says do not satisfy; keep relevant claims as evidence.
 
+    Retrieve always supplies claims and official rules; the judge sees both.
     Listing hits at amenity −0.7 are recall (tent-as-desert, stove-as-
     electricity). The judge sifts those too, not only claim-only why
-    (experiments.md 2026-09-07 §8).
+    (experiments.md 2026-09-07 §8). Nos in relevant_claims stay on the
+    survivor for the recommender; they do not veto a granting rule or claim.
     """
     fits = list(payload.get("fits") or [])
     if not fits:

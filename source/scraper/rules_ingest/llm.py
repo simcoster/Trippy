@@ -73,15 +73,19 @@ Rules:
   never senses and never a fountain. "שתי חושות" in an accessibility list is
   accessible_huts / amenity / true / null / none.
 - ALWAYS phrase the subject POSITIVELY. Negation goes in `polarity`, never in the
-  name. Never emit not_/no_/cant_/cannot_/without_/_forbidden/_banned subjects.
+  name. Never emit not_/no_/_forbidden/_banned subjects.
   - "הכניסה לכלבים אסורה"      -> dogs_allowed / boolean_rule / false
   - "יש להצטייד במגבות"        -> towels / amenity / false
   - "כלבים חייבים מחסום"       -> muzzle_for_dogs_required / boolean_rule / true
+  A "can't / cannot / without" phrasing is still a fact: name the positive
+  and set polarity false. Do not skip it.
+  - cant_be_without_muzzle -> can_be_without_muzzle / boolean_rule / false
 - Ignore hedges about time ("for now", "at this stage", "currently"): polarity
   states what holds today.
 - category: one of three.
   "amenity"      something the site provides or does not provide
-                 (shower, refrigerator, electric_hookup, towels).
+                 (shower, refrigerator, electric_hookup, towels), and
+                 the natural setting it sits in (sea, desert, forest).
   "boolean_rule" something a guest may, must or must not do, answered by
                  polarity. Every rule whose predicate is allowed or required:
                  dogs_allowed, late_check_out_fee_required.
@@ -103,6 +107,20 @@ Rules:
     -> visitor_service_center               / amenity / true  / null / none
     -> visitor_service_center_regular_hours_allowed / boolean_rule / false / null / none
   (opening "as needed" means it does NOT keep regular hours)
+  A sentence that only says guests must follow hours (or any other rule)
+  published elsewhere is not a fact. Emit nothing for it — the hours, when
+  they are actually stated, are numeric_rule as in the examples below:
+  "ניתן להגיע לחניון הלילה בהתאם לשעות הכניסה המפורסמות באתר" -> nothing
+  "you may only enter during visiting hours"                 -> nothing
+- A named place, landmark or natural setting — the sea, a desert, a forest,
+  a lake, a crater — is an amenity, not marketing. Keep the specific label AND
+  generalise, so a query like "near the sea" retrieves it. Not a closed list:
+  any setting you recognise.
+    "חניוני הלילה נמצאים בתחומי גן לאומי אכזיב בקרבת הים"
+      -> sea         / amenity / true  / null / none
+      -> near_water  / amenity / true  / null / none
+    "החניון בלב המדבר"  -> desert / amenity / true
+    "בתוך חורש"         -> forest / amenity / true
 - qualifier: the number the statement carries, or null. Write a time of day as a
   decimal hour: "20:30" -> 20.5, "12:00" -> 12.
   Never emit the same subject twice in one section — the second one is discarded.
@@ -115,7 +133,8 @@ Rules:
 - evidence_span: the Hebrew sentence or list item you read it from, verbatim.
 - confidence: 0..1.
 - This section describes the CAMPSITE AS A WHOLE. Ignore anything specific to one
-  room or unit type, and ignore prices, phone numbers, addresses and marketing.
+  room or unit type, and ignore prices, phone numbers, addresses and marketing
+  (a natural setting is an amenity, not marketing).
 - Emit nothing rather than guessing. An empty list is a valid answer.
 
 Examples:

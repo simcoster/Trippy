@@ -54,6 +54,23 @@ pr *title:
 pr *title:
     bash scripts/open_pr.sh {{ if title == "" { "" } else { quote(title) } }}
 
+# Copy public → experiments. `just setup-experiments` or `… copy --empty t1,t2`
+setup-experiments *args:
+    uv run python scripts/setup_experiments.py {{ args }}
+
+# Extractor + planner on evals/planner_v1.json (LLM; frozen occupancy)
+run-eval *args:
+    uv run python -m source.eval.run {{ trim_start_match(args, "-- ") }}
+
+# Run any just recipe with TRIPPY_SCHEMA=experiments (scrapes, planner, clears)
+[windows]
+on-experiments *args:
+    $env:TRIPPY_SCHEMA = "experiments"; just {{ args }}
+
+[unix]
+on-experiments *args:
+    TRIPPY_SCHEMA=experiments just {{ args }}
+
 # info-site lodging panel → accommodation_types + per-unit rules (--site N)
 scrape-rooms *args:
     uv run python -m source.scraper.rules_ingest.rooms {{ trim_start_match(args, "-- ") }}

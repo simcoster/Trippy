@@ -20,10 +20,10 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from db.connect import connect
 from source.scraper.amenity_enrichment import (
     LlmUsage,
     fill_missing_image_urls,
@@ -126,7 +126,7 @@ def fetch_campsites(config: dict, *, sites: list[int] | None = None) -> list[dic
         ORDER BY id
         LIMIT %s
     """
-    with psycopg.connect(database_url(config)) as conn:
+    with connect(database_url(config)) as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
@@ -502,7 +502,7 @@ def main(argv: list[str] | None = None) -> None:
     unmatched: list[tuple[int, str]] = []
 
     total_saved = 0
-    with psycopg.connect(database_url(config)) as conn:
+    with connect(database_url(config)) as conn:
         for site in campsites:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")

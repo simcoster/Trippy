@@ -46,6 +46,10 @@ id deletes that campsite's whole rate card, and the test never says so.
 - Open test connections with `options="-csearch_path=experiments,extensions"`.
   Nothing else is needed to be safe; everything unqualified now lands in the
   test schema.
+- Scrapes and the planner use the same isolation via `TRIPPY_SCHEMA=experiments`
+  (`db.connect.connect`). `just setup-experiments copy` fills the schema from
+  `public`; `just on-experiments …` runs a recipe against it. Do not open a
+  second connection to `public` to “try” a scrape.
 - An extension is installed once per database, into one schema, so `vector` and
   `pg_trgm` live in `extensions` (migration 033) rather than in `public` --
   otherwise `%(embedding)s::vector` resolves in production and fails in the

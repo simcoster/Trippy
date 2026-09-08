@@ -5,9 +5,8 @@ Pure BS4 — no HTTP, no LLM, no DB — so it can be tested against a saved page
 Four shapes carry site-level rules and amenities:
 
   div.infoArea      accordion panels rendered server-side. Only `מה בחניון?` is;
-                    `אפשרויות לינה` and the rest arrive over AJAX and are
-                    deliberately not fetched — per-unit data comes from the
-                    availability scrape (see docs/design.md).
+                    `אפשרויות לינה` is fetched separately (rooms.py). `מידע למבקר`
+                    is fetched the same way and parsed by `parse_visitor_info_panel`.
   div.wrapUseInfo   the visitor-info columns: arrival/departure hours, booking,
                     directions. Each child column is its own titled section.
   div.rp_info_icons the icon strip: `כניסת כלבים` / `הכניסה לכלבים אסורה`.
@@ -31,6 +30,11 @@ UNIT_SECTION_TITLES = ("אפשרויות לינה",)
 # Visitor-info columns that are wayfinding, not policy. Skipped so each page
 # costs one fewer extraction call; nothing in them states a rule.
 NAVIGATION_SECTION_TITLES = ("איך להגיע", "יצירת קשר")
+
+# AJAX accordion tab: site-wide visitor rules (no dogs, no generators, max
+# nights, …). Not in the static HTML; `ingest_site` fetches it and this
+# parser turns the body into one section, same shape as `מה בחניון?`.
+VISITOR_INFO_TITLE = "מידע למבקר"
 
 # `שעות כניסה ויציאה` is two topics in one paragraph, and handing the extractor
 # the whole thing makes it summarise: measured over five runs it returned seven
@@ -112,6 +116,31 @@ def _info_area_sections(soup: BeautifulSoup) -> list[Section]:
     return out
 
 
+def parse_visitor_info_panel(
+    html: str, *, source_url: str | None = None
+) -> list[Section]:
+    """The AJAX `מידע למבקר` body as one titled section, same shape as `מה בחניון?`.
+
+    One fact per `<li>` (and the trailing caravan-closed paragraph). The
+    heading is stripped so the extractor is not asked to emit a statement
+    for the tab name.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    root = soup.select_one("div.infoContent") or soup
+    heading = root.find(["h2", "h3", "h4"])
+    title = (
+        normalize_label(heading.get_text(" ", strip=True))
+        if heading
+        else VISITOR_INFO_TITLE
+    )
+    body = _block_text(root)
+    if title and body.startswith(title):
+        body = body[len(title) :].strip()
+    if not body:
+        return []
+    return [Section(title or VISITOR_INFO_TITLE, body, source_url)]
+
+
 def _visitor_info_sections(soup: BeautifulSoup) -> list[Section]:
     out: list[Section] = []
     for wrap in soup.select("div.wrapUseInfo"):
@@ -123,7 +152,7 @@ def _visitor_info_sections(soup: BeautifulSoup) -> list[Section]:
             body = _block_text(column)
             if title and body.startswith(title):
                 body = body[len(title) :].strip()
-            out.append(Section(title or "מידע למבקר", body))
+            out.append(Section(title or VISITOR_INFO_TITLE, body))
     return out
 
 

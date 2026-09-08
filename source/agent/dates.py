@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -41,6 +42,9 @@ _WEEKDAY_EN = (
 def today_il(today: date | None = None) -> date:
     if today is not None:
         return today
+    pinned = (os.environ.get("TRIPPY_TODAY") or "").strip()
+    if pinned:
+        return date.fromisoformat(pinned)
     return datetime.now(TZ_IL).date()
 
 

@@ -242,7 +242,7 @@ def test_open_slots_queries_db_for_extractor_tonight_party_ac(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("DATABASE_URL", "postgresql://mock")
-    monkeypatch.setattr(agent_search.psycopg, "connect", lambda _url: _MockConn())
+    monkeypatch.setattr(agent_search, "connect", lambda *_a, **_k: _MockConn())
 
     slots = search_open_slots(
         date_range=EXTRACTOR_JSON["date"],

@@ -235,14 +235,27 @@ def test_missing_locus_behaves_like_site(fridge_db: SimpleNamespace):
     )["fits"]
 
 
-def test_site_amenity_search_scoped_to_still_unmatched_sites(
+def test_site_amenity_search_runs_for_every_candidate_site(
     fridge_db: SimpleNamespace,
 ):
     _plan([{"query": "fridge", "locus": "site"}])
-    # Campsite 4 is already satisfied by its own type amenity, so only 3 is asked.
+    # Claim and site-amenity always both retrieve, even when a unit listing
+    # already matches. Satisfaction is still OR.
     fridge_db.site_amenities.assert_called_once_with(
-        "fridge", limit=1, embedding=FAKE_VEC, campsite_ids=[3]
+        "fridge", limit=2, embedding=FAKE_VEC, campsite_ids=[3, 4]
     )
+
+
+def test_claim_hit_still_retrieves_site_amenities(fridge_db: SimpleNamespace):
+    fridge_db.amenities.return_value = []
+    fridge_db.claims.return_value = [_claim(3, is_positive=True, distance=-0.75)]
+    fridge_db.site_amenities.return_value = [dict(SITE_FRIDGE_HIT)]
+    payload = _plan([{"query": "fridge", "locus": "site"}])
+    fridge_db.site_amenities.assert_called_once()
+    assert fridge_db.site_amenities.call_args.kwargs["campsite_ids"] == [3, 4]
+    why = payload["fits"][0]["why"][0]
+    assert why["site_amenity"] == "communal_refrigerators"
+    assert "claim" not in why
 
 
 def test_claims_scoped_to_candidate_campsites(fridge_db: SimpleNamespace):

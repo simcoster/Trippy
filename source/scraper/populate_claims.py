@@ -12,10 +12,10 @@ import sys
 from collections import defaultdict
 from typing import Any
 
-import psycopg
 from dotenv import load_dotenv
 from pgvector.psycopg import register_vector
 
+from db.connect import connect
 from source.scraper.amenity_enrichment.llm import (
     ClaimsEmbeddingLLMClient,
     LlmUsage,
@@ -255,7 +255,7 @@ def populate_claims(
     own_conn = conn is None
     if own_conn:
         config = load_config() if CONFIG_PATH.exists() else {}
-        conn = psycopg.connect(database_url(config))
+        conn = connect(database_url(config))
     try:
         n_empty = mark_empty_reviews_irrelevant(conn, campsite_id=campsite_id)
         if n_empty:
@@ -294,7 +294,7 @@ def main() -> None:
     args = parser.parse_args()
     config = load_config() if CONFIG_PATH.exists() else {}
     usage = LlmUsage()
-    with psycopg.connect(database_url(config)) as conn:
+    with connect(database_url(config)) as conn:
         campsite_id = args.campsite_id
         if campsite_id is None and args.name:
             campsite_id, db_name = lookup_campsite_id(conn, args.name)

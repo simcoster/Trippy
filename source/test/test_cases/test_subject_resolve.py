@@ -231,7 +231,7 @@ def test_unrewritable_negative_term_is_dropped():
 
     ref = resolve_subject(
         make_conn(cursor),
-        "dogs_cant_be_without_muzzle",
+        "pets_not_on_leash",
         embedder=make_embedder(),
         adjudicator=adjudicator,
         verbose=False,
@@ -507,7 +507,7 @@ def test_trace_records_a_dropped_negative():
     sink: list[ResolutionTrace] = []
     resolve_subject(
         make_conn(FakeCursor()),
-        "dogs_cant_be_without_muzzle",
+        "pets_not_on_leash",
         embedder=make_embedder(),
         adjudicator=make_adjudicator(),
         trace_sink=sink,

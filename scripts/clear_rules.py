@@ -49,6 +49,8 @@ import sys
 import psycopg
 from dotenv import load_dotenv
 
+from db.connect import connect
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -120,7 +122,7 @@ def main() -> None:
         _log("Per-unit rows are kept; pass --all to remove those too.")
 
     try:
-        with psycopg.connect(url, connect_timeout=10) as conn:
+        with connect(url, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 cur.execute(COUNTS)
                 before_site, before_unit, before_subjects = cur.fetchone()

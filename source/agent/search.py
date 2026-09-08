@@ -7,11 +7,12 @@ from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
-import psycopg
 from dotenv import load_dotenv
 from langchain_core.tools import StructuredTool
 from pgvector.psycopg import register_vector
 
+from db.connect import connect
+from db.experiments import table_name
 from db.models import SubjectCategory
 from source.agent.constraints import claim_recency, today_il
 from source.agent.dates import _parse_iso_day, iso_day, stay_night_starts
@@ -23,7 +24,14 @@ load_dotenv()
 
 _claims_embedder = ClaimsEmbeddingLLMClient()
 
+# Site-wide rules for a candidate: this campsite and its parent. Sister
+# subcamps (Akhziv north vs south) do not share each other's rows.
+_OWN_OR_PARENT_RULES = (
+    "(cr.campsite_id = {alias}.id OR cr.campsite_id = {alias}.parent_id)"
+)
+
 OPEN_SLOTS_LIMIT = 80
+AVAILABILITY_TABLE_ENV = "TRIPPY_AVAILABILITY_TABLE"
 _LAST_OPEN_SLOTS_QUERY: dict[str, Any] | None = None
 
 _NAMED_CAMPSITE_ALIASES = {
@@ -31,6 +39,12 @@ _NAMED_CAMPSITE_ALIASES = {
     "horashat tal": "חורשת טל",
     "hurshat tal": "חורשת טל",
 }
+
+
+def _availability_relation() -> str:
+    """Unqualified availability table. Benchmark sets `availability_frozen`."""
+    raw = (os.environ.get(AVAILABILITY_TABLE_ENV) or "availability").strip()
+    return table_name(raw)
 
 
 def _record_open_slots_query(record: dict[str, Any]) -> dict[str, Any]:
@@ -71,10 +85,11 @@ def _open_slots_sql(
         params.append(int(party_size))
     params.append(len(nights))
     params.append(limit)
+    rel = _availability_relation()
     sql = (
         "SELECT a.site_id, c.name, MIN(a.start_date), MAX(a.end_date),\n"
         "       MIN(a.room_count), at.id, at.name, at.max_occupancy\n"
-        "FROM availability a\n"
+        f"FROM {rel} a\n"
         "JOIN accommodation_types at ON at.id = a.accommodation_type_id\n"
         "JOIN campsites c ON c.id = a.site_id\n"
         f"WHERE {' AND '.join(clauses)}\n"
@@ -175,7 +190,7 @@ def _load_list_prices(type_ids: list[int]) -> dict[int, list[SimpleNamespace]]:
         WHERE at.id = ANY(%s)
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (type_ids,))
                 rows = cur.fetchall()
@@ -222,7 +237,8 @@ def search_open_slots(
     only when the type has a row for every night in [start, end). Party
     size uses accommodation max_occupancy (scrape is 1-adult). Price
     filters use quote_night against list_prices. Optional site_id narrows
-    to a named park.
+    to a named park. `TRIPPY_AVAILABILITY_TABLE` selects the occupancy
+    relation (`availability_frozen` for the planner benchmark).
     """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -248,7 +264,7 @@ def search_open_slots(
     }
     _record_open_slots_query(query_record)
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
                 rows = cur.fetchall()
@@ -337,7 +353,7 @@ def lookup_campsite_by_name(name: str) -> list[dict]:
         LIMIT 5
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (like_patterns,))
                 rows = cur.fetchall()
@@ -372,7 +388,7 @@ def search_campsites(numeric_constraints):
         LIMIT 50
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql)
                 rows = cur.fetchall()
@@ -438,7 +454,7 @@ def search_stated_amenities(
         LIMIT %s
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)
@@ -464,7 +480,10 @@ def search_site_amenities(
     embedding: str | None = None,
     campsite_ids: list[int] | None = None,
 ) -> list[dict]:
-    """Rank campsites by closest site-wide (communal) amenity embedding."""
+    """Rank campsites by closest site-wide (communal) amenity embedding.
+
+    A subcamp's scan includes the parent's site-wide rows, not a sister's.
+    """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         return []
@@ -492,7 +511,8 @@ def search_site_amenities(
                    AS matched_amenity
         FROM campsites c
         JOIN campsite_rules cr
-          ON cr.campsite_id = c.id AND cr.accommodation_type_id IS NULL
+          ON cr.accommodation_type_id IS NULL
+         AND {_OWN_OR_PARENT_RULES.format(alias="c")}
         JOIN subject_vectors a ON a.id = cr.subject_id
         WHERE {' AND '.join(clauses)}
         GROUP BY c.id, c.name
@@ -500,7 +520,7 @@ def search_site_amenities(
         LIMIT %s
     """
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)
@@ -528,7 +548,9 @@ def search_campsite_rules(
     """Nearest official rules per campsite, all subject categories.
 
     Unlike the amenity lanes this includes polarity-false rows (dogs_allowed
-    forbidden) and boolean/numeric rules. A subcamp reads its parent's rules.
+    forbidden) and boolean/numeric rules. A subcamp reads its own rules and
+    its parent's, never a sister's: ingest writes visitor-info onto the child,
+    reviews live on the parent.
     """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -551,7 +573,7 @@ def search_campsite_rules(
         """
         params: list[Any] = [vec_literal, vec_literal, limit]
     else:
-        sql = """
+        sql = f"""
             SELECT s.campsite_id, x.name, x.category, x.polarity,
                    x.qualifier, x.qualifier_unit, x.evidence_span,
                    x.accommodation_type_id, x.distance
@@ -564,15 +586,15 @@ def search_campsite_rules(
                        sv.embedding <#> %s::vector AS distance
                 FROM campsite_rules cr
                 JOIN subject_vectors sv ON sv.id = cr.subject_id
-                WHERE cr.campsite_id = COALESCE(site.parent_id, site.id)
-                  AND sv.embedding IS NOT NULL
+                WHERE sv.embedding IS NOT NULL
+                  AND {_OWN_OR_PARENT_RULES.format(alias="site")}
                 ORDER BY sv.embedding <#> %s::vector
                 LIMIT %s
             ) x
         """
         params = [ids, vec_literal, vec_literal, limit]
     try:
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)
@@ -670,7 +692,7 @@ def search_review_claims(
         )
     try:
         today = today_il()
-        with psycopg.connect(db_url) as conn:
+        with connect(db_url) as conn:
             register_vector(conn)
             with conn.cursor() as cur:
                 cur.execute(sql, params)

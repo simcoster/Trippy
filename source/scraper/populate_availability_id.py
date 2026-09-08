@@ -26,10 +26,10 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from db.connect import connect
 from source.scraper.tls import ssl_context
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -240,7 +240,7 @@ def update_booking_hotel_ids(hotels: list[dict]) -> tuple[list[dict], list[dict]
     updated: list[dict] = []
     unmatched: list[dict] = []
 
-    with psycopg.connect(db_url) as conn:
+    with connect(db_url) as conn:
         with conn.cursor() as cur:
             cur.execute(ENSURE_COLUMN_SQL)
             cur.execute(ENSURE_INDEX_SQL)

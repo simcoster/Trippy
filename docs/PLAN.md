@@ -6,6 +6,119 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-08, just run-eval)
+
+**`just run-eval` scores extractor + planner against
+`evals/planner_v1.json`.** Frozen occupancy, pinned today, markdown
+report under `reports/evals/`. `--ids E01,H02` for a subset.
+
+### Done (2026-09-08, planner benchmark v1)
+
+**26 queries (14 easy / 12 hard) with website gold and frozen
+occupancy.** `experiments.availability_frozen` is a snapshot of
+`public.availability` (7–19 Sep 2026). Amenity/rule gold is the
+parks.org.il page. `evals/planner_v1.json`. experiments.md
+2026-09-08 §11.
+
+### Done (2026-09-08, replay fridge query 3)
+
+**Akhziv tents now fit `עם מקרר`.** Same query as §7: 2 fits
+(37 north, 38 south). Official `refrigerator` is in `why`; the
+judge grants by rule and keeps fridge complaints as caveats.
+experiments.md 2026-09-08 §10.
+
+### Done (2026-09-08, judge yes is OR; nos do not veto)
+
+**Rules scan is this site + parent, never a sister.** Judge always
+sees rules and claims. `satisfies` is any granting rule or claim;
+complaints stay in `relevant_claims` for the recommender.
+experiments.md 2026-09-08 §9.
+
+### Done (2026-09-08, claim and site amenity both retrieve)
+
+**Site-locus retrieve always runs claims and site amenities;
+satisfaction is OR.** A claim hit no longer skips the listing.
+`search_campsite_rules` for a subcamp includes the child's rows
+and the parent's, so visitor-info on Akhziv 37/38 reaches the
+judge. experiments.md 2026-09-08 §8.
+
+### Done (2026-09-08, query 3 with fridge)
+
+**Fridge instead of electricity: still 0 fits.** Akhziv tents pass
+sea (beach claim) and die on fridge: retrieve was kitchen-fridge
+*complaints*, so the official `מקררים (3)` never reached the judge.
+Huts with mini-fridges were not vacant 17 Sep. experiments.md
+2026-09-08 §7.
+
+### Done (2026-09-08, Akhziv scrape-info + query 3)
+
+**Visitor-info `sea` puts Akhziv tents through the sea gate; they
+still fail electricity.** Full `scrape-info --site 2` on
+`experiments`, then planner query 3: 0 fits / 19 rejected. North
+and south tent pitches miss only electricity (`phone_charging_points`
+is not a hookup). Inland powered sites still fail the sea judge.
+experiments.md 2026-09-08 §6. No planner change.
+
+### Open (2026-09-08, ReAct vs graph agent)
+
+**Chatbot loop is undecided; ingest/RAG/availability stay.** Logged
+tradeoffs in `docs/react_vs_graph_agent.md`: stuffing pages after
+slots rejected as a RAG replacement (lost-in-the-middle, no unit
+amenities or claims); hosted Claude Code + generic Postgres MCP
+rejected as a Telegram runtime (no embedder, no `quote_night`, session
+≠ N chats). Closest fit is ReAct on Qwen 235B with `search.py` as
+typed tools. Buried `בשישי הקרוב` is why the backbone must not own
+calendars: 30B full was 2/5 on the Horshat Tal query, 235B extract
+30/30 (experiments.md 2026-09-08 §2–§3). No spike yet. Follow-ups
+(“why?”, “the first one”, “cheaper”) need `last_recommendations` —
+still the open item in §4 below.
+
+### Done (2026-09-08, experiments harness)
+
+**`TRIPPY_SCHEMA=experiments` points scrapes and search at a full
+copy of `public`.** `db.connect.connect` is the one `psycopg.connect`
+wrapper; `scripts/setup_experiments.py copy` rebuilds the schema
+(DDL + rows + views), `--empty` truncates named tables after. `just
+on-experiments scrape-info -- --site 2`. No custom clone scripts.
+Supersedes ad-hoc `clone_tables` + seed in experiment scripts.
+
+### Done (2026-09-08, visitor-info extract re-run)
+
+**`cant_` rewrites to `can_` (polarity false); the 18:00 late-fee
+cutoff is its own subject.** `to_positive_subject` rewrites token
+`cant_` / `cannot_` instead of dropping them
+(`cant_be_without_muzzle` → `can_be_without_muzzle` false). The merge
+judge (235B) has a few-shot that 18:00 is not `check_in_end_time`.
+Live Akhziv re-extract in `experiments`: 36 stored, 28/29 gold
+(the visiting-hours pointer is the only miss, as asked), 0 naming
+drops, `$0.009`, 70 s. Report:
+`reports/visitor_info_ingest/2026-09-08_154130.md`. experiments.md
+2026-09-08 §5. Supersedes the reservation-drop and 18:00-merge notes
+in the visitor-info accordion entry below.
+
+### Done (2026-09-08, visitor-info prompt follow-ups)
+
+**Sea/desert/forest are amenities; infix `_without_` no longer drops;
+visiting-hours pointers are non-statements.** Site extract now keep-and-
+generalises a natural setting the way the unit prompt already did, so
+`בקרבת הים` is `sea` + `near_water`, not brochure. `_without_` in the
+middle of a name (`entry_without_reservation_allowed`) is kept; prefix
+`without_electricity` is still rewritten. "You may only enter during
+visiting hours" is emit-nothing, like a pointer at another section.
+experiments.md 2026-09-08 §4. No new category: retrieve already searches
+amenities.
+
+### Done (2026-09-08, visitor-info accordion)
+
+**`מידע למבקר` is fetched and extracted like `מה בחניון?`.** The tab
+is AJAX (`data-cnt` per site, same loadmore endpoint as lodging). One
+section, one extract call. Akhziv experiment: 46 rows in
+`experiments.campsite_rules`, 26/29 gold lines, $0.014, 193 s.
+Reservation-required was dropped by the positive-phrasing guard;
+18:00 late-fee cutoff merged into `check_in_end_time`.
+experiments.md 2026-09-08 §4. Report:
+`reports/visitor_info_ingest/2026-09-08_142435.md`.
+
 ### Done (2026-09-08, just pr merges on green CI)
 
 **`just pr` squash-merges with `--admin` after CI passes, then checks

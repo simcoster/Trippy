@@ -10,10 +10,10 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 import httpx
-import psycopg
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from db.connect import connect
 from source.scraper.tls import ssl_context
 
 # Windows consoles often default to cp1252 and choke on Hebrew titles.
@@ -97,7 +97,7 @@ def upsert_campsites(campsites: list[dict[str, str]]) -> list[dict]:
 
     db_url = _database_url()
     saved: list[dict] = []
-    with psycopg.connect(db_url) as conn:
+    with connect(db_url) as conn:
         with conn.cursor() as cur:
             for site in campsites:
                 cur.execute(UPSERT_SQL, site)
@@ -145,7 +145,7 @@ def upsert_subcamps(saved: list[dict]) -> int:
         return 0
     by_url = {site["url"]: site for site in saved}
     written = 0
-    with psycopg.connect(_database_url()) as conn:
+    with connect(_database_url()) as conn:
         with conn.cursor() as cur:
             for url, areas in config.items():
                 parent = by_url.get(url)

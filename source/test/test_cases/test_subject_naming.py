@@ -37,6 +37,9 @@ def test_normalize_alias(raw, expected):
         ("wifi_unavailable", "wifi_available", False),
         ("no_pets", "pets_allowed", False),
         ("without_electricity", "electricity_allowed", False),
+        ("cant_be_without_muzzle", "can_be_without_muzzle", False),
+        ("cannot_enter_the_pool", "can_enter_the_pool", False),
+        ("dogs_cant_be_without_muzzle", "dogs_can_be_without_muzzle", False),
     ],
 )
 def test_negation_moves_out_of_the_name(raw, name, polarity):
@@ -68,8 +71,6 @@ def test_rewriting_is_idempotent():
 @pytest.mark.parametrize(
     "raw",
     [
-        "cant_be_without_muzzle",
-        "cannot_enter_the_pool",
         "pets_not_on_leash",
         "not_allowed",
         "dogs_may_not_be_left_alone",

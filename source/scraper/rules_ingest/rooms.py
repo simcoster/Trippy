@@ -27,9 +27,9 @@ import sys
 import time
 from datetime import datetime
 
-import psycopg
 from dotenv import load_dotenv
 
+from db.connect import connect
 from source.scraper.amenity_enrichment.db import update_accommodation_type_details
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
@@ -265,7 +265,7 @@ def run(
     total = 0
 
     print(f"Ingesting rooms for {len(campsites)} campsite(s)")
-    with psycopg.connect(database_url(config)) as conn:
+    with connect(database_url(config)) as conn:
         for entry in campsites:
             print("=" * 60)
             print(f"{entry['id']}. {entry['name']}")
