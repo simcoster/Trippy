@@ -58,6 +58,10 @@ pr *title:
 setup-experiments *args:
     uv run python scripts/setup_experiments.py {{ args }}
 
+# Extractor + planner on evals/planner_v1.json (LLM; frozen occupancy)
+run-eval *args:
+    uv run python -m source.eval.run {{ trim_start_match(args, "-- ") }}
+
 # Run any just recipe with TRIPPY_SCHEMA=experiments (scrapes, planner, clears)
 [windows]
 on-experiments *args:

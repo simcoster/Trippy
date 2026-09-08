@@ -773,6 +773,13 @@ dropping the statement (`naming.to_positive_subject`). Open: 50% and
 southern-only Shabbat still merges into the site-wide row; there is
 no kilogram or calendar-date qualifier unit.
 
+A full `scrape-info --site 2` into `experiments`, then planner query 3
+("near the sea" ∧ electricity, next Thursday), put Akhziv's tent
+pitches in the slot list: `sea` retrieved as a site amenity. They
+still fail electricity (`missing_stated_amenity`; charging points
+are not a hookup). Powered inland sites still fail the sea judge.
+experiments.md 2026-09-08 §6.
+
 `test_visitor_info_panel.py` pins the parse against a captured panel.
 
 ### Sources not yet ingested
@@ -845,9 +852,12 @@ split into two calls was not needed):
 
 - `relevant_claims` — every claim actually about the request, including
   forbiddens. Those are the only review claims the recommender sees.
-- `satisfies` — the guest would get what they asked for, from a matching-
-  polarity claim **or** a granting rule (`electric_hookup` true;
-  `dogs_allowed` false does **not** satisfy pet-friendly).
+- `satisfies` — true iff a relevant claim says yes **or** a granting
+  rule exists. A no does not veto: fridge complaints do not drop
+  `refrigerator` true; "no electricity at the tent" does not drop
+  `electric_hookup` true. Those nos stay in `relevant_claims` for the
+  recommender. `dogs_allowed` false is not a yes for pet-friendly, but
+  it also does not veto a granting claim. experiments.md 2026-09-08 §9.
 
 Claim-only fits the judge rejects are dropped. Listing hits at amenity
 **−0.7** are recall as well: the same judge runs on amenity-only fits and
@@ -867,7 +877,34 @@ The listing amenity gate is **−0.7** (`AMENITY_MATCH_MAX_DISTANCE`).
 That recovers `"electricity"` → `electric_outlet` (−0.750) and
 `electric_hookup` (−0.704), both in the ungated top 5, and also matches
 `tent` (−0.719) for `"desert"` / `"quiet"`. The judge sifts those listing
-rows (experiments.md 2026-09-07 §8). `electric_hookup` on stored rows is
+rows (experiments.md 2026-09-07 §8).
+
+For a site-locus ask, the claim lane and the site-amenity lane
+**always both retrieve**. A slot matches if either hits (or a unit
+listing). A claim must not skip `search_site_amenities`: Akhziv's
+communal `מקררים (3)` was listed, but fridge complaints already
+matched retrieve, so the official row never entered `why` and the
+judge never granted it (experiments.md 2026-09-08 §7).
+
+`search_campsite_rules` and `search_site_amenities` for a subcamp read
+**the child's rows and the parent's, never a sister's**. Ingest writes
+visitor-info onto the subcamp (Akhziv 37/38); reviews stay on the
+parent. Looking only at `COALESCE(parent_id, id)` made the judge search
+parent 2, which has no fridge rule. Pulling every child of that parent
+would mix אכזיב דרום with אכזיב צפון.
+
+Planner benchmark v1 (`evals/planner_v1.json`) is **26 queries**
+(14 easy / 12 hard) covering dates, no-dates, prices, capacity,
+amenities and rules. Amenity/rule gold is the parks.org.il page,
+not `campsite_rules`. Occupancy is `experiments.availability_frozen`
+(snapshot of `public.availability` on 2026-09-08, nights 7–19 Sep).
+`TRIPPY_AVAILABILITY_TABLE=availability_frozen` and
+`TRIPPY_TODAY=2026-09-08` so a later availability scrape cannot
+move who is vacant, and `יום חמישי הבא` stays 17 Sep.
+`just run-eval` runs extractor then planner on every case and
+writes `reports/evals/`.
+
+`electric_hookup` on stored rows is
 still three listings (caravan-bay water+power, PITCH tent power, site-wide
 נקודות חשמל). After re-extract the caravan bay is
 `caravan_bay_electric_hookup` / `caravan_bay_water_hookup` instead

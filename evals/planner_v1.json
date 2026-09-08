@@ -1,0 +1,364 @@
+{
+  "id": "planner_v1",
+  "as_of": "2026-09-08",
+  "trippy_today": "2026-09-08",
+  "availability_table": "availability_frozen",
+  "availability_source": "public.availability",
+  "availability_range": ["2026-09-07", "2026-09-19"],
+  "schema": "experiments",
+  "gold_basis": "parks.org.il camping pages fetched 2026-09-08, plus occupancy from the frozen booking snapshot (the info page has no calendar).",
+  "run": {
+    "env": {
+      "TRIPPY_SCHEMA": "experiments",
+      "TRIPPY_AVAILABILITY_TABLE": "availability_frozen",
+      "TRIPPY_TODAY": "2026-09-08"
+    }
+  },
+  "sites": {
+    "1": "חורשת טל",
+    "5": "יהודיה",
+    "8": "מעיין חרוד",
+    "12": "תל אשקלון",
+    "13": "הבשור (אשכול)",
+    "14": "מצדה מערב",
+    "15": "תל ערד",
+    "16": "ממשית",
+    "17": "חאן בארות",
+    "18": "חי-בר יוטבתה",
+    "37": "אכזיב צפון",
+    "38": "אכזיב דרום"
+  },
+  "vacant": {
+    "2026-09-10": [1, 8, 13, 14, 15, 16, 17, 18, 37, 38],
+    "2026-09-17": [1, 5, 13, 14, 15, 16, 17, 18, 37, 38]
+  },
+  "queries": [
+    {
+      "id": "E01",
+      "difficulty": "easy",
+      "dimensions": ["dates", "named_site"],
+      "query": "לינה בחורשת טל ב-10 בספטמבר 2026 ללילה אחד",
+      "expect": {
+        "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "must_include_sites": [1],
+        "must_exclude_sites": [12, 37, 38]
+      },
+      "gold": "Named-site + absolute date. Horshat Tal is vacant that night (tents, staff-tree room, AC bungalow, caravan bay)."
+    },
+    {
+      "id": "E02",
+      "difficulty": "easy",
+      "dimensions": ["dates", "capacity"],
+      "query": "קמפינג לזוג ב-10 בספטמבר 2026 ללילה אחד",
+      "expect": {
+        "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "must_include_sites": [14, 18],
+        "notes": "Couple tents (max 2) are listed at Masada and Yotvata. Private-tent pitches have unknown occupancy so they also pass party_size=2."
+      },
+      "gold": "Masada page: השכרת אוהל קמפינג זוגי (עד 2 לנים). Yotvata same. Both vacant 10 Sep."
+    },
+    {
+      "id": "E03",
+      "difficulty": "easy",
+      "dimensions": ["prices", "dates"],
+      "query": "קמפינג באוהל ללילה אחד ב-17 בספטמבר 2026, עד 80 שקל לאדם",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 1,
+        "must_include_sites": [14, 13, 16, 17, 18],
+        "must_exclude_sites": []
+      },
+      "gold": "Rate card: Masada/Besor/Mamshit/Be'erot/Yotvata tent adult 64₪. Horshat Tal and Akhziv tent adult 76₪ still under 80."
+    },
+    {
+      "id": "E04",
+      "difficulty": "easy",
+      "dimensions": ["amenities", "dates"],
+      "query": "קמפינג ליד הים ב-17 בספטמבר 2026 ללילה אחד",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [37, 38],
+        "must_exclude_sites": [14, 16, 17, 12]
+      },
+      "gold": "Akhziv page: שוכן לחוף הים התיכון / בקרבת הים. Ashkelon is coastal but has no frozen vacancy. Masada/Mamshit/Be'erot are desert, not sea."
+    },
+    {
+      "id": "E05",
+      "difficulty": "easy",
+      "dimensions": ["amenities", "dates"],
+      "query": "קמפינג במדבר ב-17 בספטמבר 2026 ללילה אחד",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [14, 16, 17],
+        "must_exclude_sites": [37, 38]
+      },
+      "gold": "Be'erot page: תפאורה מדברית. Masada: חוויית קמפינג מדברית. Mamshit is in the Negev. Akhziv is Mediterranean."
+    },
+    {
+      "id": "E06",
+      "difficulty": "easy",
+      "dimensions": ["amenities", "dates"],
+      "query": "קמפינג עם מקרר ב-17 בספטמבר 2026 ללילה אחד",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [1, 14, 37, 38, 16, 17],
+        "locus": "site"
+      },
+      "gold": "מה בחניון?: Horshat מקררים (11); Masada מקררים (10); Akhziv north/south מקררים (3); Mamshit מקררים (7); Be'erot מקררים (7)."
+    },
+    {
+      "id": "E07",
+      "difficulty": "easy",
+      "dimensions": ["named_site", "dates"],
+      "query": "אכזיב ב-17 בספטמבר 2026 ללילה אחד, 3 אנשים",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
+        "must_include_sites": [37, 38],
+        "must_exclude_sites": [2]
+      },
+      "gold": "Parent 2 has no availability rows. Subcamps 37/38 tents are vacant. Occupancy on tent pitches is unknown so party 3 is allowed."
+    },
+    {
+      "id": "E08",
+      "difficulty": "easy",
+      "dimensions": ["amenities", "dates"],
+      "query": "קמפינג עם מקלחות מים חמים ב-17 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [1, 14, 37, 38, 17]
+      },
+      "gold": "מה בחניון? lists מקלחות מים חמים at Horshat, Masada, Akhziv, Be'erot."
+    },
+    {
+      "id": "E09",
+      "difficulty": "easy",
+      "dimensions": ["dates"],
+      "query": "יש מקום ב-17 בספטמבר 2026 ללילה אחד?",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [1, 5, 13, 14, 15, 16, 17, 18, 37, 38],
+        "must_exclude_sites": [12, 10, 9, 6, 11]
+      },
+      "gold": "Frozen occupancy only. Ashkelon, Yarkon, Gan Hashlosha, Carmel, Castel have no row that night."
+    },
+    {
+      "id": "E10",
+      "difficulty": "easy",
+      "dimensions": ["capacity", "dates"],
+      "query": "אוהל זוגי במצדה ב-17 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [14],
+        "must_include_types": ["השכרת אוהל קמפינג זוגי"],
+        "must_exclude_sites": [37]
+      },
+      "gold": "Masada rate card: השכרת אוהל קמפינג זוגי כולל מזרנים (עד 2 לנים) 192₪. Vacant 17 Sep."
+    },
+    {
+      "id": "E11",
+      "difficulty": "easy",
+      "dimensions": ["amenities", "dates", "named_site"],
+      "query": "בונגלו עם מזגן בחורשת טל ב-10 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "must_include_sites": [1],
+        "must_include_types": ["בונגלו עם מזגן"],
+        "must_exclude_sites": [37]
+      },
+      "gold": "Horshat rate card: בונגלו עם מזגן אמצע שבוע 430₪. Vacant 10 Sep, not 17 Sep."
+    },
+    {
+      "id": "E12",
+      "difficulty": "easy",
+      "dimensions": ["prices", "dates", "capacity"],
+      "query": "לינת שטח ל-3 מבוגרים ב-17 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
+        "must_include_sites": [1, 14, 37, 38],
+        "quoted_price_per_night": {
+          "1": 228,
+          "14": 192,
+          "37": 228,
+          "38": 228
+        }
+      },
+      "gold": "Rate card adult tent × 3: Horshat/Akhziv 76×3=228; Masada 64×3=192. Page prices, not list_prices table as the source of truth."
+    },
+    {
+      "id": "E13",
+      "difficulty": "easy",
+      "dimensions": ["dates"],
+      "query": "לינה ביום חמישי 10 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "must_include_sites": [1, 8, 37, 38],
+        "must_exclude_sites": [5]
+      },
+      "gold": "Absolute Thursday. Yehudiya is not vacant 10 Sep (it is on 17 Sep)."
+    },
+    {
+      "id": "E14",
+      "difficulty": "easy",
+      "dimensions": ["no_dates", "named_site"],
+      "query": "אפשר לישון בחורשת טל?",
+      "expect": {
+        "current_planner": "skipped_no_date",
+        "website_sites": [1]
+      },
+      "gold": "No stay dates. Planner today returns fits=[] skipped=no_date. Website still has Horshat as a night camp."
+    },
+    {
+      "id": "H01",
+      "difficulty": "hard",
+      "dimensions": ["amenities", "dates"],
+      "query": "קמפינג ליד הים עם חשמל ב-17 בספטמבר 2026 ללילה אחד, 3 אנשים",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [],
+        "must_exclude_sites": [37, 38, 14]
+      },
+      "gold": "Akhziv visitor-info: אסור למתוח כבלי חשמל (אין חיבור לחשמל); only נקודות לטעינת טלפונים. Masada has נקודות חשמל but is not by the sea. No vacant site is both."
+    },
+    {
+      "id": "H02",
+      "difficulty": "hard",
+      "dimensions": ["amenities", "dates", "capacity"],
+      "query": "רוצים קמפינג ליד הים ל3 אנשים ביום חמישי הבא ללילה אחד, עם מקרר",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
+        "must_include_sites": [37, 38],
+        "must_exclude_sites": [14],
+        "why_fridge": "site_amenity refrigerator"
+      },
+      "gold": "as_of 2026-09-08, יום חמישי הבא → when=next → 17 Sep. Akhziv מקררים (3) on both subcamps. Kitchen-fridge complaints must not veto. Original replay query."
+    },
+    {
+      "id": "H03",
+      "difficulty": "hard",
+      "dimensions": ["amenities", "dates", "locus"],
+      "query": "יש מקרר בחדר באכזיב ב-10 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "locus": "room",
+        "must_include_sites": [38],
+        "must_exclude_sites": [37],
+        "must_include_types": ["חושה"]
+      },
+      "gold": "Communal מקררים (3) do not satisfy room locus. South huts (חושה / חושה עם מזגן) are vacant 10 Sep; north that night is tents only. Hut copy lists מיני מקרר."
+    },
+    {
+      "id": "H04",
+      "difficulty": "hard",
+      "dimensions": ["prices", "amenities", "dates", "capacity"],
+      "query": "קמפינג ליד הים ל-3 מבוגרים ב-17 בספטמבר 2026, עד 200 שקל ללילה",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
+        "max_price_per_night": 200,
+        "must_include_sites": [],
+        "must_exclude_sites": [37, 38]
+      },
+      "gold": "Akhziv tent 76×3=228 exceeds 200. No other sea site is vacant. Cheap desert tents (192) are not sea."
+    },
+    {
+      "id": "H05",
+      "difficulty": "hard",
+      "dimensions": ["dates"],
+      "query": "אנחנו חושבים על חורשת טל, אולי בשישי הקרוב ללילה אחד אם יש מקום",
+      "expect": {
+        "date": {"start": "2026-09-11", "end": "2026-09-12"},
+        "must_include_sites": [1],
+        "must_include_types": ["עמדת חניה לקרוואן פרטי"]
+      },
+      "gold": "Buried בשישי הקרוב. as_of Tue 8 Sep, this Friday is 11 Sep. Horshat that night has the caravan bay only, not tents. Extractor was 2/5 on this class (experiments.md 2026-09-08 §2)."
+    },
+    {
+      "id": "H06",
+      "difficulty": "hard",
+      "dimensions": ["amenities", "dates"],
+      "query": "קמפינג ליד הים או במדבר ב-17 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [37, 38, 14, 16, 17],
+        "or": ["near the sea", "desert"]
+      },
+      "gold": "OR-group. Sea = Akhziv 37/38. Desert = Masada, Mamshit, Be'erot at least."
+    },
+    {
+      "id": "H07",
+      "difficulty": "hard",
+      "dimensions": ["amenities", "dates"],
+      "query": "אוהל עם חיבור חשמל ב-17 בספטמבר 2026, בלי קרוואן",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [14, 17],
+        "must_exclude_sites": [37, 38],
+        "must_exclude_types": ["עמדת חניה לקרוואן פרטי", "עמדות חניה לקרוואן פרטי"]
+      },
+      "gold": "Masada מה בחניון?: נקודות חשמל. Be'erot: נקודות חשמל – בסככות צל ובמרכז שירות בלבד. Akhziv: אין חיבור לחשמל. Caravan-bay חיבור חשמל ומים does not satisfy a tent stay."
+    },
+    {
+      "id": "H08",
+      "difficulty": "hard",
+      "dimensions": ["capacity", "dates"],
+      "query": "6 אנשים בחושה באכזיב ב-10 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "party_size": 6,
+        "must_include_sites": [],
+        "must_exclude_types": ["חושה", "חושה עם מזגן שירותים ומקלחת"]
+      },
+      "gold": "Vacant south huts are occ=4. Double huts (occ 6/8) are not vacant that night. Tents have unknown occupancy so they must not be used as a hut answer."
+    },
+    {
+      "id": "H09",
+      "difficulty": "hard",
+      "dimensions": ["rules", "dates"],
+      "query": "סוף שבוע בחושה באכזיב, לילה אחד",
+      "expect": {
+        "date": {"start": "2026-09-11", "end": "2026-09-12"},
+        "must_include_sites": [],
+        "rule": "lodging weekend min 2 nights"
+      },
+      "gold": "Akhziv visitor-info: הזמנת לינה ביחידות האירוח מותנה במינימום 2 לילות בסופי שבוע ובחגים. One Friday night in a hut should not fit. Frozen 11 Sep has no south huts anyway."
+    },
+    {
+      "id": "H10",
+      "difficulty": "hard",
+      "dimensions": ["rules", "dates"],
+      "query": "קמפינג ידידותי לכלבים ב-17 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [],
+        "must_exclude_sites": [1, 14, 16, 17, 37, 38, 12]
+      },
+      "gold": "Fetched pages all say הכניסה לכלבים אסורה (Horshat, Akhziv, Masada, Mamshit, Be'erot, Ashkelon, Yarkon). A forbid is not a yes."
+    },
+    {
+      "id": "H11",
+      "difficulty": "hard",
+      "dimensions": ["no_dates", "amenities"],
+      "query": "איפה אפשר לקמפינג ליד הים עם מקרר?",
+      "expect": {
+        "current_planner": "skipped_no_date",
+        "website_sites": [37, 38, 12]
+      },
+      "gold": "Website: Akhziv sea+fridge; Ashkelon sea+מקררים (4) but not in the freeze window. Planner currently skips without dates."
+    },
+    {
+      "id": "H12",
+      "difficulty": "hard",
+      "dimensions": ["rules", "dates"],
+      "query": "קמפינג לשומרי שבת ב-17 בספטמבר 2026",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "must_include_sites": [38],
+        "must_exclude_sites": [37]
+      },
+      "gold": "Akhziv visitor-info: החניון הדרומי בלבד מותאם לציבור שומרי השבת (אין פלטות בחניון הצפוני). Sisters must not mix."
+    }
+  ]
+}

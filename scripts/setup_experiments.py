@@ -6,6 +6,7 @@ scrapes, search and the planner use the copy (see `db.connect`).
     uv run python scripts/setup_experiments.py copy
     uv run python scripts/setup_experiments.py copy --empty campsite_rules,subject_vectors,conflict_cases
     uv run python scripts/setup_experiments.py empty campsite_rules
+    uv run python scripts/setup_experiments.py freeze-availability
     uv run python scripts/setup_experiments.py status
 
     just setup-experiments copy
@@ -29,6 +30,7 @@ from db.experiments import (
     SEARCH_PATH,
     copy_public,
     empty_tables,
+    freeze_availability,
     public_base_tables,
     table_name,
 )
@@ -64,6 +66,15 @@ def cmd_empty(tables: tuple[str, ...]) -> None:
     print(f"emptied: {', '.join(tables)}")
 
 
+def cmd_freeze_availability() -> None:
+    print("snapshot public.availability → experiments.availability_frozen")
+    with connect(database_url(), options=SEARCH_PATH) as conn:
+        with conn.cursor() as cur:
+            n = freeze_availability(cur)
+        conn.commit()
+    print(f"froze {n} row(s)")
+
+
 def cmd_status() -> None:
     schema = (os.environ.get(SCHEMA_ENV) or "").strip() or "(unset — production)"
     print(f"{SCHEMA_ENV}={schema}")
@@ -84,6 +95,18 @@ def cmd_status() -> None:
                     continue
                 cur.execute(f"SELECT count(*) FROM experiments.{name}")
                 print(f"    {name}: {cur.fetchone()[0]} row(s)")
+            cur.execute(
+                "SELECT EXISTS ("
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'experiments' "
+                "AND table_name = 'availability_frozen'"
+                ")"
+            )
+            if cur.fetchone()[0]:
+                cur.execute("SELECT count(*) FROM experiments.availability_frozen")
+                print(f"    availability_frozen: {cur.fetchone()[0]} row(s)")
+            else:
+                print("    availability_frozen: (missing)")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -101,11 +124,17 @@ def main(argv: list[str] | None = None) -> None:
     empty = sub.add_parser("empty", help="TRUNCATE CASCADE named experiments tables")
     empty.add_argument("tables", help="comma-separated table names")
     sub.add_parser("status", help="Row counts in experiments")
+    sub.add_parser(
+        "freeze-availability",
+        help="Copy public.availability into experiments.availability_frozen",
+    )
     args = parser.parse_args(argv)
     if args.cmd == "copy":
         cmd_copy(_names(args.empty))
     elif args.cmd == "empty":
         cmd_empty(_names(args.tables))
+    elif args.cmd == "freeze-availability":
+        cmd_freeze_availability()
     else:
         cmd_status()
 

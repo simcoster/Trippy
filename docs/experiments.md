@@ -171,6 +171,150 @@ Open: two fee percents on one subject; no kg/date units; Shabbat
 scope; `near_water` collapsed onto `sea`.
 design.md "The `מידע למבקר` accordion".
 
+### 6. After a full Akhziv info scrape, does query 3 still miss the sea?
+
+**Question.** The 8 Sep canvas replay of query 3
+(`רוצים קמפינג ליד הים ל3 אנשים ביום חמישי הבא ללילה אחד, עם חשמל`)
+was 0 fits / 21 rejected: electricity retrieved on inland sites, the
+judge dropped those as not near the sea, and Akhziv tents never had
+electricity. After visitor-info stores `sea` as a site amenity, does
+a full `scrape-info` of Akhziv only put those tents through the sea
+gate, and do they still fail electricity?
+
+**Setup.** `just setup-experiments copy`. Deleted 105 site-level
+`campsite_rules` for campsites 2/37/38 (unit-level rows kept).
+`just on-experiments scrape-info -- --site 2` (rooms → prices →
+rules, visitor-info included). Vocabulary kept from the copy so
+resolve merged. Availability copied from `public`, not re-scraped.
+Then `build_graph(stop_after="planner")` on query 3.
+Production not written. Dump `temp/akhziv_query3_planner.json`.
+Scrape 933 s, **$0.048** (rooms $0.013, prices $0.002, rules $0.034).
+Planner 58 s, 1 extract + 14 judge calls (7 inland sites × 2 queries).
+
+**Result.** Extract: party ≥ 3, `near the sea` (site) ∧ `electricity`
+(site), Thu next **17–18 Sep**. **0 fits / 19 rejected.** Akhziv
+north (37) and south (38) tent pitches are in the list: sea retrieved,
+then `missing_stated_amenity` electricity (no judge). Inland powered
+slots still fail the sea judge. `sea` and `near_water` both stored
+true on 37 and 38; `phone_charging_points` did not retrieve for
+"electricity". Full-page conflict pass renamed the 100% late fee to
+`late_check_in_after_1800_fee_percent` (case #26).
+
+**Decision.** No planner change. Visitor-info `sea` is on the site
+amenity lane. Tent electricity is still absent, which is the page.
+design.md "The `מידע למבקר` accordion".
+
+### 7. Same stay, fridge instead of electricity — does Akhziv fit?
+
+**Question.** §6's Akhziv tents died on electricity. The southern
+huts have `mini_refrigerator`; both subcamps have site-level
+`refrigerator` from `מקררים (3)`. Same query with `עם מקרר` in
+place of `עם חשמל`: do they fit?
+
+**Setup.** Same `experiments` copy and scrape as §6. No further
+writes. `build_graph(stop_after="planner")` on
+`רוצים קמפינג ליד הים ל3 אנשים ביום חמישי הבא ללילה אחד, עם מקרר`.
+Dump `temp/akhziv_query3_fridge.json`. 76 s, 1 extract + judge
+calls on the slots that passed retrieve.
+
+**Result.** Extract: party ≥ 3, `near the sea` (site) ∧ `fridge`
+(**site**, not room), 17–18 Sep. **0 fits / 21 rejected.** Only
+Akhziv **tents** were in the vacancy list (huts not vacant that
+night). Sea now **satisfies** (beach-access claim). Fridge retrieve
+was **complaints** about the communal kitchen fridges; the judge
+said all relevant claims are negative and "no official rule provides
+fridge". The official `refrigerator` true (`מקררים (3)`) never
+entered `why` — claims already hit, so the site-amenity lane was
+skipped. Inland sites whose `why` carried `refrigerator` passed
+fridge and still failed sea.
+
+**Decision.** No code change. Fridge-as-site is what `עם מקרר`
+extracted. Open: a claim hit shadows the official row, so a
+complaint pack can veto a listing that does provide fridges.
+experiments.md this entry.
+
+### 8. Retrieve site amenities even when a claim already hit?
+
+**Question.** §7: Akhziv listed `refrigerator` (`מקררים (3)`) but
+fridge retrieve was complaints, so `search_site_amenities` never
+ran and the judge said there was no official rule. The judge's
+rules query used `COALESCE(parent_id, id)`, so subcamp 37/38
+searched parent 2, which has no visitor-info rows. Should both
+lanes always retrieve, and should a subcamp's own rules reach
+the judge?
+
+**Setup.** No live planner. The skip is
+`test_site_amenity_search_scoped_to_still_unmatched_sites`; the
+parent-only LATERAL is `search_campsite_rules`. Decision from §7
+plus the ingest writing onto children.
+
+**Result.** Not a model error. Retrieve skipped the listing;
+rules search looked at the wrong campsite id.
+
+**Decision.** Always retrieve claim **and** site amenity; match
+if either hits. `search_campsite_rules` uses
+`cr.campsite_id IN (site.id, site.parent_id)`. design.md "Planner
+claim/rule judge".
+
+### 9. Subsite+parent only; nos do not veto a yes?
+
+**Question.** §8 opened child+parent rules. Should south Akhziv
+see north's visitor-info? And when a listing grants fridge but
+claims complain, does the judge drop the site?
+
+**Setup.** No live planner. Spec: retrieve this site and its
+parent, never other children of that parent; always feed the
+judge both rules and claims; satisfies = any granting rule OR
+any granting claim; nos are recommender evidence only.
+
+**Result.** `IN (id, parent_id)` already excludes sisters; the
+same scope now applies to `search_site_amenities`. The fridge
+§7 fail was a missing rule in the pack plus a model that treated
+complaints as a veto.
+
+**Decision.** Scope is own+parent on both rule scans. Judge
+prompt: a no does not set `satisfies` false when a yes exists.
+design.md "Planner claim/rule judge".
+
+### 10. Replay §7 fridge query after retrieve + judge yes-OR?
+
+**Question.** Same Hebrew as §7: does Akhziv now fit?
+
+**Setup.** Same `experiments` copy and scrape as §6–§7. No
+further writes. `build_graph(stop_after="planner")` on
+`רוצים קמפינג ליד הים ל3 אנשים ביום חמישי הבא ללילה אחד, עם מקרר`.
+Dump `temp/akhziv_query3_fridge_after.json`. 115 s.
+
+**Result.** Extract unchanged: party ≥ 3, `near the sea` ∧
+`fridge` (site), 17–18 Sep. **2 fits / 19 rejected:** Akhziv
+south (38) and north (37) tents. Fridge `why` is
+`site_amenity=refrigerator` at −0.984 (`מקררים (3)`). Judge
+`satisfies=true`, `satisfy_by=rule`; kitchen-fridge complaints
+stay in `relevant_claims`. North's pack has the communal
+listing, not south's `mini_refrigerator` huts.
+
+**Decision.** §8–§9 hold under the original query. design.md
+"Planner claim/rule judge".
+
+### 11. Freeze occupancy for a 26-query planner gold set?
+
+**Question.** Live `availability` moves every scrape. Can a
+benchmark keep vacancies still while ingest/retrieve change?
+
+**Setup.** `public.availability` on 2026-09-08: 226 nights,
+2026-09-07–19, 14 vacant parks. Copy into
+`experiments.availability_frozen` (no FK to `public`). Gold for
+amenities/rules from parks.org.il pages the same day, not
+`campsite_rules`. 26 queries in `evals/planner_v1.json`. No
+planner run of the full set.
+
+**Result.** Snapshot exists. Search reads
+`TRIPPY_AVAILABILITY_TABLE`. Relative dates pin with
+`TRIPPY_TODAY=2026-09-08`.
+
+**Decision.** Freeze occupancy only. design.md "Planner claim/rule
+judge".
+
 ## 2026-09-07
 
 ### 8. After rebuilding claims, can the judge sift amenity −0.7 listing hits?

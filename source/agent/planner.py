@@ -162,7 +162,8 @@ def _semantic_why_by_slot(
 
     A group is satisfied for a slot when any lane hits: the unit's stated
     amenities, the campsite's site-wide amenities (site locus only), or a
-    positive review claim about that campsite.
+    positive review claim about that campsite. For a site-locus ask the
+    claim and site-amenity lanes always both retrieve; satisfaction is OR.
     """
     keys = list(
         dict.fromkeys(
@@ -238,24 +239,13 @@ def _semantic_why_by_slot(
                     )
             if is_room:
                 continue
-            # Site lane last, and only for sites the other two lanes missed —
-            # campsites.amenities is unpopulated today, so this is usually a
-            # query we can skip entirely.
-            pending = [
-                sid
-                for sid in site_ids
-                if str(sid) not in by_site
-                and str(sid) not in by_claim
-                # at least one unit at this site is still unmatched
-                and any(tid not in by_type for cid, tid in keys if cid == str(sid))
-            ]
-            if not pending:
-                continue
+            # Claim and site-amenity always both retrieve. A positive claim
+            # must not skip the listing; satisfaction is either lane.
             for hit in search.search_site_amenities(
                 query,
-                limit=max(len(pending), 1),
+                limit=max(len(site_ids), 1),
                 embedding=vec,
-                campsite_ids=pending,
+                campsite_ids=site_ids,
             ):
                 if not _site_amenity_hit_matches(hit):
                     continue

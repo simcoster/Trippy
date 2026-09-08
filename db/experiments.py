@@ -230,3 +230,28 @@ def copy_public(cur, *, empty: Sequence[str] = ()) -> tuple[str, ...]:
         empty_tables(cur, empty)
         print(f"    emptied: {', '.join(empty)}")
     return tables
+
+
+def freeze_availability(cur) -> int:
+    """Snapshot `public.availability` into `experiments.availability_frozen`.
+
+    Live scrapes keep writing `availability`. The planner benchmark reads
+    this table so occupancy does not move under ingest/retrieve changes.
+    No FK into `public`.
+    """
+    cur.execute("CREATE SCHEMA IF NOT EXISTS experiments")
+    cur.execute("DROP TABLE IF EXISTS experiments.availability_frozen")
+    cur.execute(
+        "CREATE TABLE experiments.availability_frozen "
+        "(LIKE public.availability INCLUDING DEFAULTS INCLUDING IDENTITY)"
+    )
+    cur.execute(
+        "INSERT INTO experiments.availability_frozen "
+        "OVERRIDING SYSTEM VALUE SELECT * FROM public.availability"
+    )
+    n = cur.rowcount
+    cur.execute(
+        "CREATE INDEX availability_frozen_site_dates_idx "
+        "ON experiments.availability_frozen (site_id, start_date, end_date)"
+    )
+    return n
