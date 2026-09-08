@@ -14,7 +14,7 @@ from pgvector.psycopg import register_vector
 
 from db.models import SubjectCategory
 from source.agent.constraints import claim_recency, today_il
-from source.agent.dates import iso_day, parse_iso_day, stay_night_starts
+from source.agent.dates import _parse_iso_day, iso_day, stay_night_starts
 from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
 from source.scraper.info_site.quote import quote_night
 from source.scraper.info_site.schemas import RatePeriod
@@ -115,10 +115,10 @@ def _render_sql(sql: str, params: list[Any]) -> str:
 def _rate_period_for_stay(date_range: dict | None) -> RatePeriod:
     if not isinstance(date_range, dict):
         return "weekday"
-    start = parse_iso_day(date_range.get("start"))
+    start = _parse_iso_day(date_range.get("start"))
     if start is None:
         return "weekday"
-    end = parse_iso_day(date_range.get("end")) or (start + timedelta(days=1))
+    end = _parse_iso_day(date_range.get("end")) or (start + timedelta(days=1))
     day = start
     while day < end:
         if day.weekday() >= 5:
