@@ -178,6 +178,16 @@ Named-place expansion (`מכתש רמון` → the place, `near_a_crater`, `near
 moved into `unit_prompt` with the rest; it used to live in the amenity extractor's
 prompt, with a `PlaceEnrichmentLLMClient` second pass that nothing called.
 
+A private-caravan bay's חיבור חשמל ומים is **not** `electric_hookup` /
+`water_hookup`. Retrieve matches the subject name, not the unit type on
+the row, so those bare names look like a guest socket and satisfy an
+`"electricity"` query for a tent stay. The unit prompt makes one
+exception to "never name the unit in a subject": that listing emits
+`caravan_bay_electric_hookup` and `caravan_bay_water_hookup`. A PITCH
+tent or bungalow with חיבור חשמל stays `electric_hookup` /
+`electric_outlet`. experiments.md 2026-09-08 §1. Stored rows stay the
+old names until the unit is re-extracted.
+
 ### `NULLS NOT DISTINCT` is load-bearing
 
 Every row this pipeline writes has a NULL `accommodation_type_id`. Standard SQL
@@ -770,4 +780,47 @@ The 30B mapped `שישי הקרוב` to `when=next` and dropped `weeks_from_now`
 demonstrated them. Three few-shots plus `weeks_from_now: N` in the schema
 held 25/25 at temperature 0 (experiments.md 2026-09-07 §1), so the extractor
 stays on the 30B and date intent is not a second LLM call.
+
+## Planner claim/rule judge
+
+The claim retrieve gate is **−0.6** (`CLAIM_MATCH_MAX_DISTANCE`), top 5
+hits per site. That is recall: campfires match `"desert"`, “pets not
+allowed” matches `"pet friendly"`. Precision is a 235B call per
+(query, campsite) in `planner_node` (`source/agent/claim_judge.py`).
+
+The judge sees the top-5 claims **and** the nearest official
+`campsite_rules` (all categories, including polarity false). One JSON
+object returns both decisions (experiments.md 2026-09-07 §5, 35/35; a
+split into two calls was not needed):
+
+- `relevant_claims` — every claim actually about the request, including
+  forbiddens. Those are the only review claims the recommender sees.
+- `satisfies` — the guest would get what they asked for, from a matching-
+  polarity claim **or** a granting rule (`electric_hookup` true;
+  `dogs_allowed` false does **not** satisfy pet-friendly).
+
+Claim-only fits the judge rejects are dropped. Listing hits at amenity
+**−0.7** are recall as well: the same judge runs on amenity-only fits and
+drops a site when `satisfies` is false (tent-as-desert, stove-as-
+electricity, caravan-bay-only hookup). experiments.md 2026-09-07 §8,
+59/60. Ranking of the survivors is still the recency-weighted claim
+score; a later pass can rank on the judge.
+
+Nearest-20 retrieve at the same −0.6 gate (experiments.md 2026-09-07 §6)
+put every labeled gold claim and gold rule at **rank 1**, so K=10/20 do
+not recover missed gold. Rules cannot share that gate: tent subjects at
+−0.719 pass −0.6 in bulk and are closer than `electric_hookup` (−0.704);
+−0.8 would drop the hookup. Claim K stays 5; the rule cutoff is still
+open.
+
+The listing amenity gate is **−0.7** (`AMENITY_MATCH_MAX_DISTANCE`).
+That recovers `"electricity"` → `electric_outlet` (−0.750) and
+`electric_hookup` (−0.704), both in the ungated top 5, and also matches
+`tent` (−0.719) for `"desert"` / `"quiet"`. The judge sifts those listing
+rows (experiments.md 2026-09-07 §8). `electric_hookup` on stored rows is
+still three listings (caravan-bay water+power, PITCH tent power, site-wide
+נקודות חשמל). After re-extract the caravan bay is
+`caravan_bay_electric_hookup` / `caravan_bay_water_hookup` instead
+(experiments.md 2026-09-08 §1); PITCH and site-wide keep the generic
+names.
 

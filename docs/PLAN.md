@@ -6,6 +6,94 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-08, caravan-bay hookup names)
+
+**Caravan-bay חיבור חשמל ומים is `caravan_bay_electric_hookup` /
+`caravan_bay_water_hookup`, not bare `electric_hookup`.** Retrieve
+cannot see the unit type on the row, so the generic names looked like a
+guest socket. Unit prompt: one exception to never-name-the-unit, plus
+that listing as a few-shot. PITCH tent power stays `electric_hookup`.
+experiments.md 2026-09-08 §1. Stored rows unchanged until re-extract.
+
+### Done (2026-09-07, amenity gate −0.7 in prod)
+
+**Amenity retrieve −0.7; the judge sifts listing hits.** Same design as
+the §8 probe: outlets/hookups enter, tent-as-desert is retrieve noise
+the judge drops. `AMENITY_MATCH_MAX_DISTANCE = -0.7`. Amenity-only fits
+no longer skip the judge. experiments.md 2026-09-07 §8. Supersedes
+“prod stays −0.8 until listing-only fits go through the judge” above.
+
+### Done (2026-09-07, judge sifts amenity −0.7)
+
+**Judge can sift amenity −0.7 listing hits; despite-split did not
+unglue Mamshit.** After populate-claims: 59/60 vs gold (1 gold-string
+miss on Horshat Tal night-noise ban). Desert tents dropped; electricity
+outlets / PITCH / site points kept; Besor caravan-bay dropped. Mamshit
+despite claim still glued at −0.577 for `"desert"`. Prod amenity gate
+stays −0.8 until the planner sends listing-only fits through the judge.
+experiments.md 2026-09-07 §8. Supersedes the “judge cannot veto a
+stated amenity” reason in the −0.7 note below — it can, if it sees
+them; it currently does not.
+
+### Done (2026-09-07, amenity gate −0.7)
+
+**Do not loosen amenity −0.8 → −0.7.** `"electricity"` extras are real
+(`electric_outlet` −0.750, `electric_hookup` −0.704, top 5) **and**
+`electric_stove`. The same −0.7 makes `tent` (−0.719) satisfy desert and
+quiet — 25–32 types — and the judge cannot veto a stated amenity.
+`electric_hookup` is caravan bay **and** PITCH tents **and** site-wide
+נקודות חשמל, not trailer-only. Gate stays −0.8. experiments.md
+2026-09-07 §7.
+
+### Done (2026-09-07, retrieve K=5/10/20)
+
+**Labeled gold is rank 1 at −0.6; K=10/20 add no gold.** Same 35 packs,
+nearest 20 claims and 20 rules. Claim gold −0.615…−0.767; `dogs_allowed`
+−0.897; `electric_hookup` −0.704. Desert has no location rule in 20 —
+tents at −0.719 fill the list and sit closer than electricity. Keep
+claim top-5. Rule gate should not be −0.6 (flood) or −0.8 (drops
+hookup). experiments.md 2026-09-07 §6.
+
+### Done (2026-09-07, claim-rule judge)
+
+**One 235B call does relevant + satisfies, with campsite rules in view.**
+Same 35 packs as the polarity probe, top 5 claims at −0.6 plus nearest 5
+rules (all categories). Combined JSON: 35/35 satisfies and 35/35
+relevant-exact. Pet-forbidden stays relevant and does not satisfy.
+Gate −0.6; planner filters on `satisfies`, recommender gets the relevant
+claims. Did not split into two calls. experiments.md 2026-09-07 §5.
+
+### Done (2026-09-07, claim-judge polarity)
+
+**Judge polarity few-shots fix pet-friendly.** Same −0.6 retrieve as §3;
+prompt now requires `is_positive` to match the request. Horshat Tal /
+Ashkelon “pets not allowed” → no. Desert/Mamshit/electricity still yes.
+35/35. Gate −0.6 kept. Not in the recommender until you say so.
+experiments.md 2026-09-07 §4.
+
+### Done (2026-09-07, claim-verify judge probe)
+
+**235B can filter a −0.6 claim gate for location.** All claims with
+`<#> ≤ −0.6` per site, one judge call, “most may be irrelevant”: desert /
+in-the-desert 22/22 vs gold (Masada + Mamshit despite; Khan Be'erot and
+Hai-Bar animals no). Pet-friendly: 2 false yes on “pets not allowed”.
+Not wired; polarity must be in the prompt first. experiments.md
+2026-09-07 §3.
+
+### Done (2026-09-07, despite-aside split)
+
+**Claim splitter splits concessive asides.** "Despite X, Y" / `בכל זאת מדבר
+ורוחות` was one cleanliness claim, so `"desert"` RAG missed Mamshit (−0.578
+vs gate −0.7). One few-shot: 15/15 on the 235B (English, Hebrew span, full
+Mamshit review × 5). Stored claims unchanged until a claims rebuild.
+experiments.md 2026-09-07 §2.
+
+### Done (2026-09-07, claims_with_reviews name)
+
+**`claims_with_reviews` includes the campsite name.** The view still
+exposes `campsite_id`; it now joins `campsites` so a row is readable
+without a second lookup. Migration `035_claims_campsite_name`.
+
 ### Done (2026-09-07, date_intent few-shots)
 
 **Extractor date_intent few-shots for הקרוב / הבא / בעוד N שבועות.** The 30B

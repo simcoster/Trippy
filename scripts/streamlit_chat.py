@@ -328,6 +328,7 @@ def _install_tool_hooks() -> None:
                     "search_review_claims",
                     "search_site_amenities",
                     "search_stated_amenities",
+                    "search_campsite_rules",
                 ):
                     params = {
                         "query": args[0] if args else kwargs.get("query"),
@@ -337,7 +338,11 @@ def _install_tool_hooks() -> None:
                         params["accommodation_type_ids"] = kwargs.get(
                             "accommodation_type_ids"
                         )
-                    elif name in ("search_site_amenities", "search_review_claims"):
+                    elif name in (
+                        "search_site_amenities",
+                        "search_review_claims",
+                        "search_campsite_rules",
+                    ):
                         params["campsite_ids"] = kwargs.get("campsite_ids")
                 elif name == "lookup_campsite_by_name":
                     params = {"name": args[0] if args else kwargs.get("name")}
@@ -390,6 +395,9 @@ def _install_tool_hooks() -> None:
     agent_search.search_site_amenities = _wrap(
         "search_site_amenities", agent_search.search_site_amenities
     )
+    agent_search.search_campsite_rules = _wrap(
+        "search_campsite_rules", agent_search.search_campsite_rules
+    )
     agent_search.lookup_campsite_by_name = _wrap(
         "lookup_campsite_by_name", agent_search.lookup_campsite_by_name
     )
@@ -406,6 +414,7 @@ def _install_tool_hooks() -> None:
     agent_graph.search_review_claims = agent_search.search_review_claims
     agent_graph.search_stated_amenities = agent_search.search_stated_amenities
     agent_graph.search_site_amenities = agent_search.search_site_amenities
+    agent_graph.search_campsite_rules = agent_search.search_campsite_rules
     agent_graph.lookup_campsite_by_name = agent_search.lookup_campsite_by_name
     agent_graph.search_open_slots = agent_search.search_open_slots
     agent_graph.search_availability = agent_search.search_availability

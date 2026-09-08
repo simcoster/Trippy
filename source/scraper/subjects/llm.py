@@ -142,7 +142,8 @@ Rules:
 - Direction belongs in the name, not in a separate field:
   min_weekend_nights, max_occupancy, check_out_time, latest_arrival_time,
   pool_min_age, last_dogs_entry_time.
-- Name amenities in context: a caravan pitch has electric_hookup, not electricity.
+- Name amenities in context: a caravan pitch has caravan_bay_electric_hookup,
+  not electricity or electric_hookup.
 - PREFER THE TERM YOU WERE GIVEN. If it is already lower snake_case, positively
   phrased and states a predicate, return it UNCHANGED. Only rewrite to fix a real
   problem: a misspelling, a plural, a negation, or a name that states no predicate.

@@ -137,6 +137,19 @@ Rules:
   Bad (4 claims): refused with a leashed dog; asked to leash at the gate; 4 cars turned around;
   cashier said it is the rule in all parks.
   Good (1 claim): They were not allowed in with a dog even though it was leashed.
+- Concessive asides are a different site fact from the main clause. "despite X",
+  "even though X", "בכל זאת X", or a parenthetical like (בכל זאת מדבר ורוחות)
+  → emit X and Y as two claims, not one glued sentence.
+  Input: "The tent is clean despite being in the desert with winds."
+  Output:
+    {"text_en": "The site is in the desert with winds.", "polarity": "positive"}
+    {"text_en": "The sleeping tent is clean.", "polarity": "positive"}
+  Input: "האוהל עצמו נקי ולא מאד מאובק (בכל זאת מדבר ורוחות)."
+  Output:
+    {"text_en": "The site is in the desert with winds.", "polarity": "positive"}
+    {"text_en": "The sleeping tent is clean and not very dusty.", "polarity": "positive"}
+  Do not fold the setting into the cleanliness claim. The dog/leash incident
+  rule above still applies — do not split supporting beats of one event.
 - Keep specific feature claims (shade, hot water, pets, pools, streams, booking, BBQ,
   bungalow rental, mattress rental).
   "Excellent for camping" may stay if camping is the feature; bare "great" must not.

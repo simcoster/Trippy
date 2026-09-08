@@ -61,6 +61,7 @@ Embeddings retrieve by topic; `text_en` is already a standalone sentence. Aspect
 - Direct experience vs speculation: keep “staff were rude”; drop “management should open the streams”.
 - Dedup same fact in one review; crowding at two spots ≠ streams dry.
 - One visitor incident = one claim (dog + leash refusal + cashier + U-turn → one pets/gate claim).
+- Concessive asides are a second site fact: "despite X, Y" / `בכל זאת X` → claims [X, Y], not one glued sentence (experiments.md 2026-09-07 §2). The incident rule still forbids splitting supporting beats of one event. After a full `populate-claims` with that few-shot, Mamshit’s live review was still one glued row (`despite being in the desert with winds`) at −0.577 for `"desert"` (experiments.md 2026-09-07 §8).
 - Keep specific rentable features (bungalow, mats).
 - Opposite sentiments are separate rows.
 
@@ -90,3 +91,25 @@ feature, emit the presupposition as its own positive row (*"The unit has air
 conditioning."*) next to the complaint. Do **not** widen the planner to accept
 either polarity — *"no AC in the room"* would then satisfy a request for AC in
 the room.
+
+## Open: 235B claim-verify after a loose gate (2026-09-07)
+
+A −0.6 vector gate plus one 235B judge per site (all passing claims, told
+most are noise) recovered Masada + Mamshit for `"desert"` / `"in the
+desert"` and rejected 20 unrelated sites, including Hai-Bar animals and
+Khan Be'erot (no desert *claim*). It wrongly said Horshat Tal / Ashkelon
+were pet-friendly because a claim said pets are **forbidden**. Not in
+the planner until the prompt requires satisfying polarity.
+experiments.md 2026-09-07 §3.
+
+Polarity + few-shots on the same 35 pairs: Horshat Tal / Ashkelon now
+no (“mentions pets but forbids them”). Desert / Mamshit / electricity
+unchanged. 35/35. Gate −0.6 kept. Still not wired into the recommender.
+experiments.md 2026-09-07 §4.
+
+One call can also name the *relevant* claims (including forbiddens) while
+`satisfies` stays the filter, if official `campsite_rules` are in the
+payload: 35/35 on both (experiments.md 2026-09-07 §5). Wired in
+`planner_node` (`source/agent/claim_judge.py`): retrieve −0.6 top 5, nearest
+rules, keep all relevant claims as evidence, drop claim-only fits the judge
+rejects. A stated amenity is not vetoed.
