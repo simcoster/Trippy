@@ -1,7 +1,8 @@
 <#
     Push the current branch, open a PR into the base branch, wait for CI.
-    Stays on the feature branch. Driven by `just pr`; kept out of the justfile
-    so it can be read, diffed and run on its own.
+    If CI is green, squash-merge with --admin (a solo owner cannot approve
+    their own PR; the Protect main ruleset still requires a review) then
+    check out the base branch and pull. Driven by `just pr`.
 
         pwsh scripts/open_pr.ps1
         pwsh scripts/open_pr.ps1 -Title "Split room and site amenities"
@@ -127,7 +128,14 @@ if (-not (Wait-ChecksReported $url)) {
 Write-Host 'Waiting for CI to finish...'
 gh pr checks $url --watch
 if ($LASTEXITCODE -eq 0) {
-    Write-Host 'CI passed.'
+    Write-Host 'CI passed. Squash-merging with --admin (cannot self-approve).'
+    gh pr merge $url --squash --admin --delete-branch
+    Assert-LastExit 'gh pr merge --admin failed'
+    git checkout $Base
+    Assert-LastExit "Could not check out $Base"
+    git pull origin $Base
+    Assert-LastExit "Could not pull origin/$Base"
+    Write-Host "Merged. On $Base."
     Write-Host $url
     exit 0
 }

@@ -215,7 +215,7 @@ def test_extractor_calls_resolve_dates_tool(monkeypatch: pytest.MonkeyPatch):
     }
     fake_model = MagicMock()
     fake_model.invoke.return_value = AIMessage(content=json.dumps(llm_json))
-    monkeypatch.setattr(agent_graph, "planner_model", fake_model)
+    monkeypatch.setattr(agent_graph, "extractor_model", fake_model)
     invoke_calls: list[dict] = []
 
     def _tracking_invoke(args):
@@ -257,7 +257,7 @@ def test_extractor_truncation_notice_from_tool(monkeypatch: pytest.MonkeyPatch):
     }
     fake_model = MagicMock()
     fake_model.invoke.return_value = AIMessage(content=json.dumps(llm_json))
-    monkeypatch.setattr(agent_graph, "planner_model", fake_model)
+    monkeypatch.setattr(agent_graph, "extractor_model", fake_model)
     monkeypatch.setattr(
         agent_graph,
         "resolve_dates_tool",

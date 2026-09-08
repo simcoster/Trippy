@@ -764,8 +764,10 @@ Everything currently in scope is server-rendered, which is why
 
 ## Query extractor: date_intent
 
-The 30B extractor emits a `date_intent` only; `resolve_dates` turns it into
-ISO stay windows. It does not invent calendars.
+The query extractor (`extractor_node`) emits a `date_intent` only;
+`resolve_dates` turns it into ISO stay windows. It does not invent
+calendars. That node is the **235B** (`extractor_model`, temperature 0).
+`planner_node` is vacancies + amenity SQL, not a chat model.
 
 Hebrew clocks that used to be mislabelled, and the intents they must emit:
 
@@ -778,8 +780,13 @@ Hebrew clocks that used to be mislabelled, and the intents they must emit:
 The 30B mapped `שישי הקרוב` to `when=next` and dropped `weeks_from_now` on
 `סוף השבוע בעוד שבועיים` because the prompt stated those rules and never
 demonstrated them. Three few-shots plus `weeks_from_now: N` in the schema
-held 25/25 at temperature 0 (experiments.md 2026-09-07 §1), so the extractor
-stays on the 30B and date intent is not a second LLM call.
+held 25/25 at temperature 0 on Monday 7 Sep, including the Horshat Tal
+query (experiments.md 2026-09-07 §1). Re-measured Tuesday 8 Sep: the
+bare phrase is still 5/5, but the same 30B full prompt is **2/5** on
+buried `בשישי הקרוב` (`when=next` the other three). A dates-only 30B
+prompt and the 235B full prompt are both 30/30 (experiments.md
+2026-09-08 §2). Extractor moved to 235B: p50 4.0s → 2.4s, ~$0.00025 →
+~$0.00050 per search (experiments.md 2026-09-08 §3).
 
 ## Planner claim/rule judge
 

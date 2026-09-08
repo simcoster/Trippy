@@ -46,6 +46,65 @@ in / 220–380 out, ≈$0.0009 each, **$0.0036** total.
 not `electric_hookup`) so resolve does not teach the old name.
 design.md "One tooltip, one pipeline".
 
+### 2. Is date_intent more consistent on 235B, or on a 30B dates-only call?
+
+**Question.** The 7 Sep few-shots were 25/25 on the 30B, including
+Horshat Tal `בשישי הקרוב`. The 8 Sep five-query replay emitted
+`when=next` for that same query. Is that a flake of the 30B full
+extractor, does the 235B hold, and does a 30B call that extracts only
+`date_intent` hold?
+
+**Setup.** No writes. Today frozen to **Tuesday 2026-09-08** in the
+prompt and in `resolve_dates`. Temperature 0. 6 prompts × 5 trials × 3
+setups = **90 calls**. Setups: production `EXTRACTOR_SYSTEM_PROMPT` on
+30B; the same prompt on 235B; a dates-only 30B prompt (same date rules
+and few-shots, no amenities / price / campsite). Gold is the compact
+intent plus the resolved `start`. Dump
+`temp/date_intent_consistency.json`.
+
+| prompt | gold start |
+|---|---|
+| Q1 סופ״ש הבא + showers + north | 18 Sep, `when=next` weekend |
+| Q2 חורשת טל בשישי הקרוב ≤₪400 | 11 Sep, `when=this` Friday |
+| בשישי הקרוב (bare) | 11 Sep, `when=this` |
+| Q3 חמישי הבא + sea + electricity | 17 Sep, `when=next` Thursday |
+| Q4 סוף השבוע בעוד שבועיים | 25 Sep, `weeks_from_now=2` |
+| Q5 מהיום ליומיים | 8 Sep, `on=today`, nights=2 |
+
+**Result.** **30B full 27/30.** The only misses are Q2: **2/5**
+`when=this` (11 Sep), **3/5** `when=next` (18 Sep). Bare הקרוב on the
+same model is 5/5. **235B full 30/30**, one intent per prompt.
+**30B dates-only 30/30**, one intent per prompt, ~1s/call, 23k in /
+0.8k out. Wall 272s / 4 workers. Est. **$0.025** (30B full $0.008,
+235B $0.015, dates-only $0.003).
+
+**Decision.** Not shipped. The 30B full extractor is inconsistent on
+buried הקרוב; a second dates-only 30B call matches the 235B without
+moving amenity extract. Wait for a product choice. design.md
+"Query extractor: date_intent".
+
+### 3. Ship the 235B for query extract?
+
+**Question.** §2: 235B full 30/30, dates-only 30B 30/30, 30B full 27/30
+on buried הקרוב. Latency and $ vs the current 30B extractor hop?
+
+**Setup.** Same 90-call dump as §2. Per-call p50 from those 30 trials
+each. Now = 30B full. Options: replace with 235B full, or add a
+dates-only 30B call and keep 30B full for amenities.
+
+**Result.** Extractor hop only (judge/planner dwarf it):
+
+| | now 30B full | 235B full | 30B dates + 30B full |
+|---|---|---|---|
+| gold | 27/30 | 30/30 | 30/30 if dates-only wins |
+| p50 latency | 4.0 s | 2.4 s | sequential 5.0 s / parallel ~4.0 s |
+| $ / search | $0.00025 | $0.00050 | $0.00034 |
+
+**Decision.** Extractor → 235B (`extractor_model`). Simpler than a
+second call; 2× token cost, faster on this run. `planner_node` stays
+SQL — the old name `planner_model` was the extract chat client.
+design.md "Query extractor: date_intent".
+
 ## 2026-09-07
 
 ### 8. After rebuilding claims, can the judge sift amenity −0.7 listing hits?

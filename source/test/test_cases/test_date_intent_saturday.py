@@ -79,7 +79,7 @@ def test_extractor_payload_includes_date_intent(monkeypatch, caplog):
     }
     fake_model = MagicMock()
     fake_model.invoke.return_value = AIMessage(content=json.dumps(llm_json))
-    monkeypatch.setattr(agent_graph, "planner_model", fake_model)
+    monkeypatch.setattr(agent_graph, "extractor_model", fake_model)
     monkeypatch.setattr(
         agent_graph,
         "resolve_dates_tool",

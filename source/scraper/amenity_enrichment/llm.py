@@ -26,7 +26,8 @@ NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
 QWEN_INSTRUCT_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
 QWEN_INSTRUCT_INPUT_USD_PER_MTOK = 0.20
 QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK = 0.60
-# Agent planner / query-constraint extract — keep 30B for now (easy to bump later)
+# Visit gate / classify / lodging segmenter — 30B. Query extract is 235B
+# (`extractor_model` in graph.py).
 QWEN_INSTRUCT_30B_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 QWEN_INSTRUCT_30B_INPUT_USD_PER_MTOK = 0.10
 QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK = 0.30

@@ -82,9 +82,6 @@ def _parse_iso_day(value: Any) -> date | None:
         return None
 
 
-parse_iso_day = _parse_iso_day
-
-
 def iso_day(value: Any) -> str:
     if hasattr(value, "isoformat"):
         return value.isoformat()
