@@ -126,9 +126,9 @@ def _freeze_monday(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _extract(prompt: str) -> dict:
-    from source.agent.graph import extractor_node, planner_model
+    from source.agent.graph import extractor_model, extractor_node
 
-    assert planner_model.temperature == 0
+    assert extractor_model.temperature == 0
     result = extractor_node({"messages": [HumanMessage(content=prompt)]})
     return _extractor_constraints_json(result["messages"])
 

@@ -6,6 +6,30 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-08, just pr merges on green CI)
+
+**`just pr` squash-merges with `--admin` after CI passes, then checks
+out main and pulls.** A solo owner cannot approve their own PR; Protect
+main still requires a review, so the merge uses the admin bypass. Failed
+CI still prints the job logs and leaves you on the feature branch.
+Supersedes “just pr stays on the feature branch”.
+
+### Done (2026-09-08, extractor on 235B)
+
+**Query extractor is the 235B; `planner_model` renamed
+`extractor_model`.** Buried הקרוב was 2/5 on the 30B full prompt, 5/5
+on 235B (experiments.md 2026-09-08 §2–§3). p50 4.0s → 2.4s, ~$0.00025
+→ ~$0.00050 per extract. `planner_node` was never that client — it is
+SQL. Supersedes “query-constraint extract stays on 30B”.
+
+### Done (2026-09-08, date-intent consistency)
+
+**30B full extractor is 27/30 on date_intent; 235B full and 30B
+dates-only are 30/30.** The only miss is buried `בשישי הקרוב` (Horshat
+Tal query): 2/5 `when=this`, 3/5 `when=next`. Bare הקרוב is 5/5 on the
+30B. Not shipped — still one 30B extract call. experiments.md
+2026-09-08 §2.
+
 ### Done (2026-09-08, caravan-bay hookup names)
 
 **Caravan-bay חיבור חשמל ומים is `caravan_bay_electric_hookup` /

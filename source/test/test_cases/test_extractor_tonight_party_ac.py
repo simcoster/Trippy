@@ -75,9 +75,9 @@ def _party_size_at_least_3(numeric: list) -> bool:
 
 def test_extractor_tonight_two_nights_three_adults_ac():
     """משהו ל3 אנשים החל מהיום ל2 לילות עם מזגן → date + occupancy>=3 + AC."""
-    from source.agent.graph import extractor_node, planner_model
+    from source.agent.graph import extractor_model, extractor_node
 
-    assert planner_model.temperature == 0
+    assert extractor_model.temperature == 0
 
     result = extractor_node({"messages": [HumanMessage(content=PROMPT)]})
     constraints = _extractor_constraints_json(result["messages"])

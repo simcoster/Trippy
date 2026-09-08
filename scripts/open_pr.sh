@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Push the current branch, open a PR into the base branch, wait for CI.
-# Stays on the feature branch. Driven by `just pr` on macOS/Linux; the
-# PowerShell twin is open_pr.ps1 and the two must stay in step.
+# If CI is green, squash-merge with --admin (a solo owner cannot approve
+# their own PR; the Protect main ruleset still requires a review) then
+# check out the base branch and pull. Driven by `just pr` on macOS/Linux;
+# the PowerShell twin is open_pr.ps1 and the two must stay in step.
 #
 #     scripts/open_pr.sh
 #     scripts/open_pr.sh "Split room and site amenities"
@@ -101,7 +103,12 @@ ci_status=$?
 set -e
 
 if [[ "$ci_status" -eq 0 ]]; then
-    echo "CI passed."
+    echo "CI passed. Squash-merging with --admin (cannot self-approve)."
+    gh pr merge "$url" --squash --admin --delete-branch \
+        || die "gh pr merge --admin failed"
+    git checkout "$base" || die "Could not check out $base"
+    git pull origin "$base" || die "Could not pull origin/$base"
+    echo "Merged. On $base."
     echo "$url"
     exit 0
 fi

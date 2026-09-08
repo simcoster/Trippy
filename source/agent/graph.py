@@ -60,7 +60,6 @@ from source.agent.search import (
     search_stated_amenities,
 )
 from source.scraper.amenity_enrichment.llm import (
-    QWEN_INSTRUCT_30B_MODEL,
     QWEN_INSTRUCT_MODEL,
     make_agent_chat_model,
 )
@@ -105,11 +104,13 @@ class ChatState(TypedDict):
 # Qwen return empty content + tool_calls, which surfaced as blank agent replies.
 light_model = make_agent_chat_model(temperature=0.7)
 heavy_model = make_agent_chat_model(temperature=0.7)
-planner_model = make_agent_chat_model(
-    temperature=0, model=QWEN_INSTRUCT_30B_MODEL
-)
+# extractor_node only. planner_node is SQL + embeddings, not a chat model.
+# Named extractor_model (it used to be planner_model) so patches and traces
+# match the node. 235B: buried הקרוב was 2/5 on 30B, 5/5 here
+# (experiments.md 2026-09-08 §2–§3).
+extractor_model = make_agent_chat_model(temperature=0)
 AGENT_CHAT_MODEL = QWEN_INSTRUCT_MODEL
-PLANNER_CHAT_MODEL = QWEN_INSTRUCT_30B_MODEL
+EXTRACTOR_CHAT_MODEL = QWEN_INSTRUCT_MODEL
 
 
 def router(state: ChatState) -> str:
@@ -177,7 +178,7 @@ def extractor_node(state: ChatState) -> ChatState:
     today = today_il()
     system_msg = SystemMessage(content=format_extractor_system_prompt(today))
 
-    response = planner_model.invoke([system_msg] + state["messages"])
+    response = extractor_model.invoke([system_msg] + state["messages"])
     raw = message_text(response.content)
     tool_calls = getattr(response, "tool_calls", None) or []
     user_text = latest_user_text(state["messages"])
