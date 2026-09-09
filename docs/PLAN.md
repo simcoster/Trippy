@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-09, run-eval exits 0 on case fails)
+
+**`just run-eval` exits 0 after writing the report even when cases
+FAIL.** Missing frozen table, unknown `--ids`, and runtime errors
+still exit non-zero.
+
 ### Done (2026-09-09, run-eval copies public first)
 
 **`just run-eval` copies `public` → `experiments` before scoring,

@@ -925,7 +925,9 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 `just run-eval` first copies `public` into `experiments` except
 `availability` (that table is cloned empty; occupancy is
 `availability_frozen`). Then extractor then planner on every case and
-writes `reports/evals/`. `--no-copy` skips the refresh.
+writes `reports/evals/`. `--no-copy` skips the refresh. Case FAIL
+rows are scored in the report; the process still exits 0 unless a
+setup or runtime error stops the run.
 
 `electric_hookup` on stored rows is
 still three listings (caravan-bay water+power, PITCH tent power, site-wide

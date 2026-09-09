@@ -34,7 +34,8 @@ stays `availability_frozen`). `--no-copy` skips that refresh.
 Pins `TRIPPY_SCHEMA=experiments`, `TRIPPY_AVAILABILITY_TABLE=availability_frozen`,
 and `TRIPPY_TODAY=2026-09-08` from the JSON. Each case goes through
 **extractor then planner** (not the light cleaner). Writes
-`reports/evals/<timestamp>.md` plus a JSON dump.
+`reports/evals/<timestamp>.md` plus a JSON dump. A mixed score is
+still exit 0; only a setup or runtime error fails the recipe.
 
 The full 26 is tens of 235B judge calls (tens of minutes). `--ids` is the
 smoke path.
