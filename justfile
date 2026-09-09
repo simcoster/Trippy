@@ -1,5 +1,5 @@
 # Run from the repo root. Requires just (https://github.com/casey/just) + uv.
-# Pipeline: scrape-sites → scrape-info (rooms → prices → rules) → scrape-availability
+# Pipeline: scrape-sites → scrape-info (rooms → prices → rules → breadcrumbs) → scrape-availability
 
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
@@ -75,11 +75,16 @@ on-experiments *args:
 scrape-rooms *args:
     uv run python -m source.scraper.rules_ingest.rooms {{ trim_start_match(args, "-- ") }}
 
-# All three info-page scrapes in dependency order: rooms → prices → rules
+# All info-page scrapes in dependency order: rooms → prices → rules → breadcrumbs
 scrape-info *args:
     just scrape-rooms {{ args }}
     just scrape-prices {{ args }}
     just scrape-rules {{ args }}
+    just scrape-breadcrumbs {{ args }}
+
+# parks.org.il #breadcrumbs → region claims (--site N)
+scrape-breadcrumbs *args:
+    uv run python -m source.scraper.info_site.breadcrumbs {{ trim_start_match(args, "-- ") }}
 
 # info-site rate cards → list_prices (--site N)
 scrape-prices *args:
@@ -109,7 +114,7 @@ scrape-rules *args:
 clear-availability *args:
     uv run python scripts/clear_availability.py {{ trim_start_match(args, "-- ") }}
 
-# Truncate reviews and claims; keep campsites
+# Truncate Google reviews; keep campsites and breadcrumb region claims
 clear-reviews:
     uv run python scripts/clear_reviews_and_claims.py
 
@@ -117,7 +122,7 @@ clear-reviews:
 clear-claims:
     uv run python scripts/clear_claims.py
 
-# Clear all info-page data: rules, prices, types, names, vocabulary + availability
+# Clear all info-page data: rules, prices, types, names, vocabulary, breadcrumb claims + availability
 clear-info *args:
     uv run python scripts/clear_info.py {{ trim_start_match(args, "-- ") }}
 

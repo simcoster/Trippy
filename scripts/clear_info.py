@@ -1,4 +1,5 @@
-"""Clear everything `just scrape-info` writes: rooms, prices and rules.
+"""Clear everything `just scrape-info` writes: rooms, prices, rules and
+breadcrumb region claims.
 
 The inverse of the whole info-page pipeline, where `clear_rules.py` is the
 inverse of one step of it. It empties, in the order the foreign keys allow:
@@ -11,6 +12,7 @@ inverse of one step of it. It empties, in the order the foreign keys allow:
     accommodation_types   rebuilt by scrape-rooms from the lodging panel
     info_website_names    created by scrape-rooms; the row prices attach to
     subject_vectors       the shared dictionary
+    claims (no review)    breadcrumb regions; review-split claims stay
 
 `availability` goes too, and it has to: `availability.accommodation_type_id` is
 ON DELETE RESTRICT, so every vacancy pins the type it was booked against and
@@ -25,7 +27,8 @@ than bloat -- HNSW is a graph, deletions unlink nodes without rebuilding it, and
 VACUUM cannot. Repeated wipe-and-re-ingest, which is exactly how this project is
 used, degrades recall. TRUNCATE writes new empty files for every table and index
 instead. It takes several tables at once precisely so a referencing group can go
-together without CASCADE reaching anything unnamed.
+together without CASCADE reaching anything unnamed. Breadcrumb claims are a
+DELETE (`review_id IS NULL`) because review-split rows share the table.
 
   uv run python scripts/clear_info.py
   uv run python scripts/clear_info.py --yes    # no prompt
@@ -46,6 +49,9 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 load_dotenv()
+
+BREADCRUMB_CLAIMS_KEY = "claims (no review)"
+DELETE_BREADCRUMB_CLAIMS_SQL = "DELETE FROM claims WHERE review_id IS NULL"
 
 # In FK order, though TRUNCATE takes them together.
 TABLES = (
@@ -71,6 +77,8 @@ def counts(cur) -> dict[str, int]:
     for table in TABLES:
         cur.execute(f"SELECT count(*) FROM {table}")
         out[table] = cur.fetchone()[0]
+    cur.execute("SELECT count(*) FROM claims WHERE review_id IS NULL")
+    out[BREADCRUMB_CLAIMS_KEY] = cur.fetchone()[0]
     return out
 
 
@@ -87,10 +95,11 @@ def main() -> None:
         with connect(url, connect_timeout=10) as conn:
             with conn.cursor() as cur:
                 before = counts(cur)
-            for table in TABLES:
+            keys = TABLES + (BREADCRUMB_CLAIMS_KEY,)
+            for table in keys:
                 print(f"  {table:22} {before[table]:>6}")
 
-            total = sum(before[t] for t in TABLES)
+            total = sum(before[t] for t in keys)
             if not total:
                 print("\nAlready empty; nothing to do.")
                 return
@@ -104,13 +113,14 @@ def main() -> None:
                 cur.execute(
                     f"TRUNCATE TABLE {', '.join(TABLES)} RESTART IDENTITY"
                 )
+                cur.execute(DELETE_BREADCRUMB_CLAIMS_SQL)
                 after = counts(cur)
             conn.commit()
     except psycopg.OperationalError as exc:
         print(f"Postgres connection failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    assert all(after[t] == 0 for t in TABLES), after
+    assert all(after[t] == 0 for t in keys), after
     print(f"\nRemoved {total} row(s); the tables and their indexes are reset.")
     print("Rebuild with: just scrape-info, then just scrape-availability")
 

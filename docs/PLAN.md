@@ -6,6 +6,26 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-09, breadcrumb claim labels)
+
+**Breadcrumb claims are `area:north` and `region:upper-galilee`, not
+bare slugs.** Same ingest, prefixed so a north query hits the area
+row and an Upper Galilee query hits the region row.
+
+### Done (2026-09-09, breadcrumb region claims)
+
+**`just scrape-info` embeds parks.org.il `#breadcrumbs` as claims.**
+Trail `צפון` / `גליל עליון` → `area-north` / `upper-galilee`, straight
+embed (the review splitter emitted nothing). `notes` is `no review,
+region by breadcrumbs`; `review_id` is NULL. Quick ingest; may change.
+experiments.md 2026-09-09 §1.
+
+### Open (2026-09-09, satellite features)
+
+**Later: take a satellite image of the area, pass it through an image
+model, and ask what features it can see.** Deduce "by the sea" / "in
+the desert" when the site page does not say so.
+
 ### Done (2026-09-08, just run-eval)
 
 **`just run-eval` scores extractor + planner against

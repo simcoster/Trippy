@@ -1,4 +1,7 @@
-"""Clear claims and reset reviews.is_relevant. Keeps review rows."""
+"""Clear claims split from reviews and reset reviews.is_relevant.
+
+Keeps review rows and breadcrumb region claims (`review_id` IS NULL).
+"""
 
 from __future__ import annotations
 
@@ -27,13 +30,16 @@ def database_url() -> str:
     return url.replace("@db:", "@localhost:")
 
 
-CLEAR_CLAIMS_SQL = "DELETE FROM claims"
+CLEAR_CLAIMS_SQL = "DELETE FROM claims WHERE review_id IS NOT NULL"
 
 RESET_RELEVANT_SQL = "UPDATE reviews SET is_relevant = NULL"
 
 
 def clear_claims(conn) -> tuple[int, int]:
-    """Delete every claim and null `reviews.is_relevant`. Returns (claims, reviews)."""
+    """Delete review-split claims and null `reviews.is_relevant`.
+
+    Returns (claims, reviews). Breadcrumb claims stay.
+    """
     with conn.cursor() as cur:
         cur.execute(CLEAR_CLAIMS_SQL)
         claims_deleted = cur.rowcount

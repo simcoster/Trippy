@@ -164,9 +164,10 @@ class Review(Base):
 
 
 class Claim(Base):
-    """Atomic site fact split from a review. No stars; join `reviews` for that.
+    """Atomic site fact. Review-split rows join `reviews`; breadcrumb
+    regions have `review_id` NULL and `notes` set.
 
-    Readable join for manual review: view claims_with_reviews.
+    Readable join: view claims_with_reviews.
     """
 
     __tablename__ = "claims"
@@ -176,8 +177,8 @@ class Claim(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    review_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False
+    review_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("reviews.id", ondelete="CASCADE"), nullable=True
     )
     campsite_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
@@ -186,10 +187,11 @@ class Claim(Base):
     evidence_span: Mapped[str | None] = mapped_column(Text)
     is_positive: Mapped[bool | None] = mapped_column(Boolean)
     confidence: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)
     # Qwen3-Embedding-8B via Nebius with dimensions=1536 (HNSW max is 2000).
     embedding = mapped_column(Vector(1536), nullable=True)
 
-    review: Mapped[Review] = relationship(back_populates="claims")
+    review: Mapped[Review | None] = relationship(back_populates="claims")
     campsite: Mapped[Campsite] = relationship(back_populates="claims")
 
 

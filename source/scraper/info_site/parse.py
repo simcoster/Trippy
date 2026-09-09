@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -86,3 +86,69 @@ def parse_whats_new(html: str) -> list[str]:
         return []
     items = [normalize_label(li.get_text(" ", strip=True)) for li in ul.find_all("li")]
     return [item for item in items if item]
+
+
+# Nested parks.org.il area URLs prefix the child slug with a two-letter
+# area code: /area-north/an-upper-galilee/, /area-south/as-dead-sea/,
+# /area-center/ac-coastal-plain/. Strip that so we embed "region:upper-galilee".
+_AREA_CHILD_PREFIX = {
+    "area-north": "an-",
+    "area-south": "as-",
+    "area-center": "ac-",
+}
+
+
+def _path_segments(href: str) -> list[str]:
+    path = unquote(urlparse(href or "").path or "").strip("/")
+    return [part for part in path.split("/") if part]
+
+
+def _child_slug(area: str, nested: str) -> str:
+    prefix = _AREA_CHILD_PREFIX.get(area)
+    if prefix and nested.startswith(prefix) and nested != prefix:
+        return nested[len(prefix) :]
+    return nested
+
+
+def _area_claim(segment: str) -> str:
+    rest = segment.removeprefix("area-") if segment.startswith("area-") else segment
+    return f"area:{rest}"
+
+
+def _region_claim(area: str, nested: str) -> str:
+    return f"region:{_child_slug(area, nested)}"
+
+
+def parse_breadcrumb_regions(html: str) -> list[dict]:
+    """Region crumbs from `#breadcrumbs`: [{slug, label, href}, ...].
+
+    Home, the park page, and the overnight page itself are skipped. Unique
+    slugs, trail order. `slug` is `area:north` / `region:upper-galilee`;
+    `label` is the Hebrew link text.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    el = soup.select_one("#breadcrumbs")
+    if el is None:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for anchor in el.find_all("a"):
+        href = anchor.get("href") or ""
+        parts = _path_segments(href)
+        if not parts or not parts[0].startswith("area-"):
+            continue
+        label = normalize_label(anchor.get_text(" ", strip=True))
+        area = parts[0]
+        slugs = [_area_claim(area)]
+        slugs.extend(_region_claim(area, part) for part in parts[1:])
+        last_new = None
+        for slug in slugs:
+            if not slug or slug in seen:
+                continue
+            seen.add(slug)
+            row = {"slug": slug, "label": "", "href": href}
+            out.append(row)
+            last_new = row
+        if last_new is not None:
+            last_new["label"] = label
+    return out

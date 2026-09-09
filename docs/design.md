@@ -782,6 +782,27 @@ experiments.md 2026-09-08 §6.
 
 `test_visitor_info_panel.py` pins the parse against a captured panel.
 
+### Breadcrumb regions are claims without a review
+
+`just scrape-info` ends with `scrape-breadcrumbs`. The static page's
+`#breadcrumbs` trail is `בית > צפון > גליל עליון > <park> > <overnight>`.
+The two area links are enough: `area:north` from `/area-north/`,
+`region:upper-galilee` from `/area-north/an-upper-galilee/` (the `an-` /
+`as-` / `ac-` prefix is the parent area code, stripped so the embed
+is `region:upper-galilee` not `an-upper-galilee`). Park and overnight
+crumbs are skipped.
+
+The review splitter emitted `{"claims": []}` on `the site is on
+region:צפון at:גליל עליון`. Straight embed of the slugs against
+`"not far from north"` was −0.787 / −0.605, and the claim judge said
+yes (experiments.md 2026-09-09 §1). Stored claims are `area:north` and
+`region:upper-galilee`. They go in `claims` with `review_id` NULL,
+`is_positive` true, `confidence` 1.0, and
+`notes='no review, region by breadcrumbs'`. Retrieve left-joins
+`reviews` so these rows are not dropped. `clear-claims` and
+`clear-reviews` leave them; `clear-info` deletes `review_id IS NULL`
+claims. This is the quick ingest; it may change.
+
 ### Sources not yet ingested
 
 The `נהלים, טפסים ומידע כללי` and `מידע לקבוצות` panels link PDFs that hold real

@@ -12,7 +12,7 @@ Probe tables (anonymized): `temp/split_reviews.md`, `temp/split_claims_table_235
 | Generic judgments | Skip in the prompt; also drop `confidence < 0.5` |
 | Aspect / locus | **Not stored.** Revisit if we need structured filters or amenity-key alignment |
 | Stars / author / full text | `reviews` table only — claims do not copy rating |
-| Claims columns | `review_id`, `campsite_id`, `claim` (standalone rewrite, usually EN), `evidence_span` (original language), `polarity`, `confidence`, `embedding` |
+| Claims columns | `review_id` (nullable), `campsite_id`, `claim`, `evidence_span`, `is_positive`, `confidence`, `notes` (NULL except breadcrumb ingest), `embedding` |
 | Recency | `reviews.published_at`; search joins reviews |
 | Visit gate | **30B** before split. Ads / brochure / history dumps **and hiking-trail writeups** → `reviews.skip_reason = not_personal`, `reviews.is_relevant = false`, `skip_note`, **no claims**. Guest reports of site conditions (streams dry, crowding, paid entry) **keep** (`is_relevant = true`), even if they rant. Mixed stay+trail still keep. Splitter and `confidence < 0.5` unchanged. Empty text: `is_relevant = false`, no gate. Gold: `visit_gate.json`. |
 
@@ -28,9 +28,14 @@ Google fetch and claim extract are separate:
 2. `just populate-claims` — rows with `is_relevant IS NULL` and non-empty text:
    visit gate, one 235B split per kept review, one embed batch per site, then
    commit that site. Already-classified rows (`is_relevant` not null) are skipped.
-3. `just clear-claims` — `DELETE FROM claims` and
-   `UPDATE reviews SET is_relevant = NULL`. Review rows stay. `clear-reviews`
-   still truncates both tables.
+3. `just scrape-info` (via `scrape-breadcrumbs`) — `#breadcrumbs` area slugs
+   (`area:north`, `region:upper-galilee`) embedded as claims with `review_id` NULL
+   and `notes='no review, region by breadcrumbs'`. Not run through the
+   splitter (experiments.md 2026-09-09 §1).
+4. `just clear-claims` — `DELETE FROM claims WHERE review_id IS NOT NULL` and
+   `UPDATE reviews SET is_relevant = NULL`. Review rows and breadcrumb
+   claims stay. `clear-reviews` deletes reviews (CASCADE drops review-split
+   claims) and leaves breadcrumb rows.
 
 Tests may still pass a reviews dict into `populate_reviews_and_claims()`
 (upsert + gate + split in one call). Production scrape does not.
@@ -69,10 +74,10 @@ Embeddings retrieve by topic; `text_en` is already a standalone sentence. Aspect
 
 ```
 reviews  (campsite_id, source, author, rating, text, published_at, review_uid, skip_reason, skip_note, is_relevant)
-claims   (review_id, campsite_id, …)  — no stars; date via join
+claims   (review_id nullable, campsite_id, claim, evidence_span, is_positive, confidence, notes, embedding)
 ```
 
-Migration `014_reviews_and_claims` drops the old `claims` table (text `campsite_id`, author/date/source on the claim) and recreates it with FKs. `034_review_is_relevant` adds nullable `reviews.is_relevant`.
+Migration `014_reviews_and_claims` drops the old `claims` table (text `campsite_id`, author/date/source on the claim) and recreates it with FKs. `034_review_is_relevant` adds nullable `reviews.is_relevant`. `036_claims_notes` adds `notes` and makes `review_id` nullable for breadcrumb region rows.
 
 ## Open: negative claims presuppose the feature (2026-09-02)
 
