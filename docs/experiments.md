@@ -7,6 +7,33 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-09
+
+### 1. Can breadcrumb slugs retrieve and satisfy a north query without the claim splitter?
+
+**Question.** parks.org.il `#breadcrumbs` are `בית > צפון > גליל עליון > …`.
+Can we store them as claims for "not far from north"?
+
+**Setup.** Hurshat Tal page. No DB writes. (1) Phrase as `the site is
+on region:צפון at:גליל עליון` (and English `north` / `upper galilee`)
+through production `split_one_review` (235B). (2) Embed `area-north`
+and `upper-galilee` with Qwen3-Embedding-8B, `<#>` to `not far from
+north`. (3) Production `judge_site_request` on those slugs as
+`is_positive` claims, no rules. Dumps `temp/breadcrumb_claims_probe.json`,
+`temp/breadcrumb_embed_probe.json`, `temp/breadcrumb_judge_probe.json`.
+
+**Result.** Splitter: `{"claims": []}` both phrasings (~$0.0005).
+Embed: `area-north` −0.787, `upper-galilee` −0.605; both pass the −0.6
+claim gate. Judge: `satisfies` true on both together and each alone,
+`satisfy_by=claim` (~$0.0009). Nested URL slugs are `an-upper-galilee`
+/ `as-dead-sea` / `ac-coastal-plain`; the two-letter area prefix is
+stripped so the stored claim is `upper-galilee`.
+
+**Decision.** Fourth `scrape-info` stage: parse `#breadcrumbs`, embed
+the slugs, insert claims with `review_id` NULL and
+`notes='no review, region by breadcrumbs'`. Not through the splitter.
+design.md "Breadcrumb regions are claims without a review".
+
 ## 2026-09-08
 
 ### 1. Can the unit extractor name a caravan-bay hookup as not generic electricity?

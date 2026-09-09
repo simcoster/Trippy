@@ -206,19 +206,33 @@ def empty_tables(cur, tables: Sequence[str]) -> None:
     cur.execute(f"TRUNCATE {joined} RESTART IDENTITY CASCADE")
 
 
-def copy_public(cur, *, empty: Sequence[str] = ()) -> tuple[str, ...]:
+def copy_public(
+    cur, *, empty: Sequence[str] = (), skip: Sequence[str] = ()
+) -> tuple[str, ...]:
     """Rebuild `experiments` as a data copy of `public`, then optionally empty.
 
     Returns the table names that were cloned. Views are recreated after the
     copy. `empty` is TRUNCATE CASCADE after the fill — use it to start a
     scrape from a full catalog with blank rules, for example.
+
+    `skip` tables are still cloned (empty) so FKs onto them survive the
+    DROP CASCADE of parents, but rows are not copied from `public`. The
+    planner eval skips `availability` this way and reads
+    `availability_frozen` instead.
     """
     tables = public_base_tables(cur)
+    skip_set = {table_name(n) for n in skip}
+    unknown = skip_set - set(tables)
+    if unknown:
+        raise ValueError(f"skip names are not public tables: {sorted(unknown)}")
     clone_tables(cur, tables)
     # Alphabetical order is not FK order (accommodation_types before
     # campsites). Replica skips the checks; both ends are filled in this loop.
     cur.execute("SET LOCAL session_replication_role = replica")
     for name in tables:
+        if name in skip_set:
+            print(f"    skipped {name}: not copied from public")
+            continue
         _insert_copy(cur, name)
         cur.execute(f"SELECT count(*) FROM experiments.{name}")
         n = cur.fetchone()[0]

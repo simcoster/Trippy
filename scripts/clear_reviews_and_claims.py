@@ -1,6 +1,7 @@
-"""Clear reviews and claims tables (TRUNCATE … CASCADE).
+"""Clear Google review rows and the claims split from them.
 
-Does not delete campsites.
+Does not delete campsites. Breadcrumb region claims (`review_id` NULL)
+stay — they are an info-page ingest, rebuilt by `just scrape-breadcrumbs`.
 """
 
 from __future__ import annotations
@@ -47,10 +48,10 @@ def main() -> None:
                 )
                 before_reviews, before_claims = cur.fetchone()
                 _log(
-                    f"Truncating reviews and claims "
-                    f"(before reviews={before_reviews} claims={before_claims})."
+                    f"Deleting reviews (CASCADE drops review-split claims; "
+                    f"before reviews={before_reviews} claims={before_claims})."
                 )
-                cur.execute("TRUNCATE TABLE claims, reviews RESTART IDENTITY CASCADE")
+                cur.execute("DELETE FROM reviews")
                 cur.execute(
                     """
                     SELECT
@@ -64,7 +65,7 @@ def main() -> None:
         print(f"Postgres connection failed: {exc}", file=sys.stderr, flush=True)
         sys.exit(1)
 
-    _log("Truncated reviews and claims.")
+    _log("Deleted reviews (review-split claims cascaded).")
     _log(f"reviews={reviews}  claims={claims}")
 
 

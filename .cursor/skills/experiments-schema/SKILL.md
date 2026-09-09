@@ -16,6 +16,7 @@ clone a handful of tables. Use this harness.
 
 ```text
 just setup-experiments copy
+just setup-experiments copy --skip availability
 just setup-experiments copy --empty campsite_rules,subject_vectors,conflict_cases
 just setup-experiments empty campsite_rules
 just setup-experiments freeze-availability
@@ -24,15 +25,18 @@ just setup-experiments status
 
 `copy` rebuilds `experiments` from `public` (DDL + rows + views). No FK
 crosses into `public`. `--empty` is `TRUNCATE … CASCADE` after the copy.
-`freeze-availability` snapshots `public.availability` into
-`experiments.availability_frozen` for the planner benchmark
-(`evals/planner_v1.json`). `copy` does not drop the frozen table.
+`--skip availability` clones that table empty so FKs survive, and does
+not copy live occupancy. `freeze-availability` snapshots
+`public.availability` into `experiments.availability_frozen` for the
+planner benchmark (`evals/planner_v1.json`). `copy` does not drop the
+frozen table. `just run-eval` runs this copy (skip availability) first.
 
 ## Run production code against the copy
 
 ```text
 just on-experiments scrape-info -- --site 2
 just on-experiments scrape-rules -- --site 2
+just run-eval
 ```
 
 `TRIPPY_SCHEMA=experiments` makes `db.connect.connect` set

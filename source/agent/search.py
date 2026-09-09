@@ -622,9 +622,9 @@ _CLAIMS_GLOBAL_SQL = """
         SELECT c.campsite_id, c.claim, c.is_positive, r.published_at,
                c.embedding <#> %s::vector AS distance
         FROM claims c
-        JOIN reviews r ON r.id = c.review_id
+        LEFT JOIN reviews r ON r.id = c.review_id
         WHERE c.claim IS NOT NULL
-          AND r.skip_reason IS NULL
+          AND (r.id IS NULL OR r.skip_reason IS NULL)
         ORDER BY c.embedding <#> %s::vector
         LIMIT %s
 """
@@ -636,11 +636,12 @@ _CLAIMS_GLOBAL_SQL = """
 #
 # A subcamp reads its parent's claims. Reviews are written against the Google
 # place, which the parent owns, and a guest says "Akhziv" rather than naming a
-# subcamp — so claims only ever exist on the parent row. Matching campsite_id
-# exactly would make every subcamp look like a site nobody has reviewed, while
-# the parent looked like a site with no amenities. The hit is still reported
-# under the id the caller asked about, so a subcamp's claims rank against that
-# subcamp's rules.
+# subcamp — so claims only ever exist on the parent row (review-split and
+# breadcrumb regions). Matching campsite_id exactly would make every subcamp
+# look like a site nobody has reviewed, while the parent looked like a site
+# with no amenities. The hit is still reported under the id the caller asked
+# about, so a subcamp's claims rank against that subcamp's rules.
+# Breadcrumb claims have review_id NULL; LEFT JOIN so they still retrieve.
 _CLAIMS_BY_SITE_SQL = """
         SELECT s.campsite_id, x.claim, x.is_positive, x.published_at, x.distance
         FROM unnest(%s::bigint[]) AS s(campsite_id)
@@ -649,11 +650,11 @@ _CLAIMS_BY_SITE_SQL = """
             SELECT c.claim, c.is_positive, r.published_at,
                    c.embedding <#> %s::vector AS distance
             FROM claims c
-            JOIN reviews r ON r.id = c.review_id
+            LEFT JOIN reviews r ON r.id = c.review_id
             WHERE c.campsite_id = COALESCE(site.parent_id, site.id)
               AND c.claim IS NOT NULL
               AND c.embedding IS NOT NULL
-              AND r.skip_reason IS NULL
+              AND (r.id IS NULL OR r.skip_reason IS NULL)
             ORDER BY c.embedding <#> %s::vector
             LIMIT %s
         ) AS x
