@@ -24,8 +24,12 @@ not drop this table.
 ```text
 just run-eval
 just run-eval -- --ids E01,H02
+just run-eval -- --no-copy
 uv run python -m source.eval.run --ids E01,H02
 ```
+
+First copies `public` → `experiments` except `availability` (occupancy
+stays `availability_frozen`). `--no-copy` skips that refresh.
 
 Pins `TRIPPY_SCHEMA=experiments`, `TRIPPY_AVAILABILITY_TABLE=availability_frozen`,
 and `TRIPPY_TODAY=2026-09-08` from the JSON. Each case goes through
@@ -35,7 +39,8 @@ and `TRIPPY_TODAY=2026-09-08` from the JSON. Each case goes through
 The full 26 is tens of 235B judge calls (tens of minutes). `--ids` is the
 smoke path.
 
-Requires `just setup-experiments freeze-availability` first.
+Requires `just setup-experiments freeze-availability` once so the frozen
+table exists. `copy` does not drop it.
 
 ## What the set covers
 

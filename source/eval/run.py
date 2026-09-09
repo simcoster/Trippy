@@ -1,6 +1,8 @@
 """Run evals/planner_v1.json through extractor + planner and score against gold.
 
     just run-eval
+    just run-eval -- --ids E01,H02
+    just run-eval -- --no-copy
     uv run python -m source.eval.run --ids E01,H02
 """
 
@@ -11,6 +13,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +21,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 
 from db.connect import connect, database_url
-from db.experiments import table_name
+from db.experiments import SEARCH_PATH, copy_public, table_name
 from source.agent.graph import extractor_node, planner_node
 from source.eval.score import score_case
 
@@ -26,6 +29,8 @@ load_dotenv()
 
 _ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EVAL = _ROOT / "evals" / "planner_v1.json"
+# Occupancy for the benchmark is availability_frozen, not this table.
+EVAL_COPY_SKIP = ("availability",)
 
 
 def _content(msg) -> str:
@@ -45,6 +50,19 @@ def apply_run_env(spec: dict) -> None:
     env = (spec.get("run") or {}).get("env") or {}
     for key, value in env.items():
         os.environ[str(key)] = str(value)
+
+
+def refresh_experiments_from_public(
+    *, skip: Sequence[str] = EVAL_COPY_SKIP
+) -> None:
+    """Overwrite experiments from public. Skipped tables stay empty clones."""
+    skipped = ", ".join(skip) or "none"
+    print(f"copying public → experiments (skip {skipped})", flush=True)
+    with connect(database_url(), options=SEARCH_PATH) as conn:
+        with conn.cursor() as cur:
+            copy_public(cur, skip=skip)
+        conn.commit()
+    print("copy done.", flush=True)
 
 
 def _require_frozen(table: str) -> None:
@@ -175,9 +193,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--eval", default=str(DEFAULT_EVAL), help="eval JSON")
     parser.add_argument("--ids", default="", help="comma-separated case ids")
     parser.add_argument("--out-dir", default="", help="report directory")
+    parser.add_argument(
+        "--no-copy",
+        action="store_true",
+        help="Do not refresh experiments from public first",
+    )
     args = parser.parse_args(argv)
     spec_path = Path(args.eval)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    if not args.no_copy:
+        refresh_experiments_from_public()
     apply_run_env(spec)
     table = os.environ.get("TRIPPY_AVAILABILITY_TABLE") or "availability"
     print(f"TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}", flush=True)

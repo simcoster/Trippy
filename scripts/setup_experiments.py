@@ -4,6 +4,7 @@ Production is not written. After this, `TRIPPY_SCHEMA=experiments` makes
 scrapes, search and the planner use the copy (see `db.connect`).
 
     uv run python scripts/setup_experiments.py copy
+    uv run python scripts/setup_experiments.py copy --skip availability
     uv run python scripts/setup_experiments.py copy --empty campsite_rules,subject_vectors,conflict_cases
     uv run python scripts/setup_experiments.py empty campsite_rules
     uv run python scripts/setup_experiments.py freeze-availability
@@ -47,11 +48,12 @@ def _names(raw: str | None) -> tuple[str, ...]:
     return tuple(table_name(part.strip()) for part in raw.split(",") if part.strip())
 
 
-def cmd_copy(empty: tuple[str, ...]) -> None:
-    print("cloning public → experiments (data included)")
+def cmd_copy(empty: tuple[str, ...], skip: tuple[str, ...] = ()) -> None:
+    skipped = f", skip {', '.join(skip)}" if skip else ""
+    print(f"cloning public → experiments (data included{skipped})")
     with connect(database_url(), options=SEARCH_PATH) as conn:
         with conn.cursor() as cur:
-            copy_public(cur, empty=empty)
+            copy_public(cur, empty=empty, skip=skip)
         conn.commit()
     print("done. run scrapes with TRIPPY_SCHEMA=experiments (just on-experiments …)")
 
@@ -121,6 +123,11 @@ def main(argv: list[str] | None = None) -> None:
         default="",
         help="TRUNCATE CASCADE these tables after the copy (comma-separated)",
     )
+    copy.add_argument(
+        "--skip",
+        default="",
+        help="Clone these tables empty; do not copy rows from public",
+    )
     empty = sub.add_parser("empty", help="TRUNCATE CASCADE named experiments tables")
     empty.add_argument("tables", help="comma-separated table names")
     sub.add_parser("status", help="Row counts in experiments")
@@ -130,7 +137,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
     if args.cmd == "copy":
-        cmd_copy(_names(args.empty))
+        cmd_copy(_names(args.empty), skip=_names(args.skip))
     elif args.cmd == "empty":
         cmd_empty(_names(args.tables))
     elif args.cmd == "freeze-availability":

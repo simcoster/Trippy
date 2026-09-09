@@ -922,8 +922,10 @@ not `campsite_rules`. Occupancy is `experiments.availability_frozen`
 `TRIPPY_AVAILABILITY_TABLE=availability_frozen` and
 `TRIPPY_TODAY=2026-09-08` so a later availability scrape cannot
 move who is vacant, and `יום חמישי הבא` stays 17 Sep.
-`just run-eval` runs extractor then planner on every case and
-writes `reports/evals/`.
+`just run-eval` first copies `public` into `experiments` except
+`availability` (that table is cloned empty; occupancy is
+`availability_frozen`). Then extractor then planner on every case and
+writes `reports/evals/`. `--no-copy` skips the refresh.
 
 `electric_hookup` on stored rows is
 still three listings (caravan-bay water+power, PITCH tent power, site-wide

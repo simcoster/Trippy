@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-09, run-eval copies public first)
+
+**`just run-eval` copies `public` → `experiments` before scoring,
+except `availability`.** Occupancy stays `availability_frozen`.
+`--no-copy` skips the refresh.
+
 ### Done (2026-09-09, breadcrumb claim labels)
 
 **Breadcrumb claims are `area:north` and `region:upper-galilee`, not
