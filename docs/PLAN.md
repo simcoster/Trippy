@@ -6,6 +6,44 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-10, Dead Sea breadcrumb judge probe)
+
+**Hebrew label + English slug still grants `near the sea` for Masada.**
+Six 235B judge calls, no embed/DB. Akhziv breadcrumbs (`גליל מערבי`)
+do not grant sea. experiments.md 2026-09-10 §1.
+
+### Done (2026-09-10, eval model override and parallel judges)
+
+**`just run-eval -- --model 30B` and `--judge-concurrency 4`.**
+Extractor+judge read `TRIPPY_INSTRUCT_MODEL`; live claim judges can
+run 4 at a time. Default remains 235B sequential.
+
+### Done (2026-09-09, eval party phrasing varied)
+
+**Party size phrasing in `planner_v1` is mixed:** אדם אחד, זוג /
+שני מבוגרים, שלושה חברים / 3 מבוגרים, 4 חברים, ארבעה זוגות
+(8), משפחה של 6. Occupancy-sensitive gold unchanged (couple tent,
+hut occ=4 vs family of 6, E03 per-person price).
+
+### Done (2026-09-09, eval queries all state party size)
+
+**Every `planner_v1` query names a party.** E03 is `אדם אחד` plus
+`עד 80 שקל לאדם` — party is one person; לאדם stays a per-person
+price unit, not party_size. Gold `party_size` is scored even on
+no-date skips (E14, H11).
+
+### Done (2026-09-09, eval report traces extract/RAG/judge)
+
+**Each eval case dumps extractor constraints, planner queries,
+retrieved claims/rules, and the judge verdict** in
+`reports/evals/*.md` under Cases. Fits also keep `retrieved` next to
+`claim_judge`.
+
+### Done (2026-09-09, eval report includes per-query seconds)
+
+**`reports/evals/*.md` table has an `s` column** for extractor+planner
+wall time per case.
+
 ### Done (2026-09-09, run-eval exits 0 on case fails)
 
 **`just run-eval` exits 0 after writing the report even when cases

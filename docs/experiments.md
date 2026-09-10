@@ -7,6 +7,28 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-10
+
+### 1. Does feeding the Hebrew breadcrumb label with the English slug stop Dead Sea from satisfying "near the sea"?
+
+**Question.** Masada's stored claim is `region:dead-sea` (label `ארץ ים המלח`).
+The 235B judge grants `near the sea` on the slug. Does adding the Hebrew
+label, or using Hebrew alone, make it a no? Does Akhziv's actual
+breadcrumb (`region:western-galilee` / `גליל מערבי`) grant sea?
+
+**Setup.** No embed, no DB writes. Production `judge_site_request` (235B),
+claims only, no rules. Request `near the sea`. Six calls: slug / hebrew /
+both × Masada and Akhziv. Dump `temp/breadcrumb_sea_judge.json`.
+
+**Result.** Masada: slug, Hebrew, and both all `satisfies=true`
+(`satisfy_by=claim`; Dead Sea / ארץ ים המלח counts as the sea). Akhziv:
+all three `satisfies=false` (Western Galilee is not about the sea).
+6 calls, 38 s, $0.0019.
+
+**Decision.** Do not dual-write Hebrew+slug as a judge fix. The Dead Sea
+false positive is semantic, not a missing-label problem. Akhziv sea
+does not live in breadcrumbs.
+
 ## 2026-09-09
 
 ### 1. Can breadcrumb slugs retrieve and satisfy a north query without the claim splitter?

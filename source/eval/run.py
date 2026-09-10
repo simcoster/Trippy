@@ -3,6 +3,8 @@
     just run-eval
     just run-eval -- --ids E01,H02
     just run-eval -- --no-copy
+    just run-eval -- --model 30B
+    just run-eval -- --judge-concurrency 4
     uv run python -m source.eval.run --ids E01,H02
 """
 
@@ -23,6 +25,12 @@ from langchain_core.messages import HumanMessage
 from db.connect import connect, database_url
 from db.experiments import SEARCH_PATH, copy_public, table_name
 from source.agent.graph import extractor_node, planner_node
+from source.agent.timing import (
+    STAGE_ORDER,
+    collect_stages,
+    format_stages,
+    merge_snapshots,
+)
 from source.eval.score import score_case
 
 load_dotenv()
@@ -86,61 +94,283 @@ def _require_frozen(table: str) -> None:
     print(f"{rel}: {n} row(s)", flush=True)
 
 
-def run_one(query: str) -> tuple[dict | None, dict | None]:
+def run_one(query: str) -> tuple[dict | None, dict | None, dict]:
     """Extractor then planner. Skips the light/cleaner node."""
-    messages = [HumanMessage(content=query)]
-    extracted = extractor_node({"messages": messages})
-    extract_msgs = extracted.get("messages") or []
-    extract = None
-    for msg in extract_msgs:
-        data = _as_dict(msg)
-        if data is not None:
-            extract = data
-            break
-    messages = messages + list(extract_msgs)
-    planned = planner_node({"messages": messages})
-    planner = None
-    for msg in planned.get("messages") or []:
-        data = _as_dict(msg)
-        if data is not None and "fits" in data:
-            planner = data
-            break
-    return extract, planner
+    with collect_stages() as clock:
+        messages = [HumanMessage(content=query)]
+        extracted = extractor_node({"messages": messages})
+        extract_msgs = extracted.get("messages") or []
+        extract = None
+        for msg in extract_msgs:
+            data = _as_dict(msg)
+            if data is not None:
+                extract = data
+                break
+        messages = messages + list(extract_msgs)
+        planned = planner_node({"messages": messages})
+        planner = None
+        for msg in planned.get("messages") or []:
+            data = _as_dict(msg)
+            if data is not None and "fits" in data:
+                planner = data
+                break
+        return extract, planner, clock.snapshot()
 
 
 def _summarize_planner(planner: dict | None) -> dict:
     if not planner:
         return {}
-    fits = []
-    for row in planner.get("fits") or []:
-        why = []
-        for entry in row.get("why") or []:
-            if not isinstance(entry, dict):
-                continue
-            why.append(
-                {
-                    "query": entry.get("query"),
-                    "site_amenity": entry.get("site_amenity"),
-                    "stated_amenity": entry.get("stated_amenity"),
-                    "claim": entry.get("claim"),
-                    "reason": entry.get("reason"),
-                }
-            )
-        fits.append(
-            {
-                "campsite_id": row.get("campsite_id"),
-                "campsite": row.get("campsite"),
-                "accommodation_type": row.get("accommodation_type"),
-                "price_per_night": row.get("price_per_night"),
-                "why": why,
-            }
-        )
     return {
         "fits_count": len(planner.get("fits") or []),
         "rejected_count": planner.get("rejected_count"),
         "skipped": planner.get("skipped"),
-        "fits": fits,
+        "fits": [_summarize_fit(row) for row in planner.get("fits") or []],
+        "rejected": [
+            _summarize_fit(row) for row in planner.get("rejected") or []
+        ],
     }
+
+
+def _summarize_fit(row: dict) -> dict:
+    why = []
+    for entry in row.get("why") or []:
+        if not isinstance(entry, dict):
+            continue
+        why.append(
+            {
+                "query": entry.get("query"),
+                "site_amenity": entry.get("site_amenity"),
+                "stated_amenity": entry.get("stated_amenity"),
+                "claim": entry.get("claim"),
+                "reason": entry.get("reason"),
+                "detail": entry.get("detail"),
+            }
+        )
+    out = {
+        "campsite_id": row.get("campsite_id"),
+        "campsite": row.get("campsite"),
+        "accommodation_type": row.get("accommodation_type"),
+        "price_per_night": row.get("price_per_night"),
+        "why": why,
+    }
+    if row.get("retrieved"):
+        out["retrieved"] = row["retrieved"]
+    if row.get("claim_judge"):
+        out["claim_judge"] = [
+            {
+                "query": v.get("query"),
+                "satisfies": v.get("satisfies"),
+                "satisfy_by": v.get("satisfy_by"),
+                "relevant_claims": v.get("relevant_claims"),
+                "reason": v.get("reason"),
+            }
+            for v in row["claim_judge"]
+            if isinstance(v, dict)
+        ]
+    return out
+
+
+def _fmt_numeric(item: dict) -> str:
+    return f"{item.get('field')} {item.get('operator')} {item.get('value')}"
+
+
+def _fmt_semantic(item: dict | str) -> str:
+    if isinstance(item, str):
+        return item
+    if str(item.get("op") or "").lower() == "or":
+        values = " | ".join(str(v) for v in item.get("values") or [])
+        locus = item.get("locus") or "site"
+        return f"OR({values}) ({locus})"
+    query = item.get("query") or ""
+    locus = item.get("locus") or "site"
+    return f"{query} ({locus})" if query else ""
+
+
+def _extract_lines(extract: dict | None) -> list[str]:
+    if not extract:
+        return ["- extract: (none)"]
+    lines = ["- extract:"]
+    date = extract.get("date") or {}
+    if isinstance(date, dict) and date.get("start"):
+        lines.append(f"  - date: {date.get('start')} → {date.get('end')}")
+    campsite = extract.get("campsite")
+    if campsite:
+        lines.append(f"  - campsite: {campsite}")
+    nums = [
+        _fmt_numeric(item)
+        for item in extract.get("numeric_constraints") or []
+        if isinstance(item, dict)
+    ]
+    lines.append(f"  - numeric: {'; '.join(nums) if nums else '(none)'}")
+    sem = [
+        _fmt_semantic(item)
+        for item in extract.get("semantic_constraints") or []
+        if item
+    ]
+    sem = [s for s in sem if s]
+    lines.append(f"  - semantic: {'; '.join(sem) if sem else '(none)'}")
+    return lines
+
+
+def _planner_queries(row: dict) -> list[str]:
+    found: list[str] = []
+    extract = row.get("extract") or {}
+    for item in extract.get("semantic_constraints") or []:
+        if isinstance(item, dict) and str(item.get("op") or "").lower() == "or":
+            found.extend(str(v) for v in item.get("values") or [] if v)
+        elif isinstance(item, dict) and item.get("query"):
+            found.append(str(item["query"]))
+        elif isinstance(item, str) and item.strip():
+            found.append(item.strip())
+    planner = row.get("planner") or {}
+    for fit in list(planner.get("fits") or []) + list(planner.get("rejected") or []):
+        for entry in fit.get("why") or []:
+            if not isinstance(entry, dict):
+                continue
+            query = entry.get("query")
+            if isinstance(query, list):
+                found.extend(str(v) for v in query if v)
+            elif isinstance(query, str) and query.strip():
+                found.append(query.strip())
+        for rec in fit.get("retrieved") or []:
+            query = rec.get("query")
+            if isinstance(query, str) and query.strip():
+                found.append(query.strip())
+    return list(dict.fromkeys(found))
+
+
+def _listing_hits(rows: list[dict]) -> list[str]:
+    hits: list[str] = []
+    for row in rows:
+        for entry in row.get("why") or []:
+            if not isinstance(entry, dict):
+                continue
+            query = entry.get("query")
+            if isinstance(query, list):
+                query = query[0] if query else None
+            hit = (
+                entry.get("stated_amenity")
+                or entry.get("site_amenity")
+                or entry.get("claim")
+            )
+            if query and hit:
+                hits.append(f"{query} → {hit}")
+    return list(dict.fromkeys(hits))
+
+
+def _site_trace_lines(fits: list[dict], *, dropped: bool = False) -> list[str]:
+    by_site: dict[object, list[dict]] = {}
+    order: list[object] = []
+    for fit in fits:
+        cid = fit.get("campsite_id")
+        if cid not in by_site:
+            by_site[cid] = []
+            order.append(cid)
+        by_site[cid].append(fit)
+    lines: list[str] = []
+    for cid in order:
+        rows = by_site[cid]
+        name = rows[0].get("campsite") or ""
+        prefix = "dropped " if dropped else ""
+        lines.append(f"- {prefix}site {cid} {name}".rstrip())
+        types: list[str] = []
+        for row in rows:
+            typ = str(row.get("accommodation_type") or "")
+            price = row.get("price_per_night")
+            if typ and price is not None:
+                types.append(f"{typ} ({price})")
+            elif typ:
+                types.append(typ)
+        if types:
+            lines.append("  - types: " + "; ".join(types))
+        listing = _listing_hits(rows)
+        if listing:
+            lines.append("  - listing: " + "; ".join(listing))
+        retrieved = rows[0].get("retrieved") or []
+        for rec in retrieved:
+            query = rec.get("query")
+            claims = rec.get("claims") or []
+            rules = rec.get("rules") or []
+            if claims:
+                claim_s = ", ".join(
+                    str(c.get("claim"))
+                    + (
+                        ""
+                        if c.get("is_positive") is None
+                        else f" pos={c.get('is_positive')}"
+                    )
+                    for c in claims
+                )
+            else:
+                claim_s = "(none)"
+            if rules:
+                rule_bits = []
+                for rule in rules:
+                    bit = str(rule.get("subject") or "")
+                    if rule.get("polarity") is not None:
+                        bit += f" pol={rule.get('polarity')}"
+                    span = rule.get("evidence_span")
+                    if span:
+                        bit += f" “{span}”"
+                    rule_bits.append(bit)
+                rule_s = ", ".join(rule_bits)
+            else:
+                rule_s = "(none)"
+            lines.append(f"  - RAG `{query}` claims: {claim_s}")
+            lines.append(f"    rules: {rule_s}")
+        for verdict in rows[0].get("claim_judge") or []:
+            query = verdict.get("query")
+            rel = verdict.get("relevant_claims") or []
+            rel_s = ", ".join(str(x) for x in rel) or "(none)"
+            by = verdict.get("satisfy_by")
+            lines.append(
+                f"  - judge `{query}` satisfies={verdict.get('satisfies')} "
+                f"by={by} relevant: {rel_s}"
+            )
+            reason = verdict.get("reason")
+            if reason:
+                lines.append(f"    reason: {reason}")
+    return lines
+
+
+def _case_trace_lines(row: dict) -> list[str]:
+    score = row["score"]
+    mark = "PASS" if score["ok"] else "FAIL"
+    lines = [f"### {row['id']} {mark} — {row['query']}", ""]
+    fails = score.get("failures") or []
+    if fails:
+        for item in fails:
+            lines.append(f"- fail: {item}")
+    lines.extend(_extract_lines(row.get("extract")))
+    queries = _planner_queries(row)
+    lines.append(
+        "- planner queries: " + (", ".join(queries) if queries else "(none)")
+    )
+    planner = row.get("planner") or {}
+    if planner.get("skipped"):
+        lines.append(f"- skipped: {planner['skipped']}")
+    fits = planner.get("fits") or []
+    rejected = planner.get("rejected") or []
+    if fits:
+        lines.extend(_site_trace_lines(fits))
+    if rejected:
+        lines.extend(_site_trace_lines(rejected, dropped=True))
+    if not fits and not rejected and not planner.get("skipped"):
+        lines.append("- fits: (none)")
+    lines.append("")
+    return lines
+
+
+def _stage_cell(item: dict | None) -> str:
+    if not item:
+        return ""
+    seconds = float(item.get("s") or 0)
+    n = int(item.get("n") or 0)
+    if n <= 0 and seconds <= 0:
+        return ""
+    if n > 1:
+        return f"{seconds:.1f}×{n}"
+    return f"{seconds:.1f}"
 
 
 def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
@@ -163,19 +393,48 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
         f"`TRIPPY_AVAILABILITY_TABLE={os.environ.get('TRIPPY_AVAILABILITY_TABLE')}` "
         f"`TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}`",
         "",
-        "| id | diff | result | date | fit sites | failures |",
-        "|---|---|---|---|---|---|",
     ]
+    totals = merge_snapshots([r.get("stages") or {} for r in rows])
+    totals_s = format_stages(totals)
+    if totals_s:
+        lines.append(f"- stages: {totals_s}")
+        lines.append("")
+    lines.extend(
+        [
+            "| id | diff | result | s | date | fit sites | failures |",
+            "|---|---|---|---|---|---|---|",
+        ]
+    )
     for row in rows:
         score = row["score"]
         mark = "PASS" if score["ok"] else "FAIL"
         date = score.get("extract_date") or {}
         date_s = f"{date.get('start', '')}→{date.get('end', '')}" if date else ""
         fails = "; ".join(score.get("failures") or []) or ""
+        secs = row.get("seconds")
+        secs_s = "" if secs is None else f"{secs:.1f}"
         lines.append(
-            f"| {row['id']} | {row['difficulty']} | {mark} | {date_s} | "
+            f"| {row['id']} | {row['difficulty']} | {mark} | {secs_s} | {date_s} | "
             f"{score.get('fit_sites')} | {fails} |"
         )
+    if any(r.get("stages") for r in rows):
+        lines.extend(
+            [
+                "",
+                "## Timing",
+                "",
+                "| id | s | extract | sql | embed | retrieve | rules | judge |",
+                "|---|---|---|---|---|---|---|---|",
+            ]
+        )
+        for row in rows:
+            snap = row.get("stages") or {}
+            secs = row.get("seconds")
+            secs_s = "" if secs is None else f"{secs:.1f}"
+            cells = [_stage_cell(snap.get(name)) for name in STAGE_ORDER]
+            lines.append(f"| {row['id']} | {secs_s} | {' | '.join(cells)} |")
+        total_cells = [_stage_cell(totals.get(name)) for name in STAGE_ORDER]
+        lines.append(f"| **total** | {wall:.1f} | {' | '.join(total_cells)} |")
     fails = [r for r in rows if not r["score"]["ok"]]
     if fails:
         lines.extend(["", "## Failures", ""])
@@ -185,6 +444,10 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
             for item in row["score"]["failures"]:
                 lines.append(f"- {item}")
             lines.append("")
+    if rows:
+        lines.extend(["", "## Cases", ""])
+        for row in rows:
+            lines.extend(_case_trace_lines(row))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -198,15 +461,38 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Do not refresh experiments from public first",
     )
+    parser.add_argument(
+        "--model",
+        default="",
+        help="Instruct model for extractor+judge: 30B or 235B",
+    )
+    parser.add_argument(
+        "--judge-concurrency",
+        type=int,
+        default=0,
+        help="Parallel claim-judge calls (default 1)",
+    )
     args = parser.parse_args(argv)
     spec_path = Path(args.eval)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     if not args.no_copy:
         refresh_experiments_from_public()
     apply_run_env(spec)
+    if args.model:
+        os.environ["TRIPPY_INSTRUCT_MODEL"] = args.model
+    if args.judge_concurrency:
+        os.environ["TRIPPY_JUDGE_CONCURRENCY"] = str(args.judge_concurrency)
     table = os.environ.get("TRIPPY_AVAILABILITY_TABLE") or "availability"
     print(f"TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}", flush=True)
     print(f"TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}", flush=True)
+    print(
+        f"TRIPPY_INSTRUCT_MODEL={os.environ.get('TRIPPY_INSTRUCT_MODEL') or '235B'}",
+        flush=True,
+    )
+    print(
+        f"TRIPPY_JUDGE_CONCURRENCY={os.environ.get('TRIPPY_JUDGE_CONCURRENCY') or '1'}",
+        flush=True,
+    )
     _require_frozen(table)
 
     cases = list(spec.get("queries") or [])
@@ -233,21 +519,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== {cid} {case.get('difficulty')} ===", flush=True)
         print(query, flush=True)
         t0 = time.monotonic()
-        extract, planner = run_one(query)
+        extract, planner, stages = run_one(query)
         elapsed = time.monotonic() - t0
         score = score_case(case.get("expect") or {}, extract, planner)
         mark = "PASS" if score["ok"] else "FAIL"
+        stages_s = format_stages(stages)
         print(
             f"{mark} {elapsed:.1f}s date={score.get('extract_date')} "
             f"fits={score.get('fit_sites')} {score.get('failures')}",
             flush=True,
         )
+        if stages_s:
+            print(stages_s, flush=True)
         rows.append(
             {
                 "id": cid,
                 "difficulty": case.get("difficulty"),
                 "query": query,
                 "seconds": round(elapsed, 1),
+                "stages": stages,
                 "score": score,
                 "extract": extract,
                 "planner": _summarize_planner(planner),

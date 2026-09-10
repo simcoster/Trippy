@@ -33,6 +33,19 @@ QWEN_INSTRUCT_30B_INPUT_USD_PER_MTOK = 0.10
 QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK = 0.30
 
 
+def instruct_chat_model(default: str | None = None) -> str:
+    """235B unless `TRIPPY_INSTRUCT_MODEL` is 30B / 235B / a full model id."""
+    raw = (os.environ.get("TRIPPY_INSTRUCT_MODEL") or "").strip()
+    key = raw.casefold()
+    if key in {"30b", "little", "small"}:
+        return QWEN_INSTRUCT_30B_MODEL
+    if key in {"235b", "big"}:
+        return QWEN_INSTRUCT_MODEL
+    if raw:
+        return raw
+    return default or QWEN_INSTRUCT_MODEL
+
+
 def chat_usd_per_mtok(model: str | None) -> tuple[float, float]:
     """Nebius Token Factory in/out USD per 1M tokens for an instruct model."""
     name = model or ""

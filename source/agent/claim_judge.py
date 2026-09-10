@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
 from source.agent import search
 from source.agent.planner import CLAIM_EVIDENCE_LIMIT
+from source.agent.timing import record_stage, stage
 from source.scraper.amenity_enrichment.llm import (
-    QWEN_INSTRUCT_MODEL,
     LlmUsage,
     _parse_json_payload,
+    instruct_chat_model,
     make_nebius_openai_client,
 )
 
@@ -131,6 +136,46 @@ def _why_query(entry: dict[str, Any]) -> str | None:
     return None
 
 
+def _compact_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for claim in claims:
+        text = claim.get("claim")
+        if not text:
+            continue
+        out.append(
+            {"claim": text, "is_positive": claim.get("is_positive")}
+        )
+    return out
+
+
+def _compact_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for rule in rules:
+        if rule.get("error"):
+            continue
+        row = {
+            "subject": rule.get("subject"),
+            "polarity": rule.get("polarity"),
+            "evidence_span": rule.get("evidence_span"),
+        }
+        if rule.get("qualifier") is not None:
+            row["qualifier"] = rule.get("qualifier")
+        out.append(row)
+    return out
+
+
+_USAGE_LOCK = threading.Lock()
+
+
+def judge_concurrency() -> int:
+    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "1").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        return 1
+    return max(1, n)
+
+
 def judge_site_request(
     *,
     query: str,
@@ -138,8 +183,10 @@ def judge_site_request(
     claims: list[dict[str, Any]],
     rules: list[dict[str, Any]],
     usage: LlmUsage | None = None,
+    client: Any | None = None,
+    time_stage: bool = True,
 ) -> dict[str, Any]:
-    """One 235B call: which claims are relevant, and whether the site satisfies."""
+    """One instruct-model call: which claims are relevant, and whether the site satisfies."""
     if not claims and not rules:
         return {
             "relevant_claims": [],
@@ -174,18 +221,32 @@ def judge_site_request(
         },
         ensure_ascii=False,
     )
-    client = make_nebius_openai_client()
-    response = client.chat.completions.create(
-        model=QWEN_INSTRUCT_MODEL,
-        temperature=0,
-        max_tokens=600,
-        messages=[
-            {"role": "system", "content": CLAIM_JUDGE_SYSTEM},
-            {"role": "user", "content": user},
-        ],
-    )
+    model = instruct_chat_model()
+    api = client or make_nebius_openai_client()
+    if time_stage:
+        with stage("judge"):
+            response = api.chat.completions.create(
+                model=model,
+                temperature=0,
+                max_tokens=600,
+                messages=[
+                    {"role": "system", "content": CLAIM_JUDGE_SYSTEM},
+                    {"role": "user", "content": user},
+                ],
+            )
+    else:
+        response = api.chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=600,
+            messages=[
+                {"role": "system", "content": CLAIM_JUDGE_SYSTEM},
+                {"role": "user", "content": user},
+            ],
+        )
     if usage is not None:
-        usage.add_chat(response.usage, role="claim_judge", model=QWEN_INSTRUCT_MODEL)
+        with _USAGE_LOCK:
+            usage.add_chat(response.usage, role="claim_judge", model=model)
     raw = (response.choices[0].message.content or "").strip()
     try:
         parsed = _parse_json_payload(raw)
@@ -206,6 +267,10 @@ def judge_site_request(
         "satisfy_by": parsed.get("satisfy_by"),
         "reason": str(parsed.get("reason") or ""),
     }
+
+
+# Bound at import so a test patch of `judge_site_request` does not look like live Nebius.
+_LIVE_JUDGE = judge_site_request
 
 
 def _rules_by_site(
@@ -232,6 +297,51 @@ def _rules_by_site(
     return by_site
 
 
+def _run_judge_jobs(
+    pending: dict[tuple[int, str], dict[str, Any]],
+    *,
+    judge_fn: Callable[..., dict[str, Any]],
+    usage: LlmUsage,
+    live: bool,
+) -> dict[tuple[int, str], dict[str, Any]]:
+    cache: dict[tuple[int, str], dict[str, Any]] = {}
+    if not pending:
+        return cache
+    workers = judge_concurrency() if live else 1
+    extra: dict[str, Any] = {}
+    if live and workers > 1 and judge_fn is _LIVE_JUDGE:
+        extra["client"] = make_nebius_openai_client()
+        extra["time_stage"] = False
+    if workers <= 1:
+        for key, job in pending.items():
+            cache[key] = judge_fn(
+                query=job["query"],
+                campsite=job["campsite"],
+                claims=job["claims"],
+                rules=job["rules"],
+                usage=usage,
+            )
+        return cache
+    started = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = {
+            pool.submit(
+                judge_fn,
+                query=job["query"],
+                campsite=job["campsite"],
+                claims=job["claims"],
+                rules=job["rules"],
+                usage=usage,
+                **extra,
+            ): key
+            for key, job in pending.items()
+        }
+        for fut in as_completed(futs):
+            cache[futs[fut]] = fut.result()
+    record_stage("judge", time.perf_counter() - started, calls=len(pending))
+    return cache
+
+
 def apply_claim_rule_judgements(
     payload: dict[str, Any],
     *,
@@ -252,10 +362,42 @@ def apply_claim_rule_judgements(
     judge_fn = judge or judge_site_request
     usage = LlmUsage()
     site_ids = list(dict.fromkeys(int(f["campsite_id"]) for f in fits))
-    cache: dict[tuple[int, str], dict[str, Any]] = {}
     rules_cache: dict[str, dict[int, list[dict[str, Any]]]] = {}
+    pending: dict[tuple[int, str], dict[str, Any]] = {}
     kept: list[dict[str, Any]] = []
     extra_rejected: list[dict[str, Any]] = []
+
+    for fit in fits:
+        cid = int(fit["campsite_id"])
+        why = list(fit.get("why") or [])
+        claims = list(fit.get("review_claims") or [])
+        queries = list(
+            dict.fromkeys(
+                q
+                for q in [_why_query(w) for w in why]
+                + [c.get("query") for c in claims]
+                if isinstance(q, str) and q
+            )
+        )
+        for query in queries:
+            if query not in rules_cache:
+                rules_cache[query] = _rules_by_site(
+                    query, site_ids, search_rules=search_rules
+                )
+            key = (cid, query)
+            if key in pending:
+                continue
+            q_claims = [c for c in claims if c.get("query") == query] or claims
+            pending[key] = {
+                "query": query,
+                "campsite": str(fit.get("campsite") or ""),
+                "claims": q_claims,
+                "rules": rules_cache[query].get(cid) or [],
+            }
+
+    cache = _run_judge_jobs(
+        pending, judge_fn=judge_fn, usage=usage, live=judge is None
+    )
 
     for fit in fits:
         cid = int(fit["campsite_id"])
@@ -273,24 +415,21 @@ def apply_claim_rule_judgements(
             kept.append(fit)
             continue
         verdicts: list[dict[str, Any]] = []
+        retrieved: list[dict[str, Any]] = []
         relevant_norm: set[str] = set()
         drop = False
         drop_reason = ""
         for query in queries:
             key = (cid, query)
-            if key not in cache:
-                if query not in rules_cache:
-                    rules_cache[query] = _rules_by_site(
-                        query, site_ids, search_rules=search_rules
-                    )
-                q_claims = [c for c in claims if c.get("query") == query] or claims
-                cache[key] = judge_fn(
-                    query=query,
-                    campsite=str(fit.get("campsite") or ""),
-                    claims=q_claims,
-                    rules=rules_cache[query].get(cid) or [],
-                    usage=usage,
-                )
+            q_claims = [c for c in claims if c.get("query") == query] or claims
+            q_rules = (rules_cache.get(query) or {}).get(cid) or []
+            retrieved.append(
+                {
+                    "query": query,
+                    "claims": _compact_claims(q_claims),
+                    "rules": _compact_rules(q_rules),
+                }
+            )
             verdict = cache[key]
             verdicts.append({"query": query, **verdict})
             relevant_norm.update(_norm(t) for t in verdict.get("relevant_claims") or [])
@@ -309,6 +448,8 @@ def apply_claim_rule_judgements(
             fit["review_claims"] = evidence
         elif "review_claims" in fit:
             del fit["review_claims"]
+        if retrieved:
+            fit["retrieved"] = retrieved
         if verdicts:
             fit["claim_judge"] = verdicts
         if drop:

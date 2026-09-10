@@ -16,6 +16,7 @@ from db.experiments import table_name
 from db.models import SubjectCategory
 from source.agent.constraints import claim_recency, today_il
 from source.agent.dates import _parse_iso_day, iso_day, stay_night_starts
+from source.agent.timing import stage
 from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
 from source.scraper.info_site.quote import quote_night
 from source.scraper.info_site.schemas import RatePeriod
@@ -190,10 +191,11 @@ def _load_list_prices(type_ids: list[int]) -> dict[int, list[SimpleNamespace]]:
         WHERE at.id = ANY(%s)
     """
     try:
-        with connect(db_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, (type_ids,))
-                rows = cur.fetchall()
+        with stage("sql"):
+            with connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (type_ids,))
+                    rows = cur.fetchall()
     except Exception:
         return {}
     by_type: dict[int, list[SimpleNamespace]] = {}
@@ -264,10 +266,11 @@ def search_open_slots(
     }
     _record_open_slots_query(query_record)
     try:
-        with connect(db_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("sql"):
+            with connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
     except Exception as e:
         query_record["error"] = str(e)
         return [{"error": f"Error searching availability: {e}"}]
@@ -353,10 +356,11 @@ def lookup_campsite_by_name(name: str) -> list[dict]:
         LIMIT 5
     """
     try:
-        with connect(db_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, (like_patterns,))
-                rows = cur.fetchall()
+        with stage("sql"):
+            with connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (like_patterns,))
+                    rows = cur.fetchall()
         return [
             {
                 "id": int(row[0]),
@@ -403,8 +407,9 @@ def search_campsites(numeric_constraints):
 
 
 def _query_vec_literal(query: str) -> str:
-    embedding = _claims_embedder.embed([query])[0]
-    return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
+    with stage("embed"):
+        embedding = _claims_embedder.embed([query])[0]
+        return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
 
 
 def search_stated_amenities(
@@ -454,11 +459,12 @@ def search_stated_amenities(
         LIMIT %s
     """
     try:
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("retrieve"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         return [
             {
                 "amenity": row[4],
@@ -520,11 +526,12 @@ def search_site_amenities(
         LIMIT %s
     """
     try:
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("retrieve"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         return [
             {
                 "amenity": row[3],
@@ -594,11 +601,12 @@ def search_campsite_rules(
         """
         params = [ids, vec_literal, vec_literal, limit]
     try:
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("rules"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         return [
             {
                 "campsite_id": int(row[0]),
@@ -693,11 +701,12 @@ def search_review_claims(
         )
     try:
         today = today_il()
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("retrieve"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         hits: list[dict] = []
         for campsite_id, claim_text, is_positive, published_at, distance in rows:
             day, days_ago = claim_recency(published_at, today=today)

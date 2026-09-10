@@ -59,8 +59,10 @@ from source.agent.search import (
     search_site_amenities,
     search_stated_amenities,
 )
+from source.agent.timing import stage
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_MODEL,
+    instruct_chat_model,
     make_agent_chat_model,
 )
 
@@ -111,6 +113,22 @@ heavy_model = make_agent_chat_model(temperature=0.7)
 extractor_model = make_agent_chat_model(temperature=0)
 AGENT_CHAT_MODEL = QWEN_INSTRUCT_MODEL
 EXTRACTOR_CHAT_MODEL = QWEN_INSTRUCT_MODEL
+_override_extractor = None
+_override_extractor_key = None
+
+
+def _extractor_chat():
+    """Default 235B extractor; `TRIPPY_INSTRUCT_MODEL` rebuilds for eval probes."""
+    global _override_extractor, _override_extractor_key
+    key = (os.environ.get("TRIPPY_INSTRUCT_MODEL") or "").strip()
+    if not key:
+        return extractor_model
+    if _override_extractor is None or _override_extractor_key != key:
+        _override_extractor = make_agent_chat_model(
+            temperature=0, model=instruct_chat_model()
+        )
+        _override_extractor_key = key
+    return _override_extractor
 
 
 def router(state: ChatState) -> str:
@@ -178,7 +196,8 @@ def extractor_node(state: ChatState) -> ChatState:
     today = today_il()
     system_msg = SystemMessage(content=format_extractor_system_prompt(today))
 
-    response = extractor_model.invoke([system_msg] + state["messages"])
+    with stage("extract"):
+        response = _extractor_chat().invoke([system_msg] + state["messages"])
     raw = message_text(response.content)
     tool_calls = getattr(response, "tool_calls", None) or []
     user_text = latest_user_text(state["messages"])

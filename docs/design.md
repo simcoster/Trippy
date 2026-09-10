@@ -925,9 +925,19 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 `just run-eval` first copies `public` into `experiments` except
 `availability` (that table is cloned empty; occupancy is
 `availability_frozen`). Then extractor then planner on every case and
-writes `reports/evals/`. `--no-copy` skips the refresh. Case FAIL
-rows are scored in the report; the process still exits 0 unless a
-setup or runtime error stops the run.
+writes `reports/evals/` (per-query seconds in the table, then a
+**Cases** section with the extractor JSON, the planner RAG queries,
+retrieved claims/rules, and the judge verdict). `--model 30B` runs
+extractor+judge on the 30B; `--judge-concurrency 4` runs live judge
+calls four at a time. `--no-copy` skips the refresh. Case FAIL rows are scored in the report; the process still
+exits 0 unless a setup or runtime error stops the run.
+Gold is mostly campsite ids (`must_include_sites` /
+`must_exclude_sites`); a few cases also substring-match fit
+`accommodation_type` names (`must_include_types` /
+`must_exclude_types`). Every query states a party, with mixed
+phrasing (אדם אחד, זוג, שלושה חברים, 4 חברים, ארבעה זוגות,
+משפחה של 6). E03 keeps `לאדם` as a per-person **price** unit next
+to an explicit `אדם אחד`.
 
 `electric_hookup` on stored rows is
 still three listings (caravan-bay water+power, PITCH tent power, site-wide
