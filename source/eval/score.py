@@ -120,6 +120,13 @@ def score_case(
 
     skipped = planner.get("skipped")
     want_skip = expect.get("current_planner")
+
+    want_party = expect.get("party_size")
+    if want_party is not None:
+        got_party = _party_size(extract)
+        if got_party != int(want_party):
+            failures.append(f"party_size {got_party} != {want_party}")
+
     if want_skip == "skipped_no_date":
         if skipped != "no_date":
             failures.append(f"expected skipped=no_date, got {skipped!r}")
@@ -140,12 +147,6 @@ def score_case(
             failures.append(
                 f"date {extract_date} != {want_date['start']}…{want_date.get('end')}"
             )
-
-    want_party = expect.get("party_size")
-    if want_party is not None:
-        got_party = _party_size(extract)
-        if got_party != int(want_party):
-            failures.append(f"party_size {got_party} != {want_party}")
 
     want_locus = expect.get("locus")
     if want_locus:

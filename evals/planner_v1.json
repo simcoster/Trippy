@@ -37,9 +37,10 @@
       "id": "E01",
       "difficulty": "easy",
       "dimensions": ["dates", "named_site"],
-      "query": "לינה בחורשת טל ב-10 בספטמבר 2026 ללילה אחד",
+      "query": "לינה בחורשת טל ב-10 בספטמבר 2026 ללילה אחד, ארבעה זוגות",
       "expect": {
         "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "party_size": 8,
         "must_include_sites": [1],
         "must_exclude_sites": [12, 37, 38]
       },
@@ -52,6 +53,7 @@
       "query": "קמפינג לזוג ב-10 בספטמבר 2026 ללילה אחד",
       "expect": {
         "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "party_size": 2,
         "must_include_sites": [14, 18],
         "notes": "Couple tents (max 2) are listed at Masada and Yotvata. Private-tent pitches have unknown occupancy so they also pass party_size=2."
       },
@@ -61,22 +63,23 @@
       "id": "E03",
       "difficulty": "easy",
       "dimensions": ["prices", "dates"],
-      "query": "קמפינג באוהל ללילה אחד ב-17 בספטמבר 2026, עד 80 שקל לאדם",
+      "query": "קמפינג באוהל ללילה אחד ב-17 בספטמבר 2026, אדם אחד, עד 80 שקל לאדם",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
         "party_size": 1,
         "must_include_sites": [14, 13, 16, 17, 18],
         "must_exclude_sites": []
       },
-      "gold": "Rate card: Masada/Besor/Mamshit/Be'erot/Yotvata tent adult 64₪. Horshat Tal and Akhziv tent adult 76₪ still under 80."
+      "gold": "אדם אחד is party_size=1. לאדם is a per-person price unit, not party. Quote is the night total: tent adult 64/76 ≤ 80; couple tent 192, family tent 350, bungalow 430, caravan 305 all drop. Horshat/Akhziv tents 76 still under 80."
     },
     {
       "id": "E04",
       "difficulty": "easy",
       "dimensions": ["amenities", "dates"],
-      "query": "קמפינג ליד הים ב-17 בספטמבר 2026 ללילה אחד",
+      "query": "קמפינג ליד הים ב-17 בספטמבר 2026 ללילה אחד, 4 חברים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 4,
         "must_include_sites": [37, 38],
         "must_exclude_sites": [14, 16, 17, 12]
       },
@@ -86,9 +89,10 @@
       "id": "E05",
       "difficulty": "easy",
       "dimensions": ["amenities", "dates"],
-      "query": "קמפינג במדבר ב-17 בספטמבר 2026 ללילה אחד",
+      "query": "קמפינג במדבר ב-17 בספטמבר 2026 ללילה אחד, אנחנו זוג",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 2,
         "must_include_sites": [14, 16, 17],
         "must_exclude_sites": [37, 38]
       },
@@ -98,9 +102,10 @@
       "id": "E06",
       "difficulty": "easy",
       "dimensions": ["amenities", "dates"],
-      "query": "קמפינג עם מקרר ב-17 בספטמבר 2026 ללילה אחד",
+      "query": "קמפינג עם מקרר ב-17 בספטמבר 2026 ללילה אחד, שלושה חברים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
         "must_include_sites": [1, 14, 37, 38, 16, 17],
         "locus": "site"
       },
@@ -110,7 +115,7 @@
       "id": "E07",
       "difficulty": "easy",
       "dimensions": ["named_site", "dates"],
-      "query": "אכזיב ב-17 בספטמבר 2026 ללילה אחד, 3 אנשים",
+      "query": "אכזיב ב-17 בספטמבר 2026 ללילה אחד, שלושה חברים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
         "party_size": 3,
@@ -123,9 +128,10 @@
       "id": "E08",
       "difficulty": "easy",
       "dimensions": ["amenities", "dates"],
-      "query": "קמפינג עם מקלחות מים חמים ב-17 בספטמבר 2026",
+      "query": "קמפינג עם מקלחות מים חמים ב-17 בספטמבר 2026, ארבעה חברים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 4,
         "must_include_sites": [1, 14, 37, 38, 17]
       },
       "gold": "מה בחניון? lists מקלחות מים חמים at Horshat, Masada, Akhziv, Be'erot."
@@ -134,9 +140,10 @@
       "id": "E09",
       "difficulty": "easy",
       "dimensions": ["dates"],
-      "query": "יש מקום ב-17 בספטמבר 2026 ללילה אחד?",
+      "query": "יש מקום ב-17 בספטמבר 2026 ללילה אחד לארבעה זוגות?",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 8,
         "must_include_sites": [1, 5, 13, 14, 15, 16, 17, 18, 37, 38],
         "must_exclude_sites": [12, 10, 9, 6, 11]
       },
@@ -146,9 +153,10 @@
       "id": "E10",
       "difficulty": "easy",
       "dimensions": ["capacity", "dates"],
-      "query": "אוהל זוגי במצדה ב-17 בספטמבר 2026",
+      "query": "אוהל זוגי במצדה ב-17 בספטמבר 2026, לזוג",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 2,
         "must_include_sites": [14],
         "must_include_types": ["השכרת אוהל קמפינג זוגי"],
         "must_exclude_sites": [37]
@@ -159,9 +167,10 @@
       "id": "E11",
       "difficulty": "easy",
       "dimensions": ["amenities", "dates", "named_site"],
-      "query": "בונגלו עם מזגן בחורשת טל ב-10 בספטמבר 2026",
+      "query": "בונגלו עם מזגן בחורשת טל ב-10 בספטמבר 2026, שני מבוגרים",
       "expect": {
         "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "party_size": 2,
         "must_include_sites": [1],
         "must_include_types": ["בונגלו עם מזגן"],
         "must_exclude_sites": [37]
@@ -190,9 +199,10 @@
       "id": "E13",
       "difficulty": "easy",
       "dimensions": ["dates"],
-      "query": "לינה ביום חמישי 10 בספטמבר 2026",
+      "query": "לינה ביום חמישי 10 בספטמבר 2026, שלושה חברים",
       "expect": {
         "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "party_size": 3,
         "must_include_sites": [1, 8, 37, 38],
         "must_exclude_sites": [5]
       },
@@ -202,9 +212,10 @@
       "id": "E14",
       "difficulty": "easy",
       "dimensions": ["no_dates", "named_site"],
-      "query": "אפשר לישון בחורשת טל?",
+      "query": "אפשר לישון בחורשת טל, אנחנו זוג?",
       "expect": {
         "current_planner": "skipped_no_date",
+        "party_size": 2,
         "website_sites": [1]
       },
       "gold": "No stay dates. Planner today returns fits=[] skipped=no_date. Website still has Horshat as a night camp."
@@ -216,6 +227,7 @@
       "query": "קמפינג ליד הים עם חשמל ב-17 בספטמבר 2026 ללילה אחד, 3 אנשים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
         "must_include_sites": [],
         "must_exclude_sites": [37, 38, 14]
       },
@@ -239,15 +251,16 @@
       "id": "H03",
       "difficulty": "hard",
       "dimensions": ["amenities", "dates", "locus"],
-      "query": "יש מקרר בחדר באכזיב ב-10 בספטמבר 2026",
+      "query": "יש מקרר בחדר באכזיב ב-10 בספטמבר 2026, 4 חברים",
       "expect": {
         "date": {"start": "2026-09-10", "end": "2026-09-11"},
+        "party_size": 4,
         "locus": "room",
         "must_include_sites": [38],
         "must_exclude_sites": [37],
         "must_include_types": ["חושה"]
       },
-      "gold": "Communal מקררים (3) do not satisfy room locus. South huts (חושה / חושה עם מזגן) are vacant 10 Sep; north that night is tents only. Hut copy lists מיני מקרר."
+      "gold": "Communal מקררים (3) do not satisfy room locus. South huts (חושה / חושה עם מזגן) are vacant 10 Sep and occ=4 so 4 friends fit; north that night is tents only. Hut copy lists מיני מקרר."
     },
     {
       "id": "H04",
@@ -261,15 +274,16 @@
         "must_include_sites": [],
         "must_exclude_sites": [37, 38]
       },
-      "gold": "Akhziv tent 76×3=228 exceeds 200. No other sea site is vacant. Cheap desert tents (192) are not sea."
+      "gold": "Akhziv tent 76×3=228 exceeds 200 (night total, not per person). Huts 350+ also drop. No other sea site is vacant. Cheap desert tents (64×3=192) are not sea."
     },
     {
       "id": "H05",
       "difficulty": "hard",
       "dimensions": ["dates"],
-      "query": "אנחנו חושבים על חורשת טל, אולי בשישי הקרוב ללילה אחד אם יש מקום",
+      "query": "אנחנו חושבים על חורשת טל, אולי בשישי הקרוב ללילה אחד אם יש מקום, לזוג",
       "expect": {
         "date": {"start": "2026-09-11", "end": "2026-09-12"},
+        "party_size": 2,
         "must_include_sites": [1],
         "must_include_types": ["עמדת חניה לקרוואן פרטי"]
       },
@@ -279,9 +293,10 @@
       "id": "H06",
       "difficulty": "hard",
       "dimensions": ["amenities", "dates"],
-      "query": "קמפינג ליד הים או במדבר ב-17 בספטמבר 2026",
+      "query": "קמפינג ליד הים או במדבר ב-17 בספטמבר 2026, 3 אנשים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
         "must_include_sites": [37, 38, 14, 16, 17],
         "or": ["near the sea", "desert"]
       },
@@ -291,9 +306,10 @@
       "id": "H07",
       "difficulty": "hard",
       "dimensions": ["amenities", "dates"],
-      "query": "אוהל עם חיבור חשמל ב-17 בספטמבר 2026, בלי קרוואן",
+      "query": "אוהל עם חיבור חשמל ב-17 בספטמבר 2026, בלי קרוואן, אנחנו זוג",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 2,
         "must_include_sites": [14, 17],
         "must_exclude_sites": [37, 38],
         "must_exclude_types": ["עמדת חניה לקרוואן פרטי", "עמדות חניה לקרוואן פרטי"]
@@ -304,22 +320,23 @@
       "id": "H08",
       "difficulty": "hard",
       "dimensions": ["capacity", "dates"],
-      "query": "6 אנשים בחושה באכזיב ב-10 בספטמבר 2026",
+      "query": "משפחה של 6 בחושה באכזיב ב-10 בספטמבר 2026",
       "expect": {
         "date": {"start": "2026-09-10", "end": "2026-09-11"},
         "party_size": 6,
         "must_include_sites": [],
         "must_exclude_types": ["חושה", "חושה עם מזגן שירותים ומקלחת"]
       },
-      "gold": "Vacant south huts are occ=4. Double huts (occ 6/8) are not vacant that night. Tents have unknown occupancy so they must not be used as a hut answer."
+      "gold": "משפחה של 6 → party_size=6. Vacant south huts are occ=4. Double huts (occ 6/8) are not vacant that night. Tents have unknown occupancy so they must not be used as a hut answer."
     },
     {
       "id": "H09",
       "difficulty": "hard",
       "dimensions": ["rules", "dates"],
-      "query": "סוף שבוע בחושה באכזיב, לילה אחד",
+      "query": "סוף שבוע בחושה באכזיב, לילה אחד, אנחנו זוג",
       "expect": {
         "date": {"start": "2026-09-11", "end": "2026-09-12"},
+        "party_size": 2,
         "must_include_sites": [],
         "rule": "lodging weekend min 2 nights"
       },
@@ -329,9 +346,10 @@
       "id": "H10",
       "difficulty": "hard",
       "dimensions": ["rules", "dates"],
-      "query": "קמפינג ידידותי לכלבים ב-17 בספטמבר 2026",
+      "query": "קמפינג ידידותי לכלבים ב-17 בספטמבר 2026, 4 חברים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 4,
         "must_include_sites": [],
         "must_exclude_sites": [1, 14, 16, 17, 37, 38, 12]
       },
@@ -341,9 +359,10 @@
       "id": "H11",
       "difficulty": "hard",
       "dimensions": ["no_dates", "amenities"],
-      "query": "איפה אפשר לקמפינג ליד הים עם מקרר?",
+      "query": "איפה אפשר לקמפינג ליד הים עם מקרר, לזוג?",
       "expect": {
         "current_planner": "skipped_no_date",
+        "party_size": 2,
         "website_sites": [37, 38, 12]
       },
       "gold": "Website: Akhziv sea+fridge; Ashkelon sea+מקררים (4) but not in the freeze window. Planner currently skips without dates."
@@ -352,9 +371,10 @@
       "id": "H12",
       "difficulty": "hard",
       "dimensions": ["rules", "dates"],
-      "query": "קמפינג לשומרי שבת ב-17 בספטמבר 2026",
+      "query": "קמפינג לשומרי שבת ב-17 בספטמבר 2026, שלושה חברים",
       "expect": {
         "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 3,
         "must_include_sites": [38],
         "must_exclude_sites": [37]
       },

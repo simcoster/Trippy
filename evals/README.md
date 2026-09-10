@@ -25,6 +25,8 @@ not drop this table.
 just run-eval
 just run-eval -- --ids E01,H02
 just run-eval -- --no-copy
+just run-eval -- --model 30B
+just run-eval -- --judge-concurrency 4
 uv run python -m source.eval.run --ids E01,H02
 ```
 
@@ -34,8 +36,16 @@ stays `availability_frozen`). `--no-copy` skips that refresh.
 Pins `TRIPPY_SCHEMA=experiments`, `TRIPPY_AVAILABILITY_TABLE=availability_frozen`,
 and `TRIPPY_TODAY=2026-09-08` from the JSON. Each case goes through
 **extractor then planner** (not the light cleaner). Writes
-`reports/evals/<timestamp>.md` plus a JSON dump. A mixed score is
-still exit 0; only a setup or runtime error fails the recipe.
+`reports/evals/<timestamp>.md` plus a JSON dump. The markdown table
+has per-query seconds; **Cases** lists extractor constraints, planner
+queries, RAG claims/rules, and judge verdicts. A mixed score is still
+exit 0; only a setup or runtime error fails the recipe.
+
+Gold is campsite ids (`must_include_sites` / `must_exclude_sites`) on
+every dated case. Six cases also substring-match fit type names:
+`must_include_types` on E10, E11, H03, H05; `must_exclude_types` on
+H07, H08. Every query states a party. E03 `לאדם` is per-person
+price, not party (`אדם אחד` is).
 
 The full 26 is tens of 235B judge calls (tens of minutes). `--ids` is the
 smoke path.

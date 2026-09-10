@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
-from source.agent import search
 from source.agent.planner import CLAIM_EVIDENCE_LIMIT
+from source.agent.timing import record_stage, stage
 from source.scraper.amenity_enrichment.llm import (
-    QWEN_INSTRUCT_MODEL,
     LlmUsage,
     _parse_json_payload,
+    collected_llm_usage,
+    instruct_chat_model,
     make_nebius_openai_client,
 )
 
@@ -38,6 +43,12 @@ guest who brought a caravan; it does not satisfy electricity for a
 tent/room stay. electric_outlet in a bungalow/room DOES. Site-wide
 נקודות חשמל and a PITCH tent with חיבור חשמל DO (limited coverage is a
 caveat, not a no).
+area:* / region:* claims name the parks.org.il area. They satisfy a
+request for that area or region by name (north, Negev, Dead Sea,
+Western Galilee). They do not satisfy "near the sea" / beach / ליד הים
+just because the slug or Hebrew contains sea/ים. Dead Sea and Kinneret
+are named places, not the Mediterranean or Red Sea coast. A review
+about a beach or ים התיכון does.
 
 1. relevant_claims: every claim that is actually about the request, including
    complaints and forbiddens. Keep all of those even when satisfies is true
@@ -49,6 +60,8 @@ caveat, not a no).
    - "despite being in the desert" IS relevant to "in the desert".
    - "desert animals on the drive" is wildlife, not that the site is in the
      desert — not relevant.
+   - "region:dead-sea" / "ארץ ים המלח" is NOT relevant to "near the sea"
+     (shared word, different place).
    - Quote claim text exactly as given. Empty list if none are about it.
 
 2. satisfies: true iff a relevant claim says yes OR a campsite rule
@@ -70,6 +83,8 @@ caveat, not a no).
      "in the desert").
    - Limited coverage still satisfies ("electricity is available, though it
      does not reach every spot"; electric_hookup polarity true).
+   - area:north DOES satisfy "in the north". region:negev DOES satisfy
+     "desert". region:dead-sea does NOT satisfy "near the sea".
 
 Examples:
 Request "pet friendly". Claim "Pets are not allowed at the site."
@@ -112,8 +127,50 @@ not reach every spot." is_positive=true. Rule electric_hookup polarity=true.
    "satisfies": true, "satisfy_by": "both",
    "reason": "feature present; official hookup; limited coverage is a caveat"}
 
+Request "near the sea". Claim "region:dead-sea" is_positive=true.
+Claim "ארץ ים המלח" is_positive=true.
+→ {"relevant_claims": [], "satisfies": false, "satisfy_by": null,
+   "reason": "Dead Sea region is a named place, not the sea coast"}
+
+Request "near the sea". Claim "Access to the beach is accessible all
+the way to the water." is_positive=true.
+→ {"relevant_claims": ["Access to the beach is accessible all the way to the water."],
+   "satisfies": true, "satisfy_by": "claim",
+   "reason": "beach access is the sea coast"}
+
 Output JSON only:
 {"relevant_claims": [str], "satisfies": bool,
+ "satisfy_by": "claim" | "rule" | "both" | null, "reason": str}
+""".strip()
+
+CLAIM_JUDGE_COMPACT_SUFFIX = """
+COMPACT OUTPUT. The examples above quote claim strings in relevant_claims;
+do not copy that shape. Each claim in the user JSON has i. relevant is
+those i values (ints), never the claim text. reason is 4-5 English words
+maximum.
+
+Examples:
+Request "pet friendly". Claim i=0 "Pets are not allowed at the site."
+→ {"relevant": [0], "satisfies": false, "satisfy_by": null,
+   "reason": "only forbids pets"}
+
+Request "in the desert". Claim i=0 "The tent is clean despite being in
+the desert with winds."
+→ {"relevant": [0], "satisfies": true, "satisfy_by": "claim",
+   "reason": "concessive desert aside"}
+
+Request "electricity". Claim i=0 "No electricity at the tent."
+Rule electric_hookup polarity=true.
+→ {"relevant": [0], "satisfies": true, "satisfy_by": "rule",
+   "reason": "hookup grants electricity"}
+
+Request "near the sea". Claim i=0 "region:dead-sea". Claim i=1
+"ארץ ים המלח".
+→ {"relevant": [], "satisfies": false, "satisfy_by": null,
+   "reason": "Dead Sea not coast"}
+
+Output JSON only:
+{"relevant": [int], "satisfies": bool,
  "satisfy_by": "claim" | "rule" | "both" | null, "reason": str}
 """.strip()
 
@@ -131,6 +188,104 @@ def _why_query(entry: dict[str, Any]) -> str | None:
     return None
 
 
+def _compact_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for claim in claims:
+        text = claim.get("claim")
+        if not text:
+            continue
+        out.append(
+            {"claim": text, "is_positive": claim.get("is_positive")}
+        )
+    return out
+
+
+def _compact_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for rule in rules:
+        if rule.get("error"):
+            continue
+        row = {
+            "subject": rule.get("subject"),
+            "polarity": rule.get("polarity"),
+            "evidence_span": rule.get("evidence_span"),
+        }
+        if rule.get("qualifier") is not None:
+            row["qualifier"] = rule.get("qualifier")
+        out.append(row)
+    return out
+
+
+_USAGE_LOCK = threading.Lock()
+
+
+def judge_concurrency() -> int:
+    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "1").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        return 1
+    return max(1, n)
+
+
+def judge_compact() -> bool:
+    raw = (os.environ.get("TRIPPY_JUDGE_COMPACT") or "").strip().casefold()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _judge_system() -> str:
+    if judge_compact():
+        return CLAIM_JUDGE_SYSTEM + "\n\n" + CLAIM_JUDGE_COMPACT_SUFFIX
+    return CLAIM_JUDGE_SYSTEM
+
+
+def _as_claim_index(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def _relevant_claim_texts(
+    parsed: dict[str, Any],
+    claim_rows: list[dict[str, Any]],
+    *,
+    compact: bool,
+) -> list[str]:
+    """Map a judge payload to claim strings. Compact uses indices into claim_rows."""
+    if not compact:
+        rel = parsed.get("relevant_claims") or []
+        if not isinstance(rel, list):
+            return []
+        return [str(x) for x in rel]
+    raw = parsed.get("relevant")
+    if raw is None:
+        raw = parsed.get("relevant_claims") or []
+    if not isinstance(raw, list):
+        return []
+    texts: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        idx = _as_claim_index(item)
+        if idx is not None:
+            if 0 <= idx < len(claim_rows):
+                text = str(claim_rows[idx].get("claim") or "")
+                key = _norm(text)
+                if text and key not in seen:
+                    seen.add(key)
+                    texts.append(text)
+            continue
+        if isinstance(item, str) and item.strip():
+            key = _norm(item)
+            if key not in seen:
+                seen.add(key)
+                texts.append(item)
+    return texts
+
+
 def judge_site_request(
     *,
     query: str,
@@ -138,8 +293,10 @@ def judge_site_request(
     claims: list[dict[str, Any]],
     rules: list[dict[str, Any]],
     usage: LlmUsage | None = None,
+    client: Any | None = None,
+    time_stage: bool = True,
 ) -> dict[str, Any]:
-    """One 235B call: which claims are relevant, and whether the site satisfies."""
+    """One instruct-model call: which claims are relevant, and whether the site satisfies."""
     if not claims and not rules:
         return {
             "relevant_claims": [],
@@ -147,19 +304,32 @@ def judge_site_request(
             "satisfy_by": None,
             "reason": "no claims or rules",
         }
+    compact = judge_compact()
+    claim_rows = [
+        {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
+        for c in claims
+    ]
+    if compact:
+        claim_rows = [row for row in claim_rows if row.get("claim")]
+        payload_claims = [{"i": i, **row} for i, row in enumerate(claim_rows)]
+        note = (
+            "Most claims and rules are probably not about the request. "
+            "Always use both lists. satisfies is true if any source "
+            "grants; nos belong in relevant (their i values) and do not veto."
+        )
+    else:
+        payload_claims = claim_rows
+        note = (
+            "Most claims and rules are probably not about the request. "
+            "Always use both lists. satisfies is true if any source "
+            "grants; nos belong in relevant_claims and do not veto."
+        )
     user = json.dumps(
         {
             "request": query,
             "campsite": campsite,
-            "note": (
-                "Most claims and rules are probably not about the request. "
-                "Always use both lists. satisfies is true if any source "
-                "grants; nos belong in relevant_claims and do not veto."
-            ),
-            "claims": [
-                {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
-                for c in claims
-            ],
+            "note": note,
+            "claims": payload_claims,
             "campsite_rules": [
                 {
                     "subject": r.get("subject"),
@@ -174,18 +344,31 @@ def judge_site_request(
         },
         ensure_ascii=False,
     )
-    client = make_nebius_openai_client()
-    response = client.chat.completions.create(
-        model=QWEN_INSTRUCT_MODEL,
-        temperature=0,
-        max_tokens=600,
-        messages=[
-            {"role": "system", "content": CLAIM_JUDGE_SYSTEM},
-            {"role": "user", "content": user},
-        ],
-    )
+    model = instruct_chat_model()
+    api = client or make_nebius_openai_client()
+    messages = [
+        {"role": "system", "content": _judge_system()},
+        {"role": "user", "content": user},
+    ]
+    max_tokens = 200 if compact else 600
+    if time_stage:
+        with stage("judge"):
+            response = api.chat.completions.create(
+                model=model,
+                temperature=0,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+    else:
+        response = api.chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=max_tokens,
+            messages=messages,
+        )
     if usage is not None:
-        usage.add_chat(response.usage, role="claim_judge", model=QWEN_INSTRUCT_MODEL)
+        with _USAGE_LOCK:
+            usage.add_chat(response.usage, role="claim_judge", model=model)
     raw = (response.choices[0].message.content or "").strip()
     try:
         parsed = _parse_json_payload(raw)
@@ -197,31 +380,49 @@ def judge_site_request(
             "satisfy_by": None,
             "reason": f"unparseable: {raw[:200]}",
         }
-    rel = parsed.get("relevant_claims") or []
-    if not isinstance(rel, list):
-        rel = []
     return {
-        "relevant_claims": [str(x) for x in rel],
+        "relevant_claims": _relevant_claim_texts(
+            parsed, claim_rows, compact=compact
+        ),
         "satisfies": bool(parsed.get("satisfies")),
         "satisfy_by": parsed.get("satisfy_by"),
         "reason": str(parsed.get("reason") or ""),
     }
 
 
+# Bound at import so a test patch of `judge_site_request` does not look like live Nebius.
+_LIVE_JUDGE = judge_site_request
+
+
+def _queries_for_fit(fit: dict[str, Any]) -> list[str]:
+    why = list(fit.get("why") or [])
+    claims = list(fit.get("review_claims") or [])
+    return list(
+        dict.fromkeys(
+            q
+            for q in [_why_query(w) for w in why]
+            + [c.get("query") for c in claims]
+            if isinstance(q, str) and q
+        )
+    )
+
+
+def _rules_from_fit(fit: dict[str, Any], query: str) -> list[dict[str, Any]]:
+    raw = fit.get("campsite_rules")
+    if isinstance(raw, dict):
+        return list(raw.get(query) or [])
+    if isinstance(raw, list):
+        return list(raw)
+    return []
+
+
 def _rules_by_site(
     query: str,
     campsite_ids: list[int],
     *,
-    search_rules: Callable[..., list[dict[str, Any]]] | None = None,
+    search_rules: Callable[..., list[dict[str, Any]]],
 ) -> dict[int, list[dict[str, Any]]]:
-    fetch = search_rules or search.search_campsite_rules
-    kwargs: dict[str, Any] = {
-        "limit": CLAIM_EVIDENCE_LIMIT,
-        "campsite_ids": campsite_ids,
-    }
-    if search_rules is None:
-        kwargs["embedding"] = search._query_vec_literal(query)
-    hits = fetch(query, **kwargs)
+    hits = search_rules(query, limit=CLAIM_EVIDENCE_LIMIT, campsite_ids=campsite_ids)
     by_site: dict[int, list[dict[str, Any]]] = {int(i): [] for i in campsite_ids}
     for hit in hits:
         if hit.get("error"):
@@ -232,6 +433,51 @@ def _rules_by_site(
     return by_site
 
 
+def _run_judge_jobs(
+    pending: dict[tuple[int, str], dict[str, Any]],
+    *,
+    judge_fn: Callable[..., dict[str, Any]],
+    usage: LlmUsage,
+    live: bool,
+) -> dict[tuple[int, str], dict[str, Any]]:
+    cache: dict[tuple[int, str], dict[str, Any]] = {}
+    if not pending:
+        return cache
+    workers = judge_concurrency() if live else 1
+    extra: dict[str, Any] = {}
+    if live and workers > 1 and judge_fn is _LIVE_JUDGE:
+        extra["client"] = make_nebius_openai_client()
+        extra["time_stage"] = False
+    if workers <= 1:
+        for key, job in pending.items():
+            cache[key] = judge_fn(
+                query=job["query"],
+                campsite=job["campsite"],
+                claims=job["claims"],
+                rules=job["rules"],
+                usage=usage,
+            )
+        return cache
+    started = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = {
+            pool.submit(
+                judge_fn,
+                query=job["query"],
+                campsite=job["campsite"],
+                claims=job["claims"],
+                rules=job["rules"],
+                usage=usage,
+                **extra,
+            ): key
+            for key, job in pending.items()
+        }
+        for fut in as_completed(futs):
+            cache[futs[fut]] = fut.result()
+    record_stage("judge", time.perf_counter() - started, calls=len(pending))
+    return cache
+
+
 def apply_claim_rule_judgements(
     payload: dict[str, Any],
     *,
@@ -240,11 +486,12 @@ def apply_claim_rule_judgements(
 ) -> dict[str, Any]:
     """Filter fits the judge says do not satisfy; keep relevant claims as evidence.
 
-    Retrieve always supplies claims and official rules; the judge sees both.
-    Listing hits at amenity −0.7 are recall (tent-as-desert, stove-as-
-    electricity). The judge sifts those too, not only claim-only why
-    (experiments.md 2026-09-07 §8). Nos in relevant_claims stay on the
-    survivor for the recommender; they do not veto a granting rule or claim.
+    Claims and official rules are already on the fit (planner retrieve).
+    The judge does not embed or search. Listing hits at amenity −0.7 are
+    recall (tent-as-desert, stove-as-electricity). The judge sifts those
+    too, not only claim-only why (experiments.md 2026-09-07 §8). Nos in
+    relevant_claims stay on the survivor for the recommender; they do not
+    veto a granting rule or claim.
     """
     fits = list(payload.get("fits") or [])
     if not fits:
@@ -252,45 +499,64 @@ def apply_claim_rule_judgements(
     judge_fn = judge or judge_site_request
     usage = LlmUsage()
     site_ids = list(dict.fromkeys(int(f["campsite_id"]) for f in fits))
-    cache: dict[tuple[int, str], dict[str, Any]] = {}
     rules_cache: dict[str, dict[int, list[dict[str, Any]]]] = {}
+    pending: dict[tuple[int, str], dict[str, Any]] = {}
     kept: list[dict[str, Any]] = []
     extra_rejected: list[dict[str, Any]] = []
+
+    def _rules_for_query(fit: dict[str, Any], query: str, cid: int) -> list[dict[str, Any]]:
+        if search_rules is not None:
+            if query not in rules_cache:
+                rules_cache[query] = _rules_by_site(
+                    query, site_ids, search_rules=search_rules
+                )
+            return rules_cache[query].get(cid) or []
+        return _rules_from_fit(fit, query)
+
+    for fit in fits:
+        cid = int(fit["campsite_id"])
+        claims = list(fit.get("review_claims") or [])
+        queries = _queries_for_fit(fit)
+        for query in queries:
+            key = (cid, query)
+            if key in pending:
+                continue
+            q_claims = [c for c in claims if c.get("query") == query] or claims
+            pending[key] = {
+                "query": query,
+                "campsite": str(fit.get("campsite") or ""),
+                "claims": q_claims,
+                "rules": _rules_for_query(fit, query, cid),
+            }
+
+    cache = _run_judge_jobs(
+        pending, judge_fn=judge_fn, usage=usage, live=judge is None
+    )
 
     for fit in fits:
         cid = int(fit["campsite_id"])
         why = list(fit.get("why") or [])
         claims = list(fit.get("review_claims") or [])
-        queries = list(
-            dict.fromkeys(
-                q
-                for q in [_why_query(w) for w in why]
-                + [c.get("query") for c in claims]
-                if isinstance(q, str) and q
-            )
-        )
+        queries = _queries_for_fit(fit)
         if not queries:
             kept.append(fit)
             continue
         verdicts: list[dict[str, Any]] = []
+        retrieved: list[dict[str, Any]] = []
         relevant_norm: set[str] = set()
         drop = False
         drop_reason = ""
         for query in queries:
             key = (cid, query)
-            if key not in cache:
-                if query not in rules_cache:
-                    rules_cache[query] = _rules_by_site(
-                        query, site_ids, search_rules=search_rules
-                    )
-                q_claims = [c for c in claims if c.get("query") == query] or claims
-                cache[key] = judge_fn(
-                    query=query,
-                    campsite=str(fit.get("campsite") or ""),
-                    claims=q_claims,
-                    rules=rules_cache[query].get(cid) or [],
-                    usage=usage,
-                )
+            q_claims = [c for c in claims if c.get("query") == query] or claims
+            q_rules = _rules_for_query(fit, query, cid)
+            retrieved.append(
+                {
+                    "query": query,
+                    "claims": _compact_claims(q_claims),
+                    "rules": _compact_rules(q_rules),
+                }
+            )
             verdict = cache[key]
             verdicts.append({"query": query, **verdict})
             relevant_norm.update(_norm(t) for t in verdict.get("relevant_claims") or [])
@@ -309,6 +575,8 @@ def apply_claim_rule_judgements(
             fit["review_claims"] = evidence
         elif "review_claims" in fit:
             del fit["review_claims"]
+        if retrieved:
+            fit["retrieved"] = retrieved
         if verdicts:
             fit["claim_judge"] = verdicts
         if drop:
@@ -330,4 +598,7 @@ def apply_claim_rule_judgements(
             usage.chat_calls,
             usage.cost_usd,
         )
+    sink = collected_llm_usage()
+    if sink is not None:
+        sink.merge(usage)
     return payload

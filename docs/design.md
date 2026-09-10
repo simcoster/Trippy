@@ -859,6 +859,22 @@ prompt and the 235B full prompt are both 30/30 (experiments.md
 2026-09-08 §2). Extractor moved to 235B: p50 4.0s → 2.4s, ~$0.00025 →
 ~$0.00050 per search (experiments.md 2026-09-08 §3).
 
+## Named campsite lookup
+
+The extractor may emit English (`Achziv`, `Horashat Tal`) or a Hebrew
+fragment (`חורשת טל`, `אכזיב`). `campsites.name` is the parks.org.il
+title. `campsites.english_name` is a title from
+`https://en.parks.org.il/camping/`. `scrape-sites` crawls those names
+and asks the **235B once** to match each Hebrew `campsites.name` to
+that closed list (subcamps append North/South). No alias table.
+
+`lookup_campsite_by_name` ranks the query with **pg_trgm** already in
+`extensions`: `GREATEST(similarity, word_similarity)` against `name`
+and `english_name`, threshold 0.4, top 5. `similarity` covers
+same-length typos (`Horashat` / `Horshat`); `word_similarity` covers a
+short query inside a long title (`אכזיב` in the southern subcamp name).
+That is character trigrams, not embeddings.
+
 ## Planner claim/rule judge
 
 The claim retrieve gate is **−0.6** (`CLAIM_MATCH_MAX_DISTANCE`), top 5
@@ -866,19 +882,37 @@ hits per site. That is recall: campfires match `"desert"`, “pets not
 allowed” matches `"pet friendly"`. Precision is a 235B call per
 (query, campsite) in `planner_node` (`source/agent/claim_judge.py`).
 
-The judge sees the top-5 claims **and** the nearest official
-`campsite_rules` (all categories, including polarity false). One JSON
-object returns both decisions (experiments.md 2026-09-07 §5, 35/35; a
-split into two calls was not needed):
+The planner retrieve (one query embedding) loads the top-5 claims
+**and** the nearest official `campsite_rules` (all categories,
+including polarity false) onto each fit. The 235B judge in
+`planner_node` (`source/agent/claim_judge.py`) only scores that
+payload — it does not embed or search. One JSON object returns both
+decisions (experiments.md 2026-09-07 §5, 35/35; a split into two
+calls was not needed):
 
 - `relevant_claims` — every claim actually about the request, including
   forbiddens. Those are the only review claims the recommender sees.
+  Default: the model quotes the claim text. `TRIPPY_JUDGE_COMPACT=1`
+  (`--judge-compact` on eval; default off) asks for `relevant` as
+  0-based indices into the in-memory claims plus a 4–5 word `reason`.
+  The planner maps those indices back to the stored claim rows before
+  the recommender sees them. On E02, compact cut judge completion
+  tokens 824→376 and judge wall 20.4s→13.4s; prompt grew ~3.5k from
+  the compact suffix (experiments.md 2026-09-10 §6). Default stays
+  quoted until a full eval.
 - `satisfies` — true iff a relevant claim says yes **or** a granting
   rule exists. A no does not veto: fridge complaints do not drop
   `refrigerator` true; "no electricity at the tent" does not drop
   `electric_hookup` true. Those nos stay in `relevant_claims` for the
   recommender. `dogs_allowed` false is not a yes for pet-friendly, but
   it also does not veto a granting claim. experiments.md 2026-09-08 §9.
+
+`area:*` / `region:*` breadcrumb claims satisfy a request for that area
+or region by name (`area:north` → north, `region:negev` → desert,
+`region:dead-sea` → Dead Sea). They do not satisfy `"near the sea"` /
+ליד הים because the slug contains sea/ים. Dead Sea and Kinneret are
+named places, not the Mediterranean or Red Sea coast; a beach-access
+review still grants. experiments.md 2026-09-10 §2 (8/8 on 235B).
 
 Claim-only fits the judge rejects are dropped. Listing hits at amenity
 **−0.7** are recall as well: the same judge runs on amenity-only fits and
@@ -925,9 +959,23 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 `just run-eval` first copies `public` into `experiments` except
 `availability` (that table is cloned empty; occupancy is
 `availability_frozen`). Then extractor then planner on every case and
-writes `reports/evals/`. `--no-copy` skips the refresh. Case FAIL
-rows are scored in the report; the process still exits 0 unless a
-setup or runtime error stops the run.
+writes `reports/evals/` (per-query seconds in the table, then a
+**Cases** section with the extractor JSON, the planner RAG queries,
+retrieved claims/rules, and the judge verdict). Each case prints
+token in/out (extractor + judge) before the report is written; the
+markdown has a **Tokens** table. `--model 30B` runs
+extractor+judge on the 30B; `--judge-concurrency 4` runs live judge
+calls four at a time; `--judge-compact` omits quoted claim text in
+the judge JSON (indices + a 4–5 word reason). `--no-copy` skips the
+refresh. Case FAIL rows are scored in the report; the process still
+exits 0 unless a setup or runtime error stops the run.
+Gold is mostly campsite ids (`must_include_sites` /
+`must_exclude_sites`); a few cases also substring-match fit
+`accommodation_type` names (`must_include_types` /
+`must_exclude_types`). Every query states a party, with mixed
+phrasing (אדם אחד, זוג, שלושה חברים, 4 חברים, ארבעה זוגות,
+משפחה של 6). E03 keeps `לאדם` as a per-person **price** unit next
+to an explicit `אדם אחד`.
 
 `electric_hookup` on stored rows is
 still three listings (caravan-bay water+power, PITCH tent power, site-wide

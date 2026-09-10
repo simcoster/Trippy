@@ -8,9 +8,13 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -31,6 +35,19 @@ QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK = 0.60
 QWEN_INSTRUCT_30B_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 QWEN_INSTRUCT_30B_INPUT_USD_PER_MTOK = 0.10
 QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK = 0.30
+
+
+def instruct_chat_model(default: str | None = None) -> str:
+    """235B unless `TRIPPY_INSTRUCT_MODEL` is 30B / 235B / a full model id."""
+    raw = (os.environ.get("TRIPPY_INSTRUCT_MODEL") or "").strip()
+    key = raw.casefold()
+    if key in {"30b", "little", "small"}:
+        return QWEN_INSTRUCT_30B_MODEL
+    if key in {"235b", "big"}:
+        return QWEN_INSTRUCT_MODEL
+    if raw:
+        return raw
+    return default or QWEN_INSTRUCT_MODEL
 
 
 def chat_usd_per_mtok(model: str | None) -> tuple[float, float]:
@@ -255,6 +272,49 @@ class LlmUsage:
             "cost_usd": round(self.cost_usd, 6),
             "by_role": [b.as_dict() for b in self.by_role()],
         }
+
+
+_usage_sink: ContextVar[LlmUsage | None] = ContextVar("trippy_llm_usage", default=None)
+
+
+@contextmanager
+def collect_llm_usage() -> Iterator[LlmUsage]:
+    """Eval-only sink so extractor + judge tokens land on one LlmUsage."""
+    usage = LlmUsage()
+    token: Token = _usage_sink.set(usage)
+    try:
+        yield usage
+    finally:
+        _usage_sink.reset(token)
+
+
+def collected_llm_usage() -> LlmUsage | None:
+    return _usage_sink.get()
+
+
+def langchain_chat_usage(response: Any) -> Any | None:
+    """Prompt/completion counts from a LangChain chat result, if present."""
+    meta = getattr(response, "usage_metadata", None)
+    if isinstance(meta, dict) and (
+        meta.get("input_tokens") or meta.get("output_tokens")
+    ):
+        return SimpleNamespace(
+            prompt_tokens=int(meta.get("input_tokens") or 0),
+            completion_tokens=int(meta.get("output_tokens") or 0),
+        )
+    resp_meta = getattr(response, "response_metadata", None) or {}
+    if not isinstance(resp_meta, dict):
+        return None
+    token_usage = resp_meta.get("token_usage") or resp_meta.get("usage")
+    if not isinstance(token_usage, dict):
+        return None
+    prompt = int(token_usage.get("prompt_tokens") or token_usage.get("input_tokens") or 0)
+    completion = int(
+        token_usage.get("completion_tokens") or token_usage.get("output_tokens") or 0
+    )
+    if prompt <= 0 and completion <= 0:
+        return None
+    return SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion)
 
 
 def _short_model(model: str) -> str:

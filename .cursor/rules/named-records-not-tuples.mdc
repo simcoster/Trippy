@@ -1,0 +1,41 @@
+---
+description: Name tuple members with TypeAlias, NamedTuple, or dataclass
+alwaysApply: true
+---
+
+# Named records, not positional tuples
+
+Do not ship an anonymous `tuple[...]` when the members have names. Positions
+are not names; two fields of the same type are indistinguishable and get
+swapped in silence. That includes **dict keys**.
+
+Use:
+
+- **`TypeAlias`** when you are only renaming one existing type
+- **`NamedTuple`** or a (frozen) **dataclass** when two or more members
+  should be named — including lookup keys like campsite + unit type
+
+```python
+# BAD — slot key is an anonymous pair; return is four unlabelled dicts
+why_by_slot: dict[tuple[str, int], list[dict[str, Any]]]
+def _semantic_why_by_slot(...) -> tuple[dict, dict, dict, dict]:
+    return why, missing, claims, rules
+
+# GOOD
+_WhyRows: TypeAlias = list[dict[str, Any]]
+
+class _SlotKey(NamedTuple):
+    campsite_id: str
+    accommodation_type_id: int
+
+@dataclass
+class _SemanticWhy:
+    why_by_slot: dict[_SlotKey, _WhyRows]
+    reject_why_by_slot: dict[_SlotKey, _WhyRows]
+    claims_by_site: dict[str, _WhyRows]
+    rules_by_query: dict[str, dict[int, _WhyRows]]
+```
+
+Still fine: a throwaway pair you unpack in the next line and never type
+(`ok, err = ...`). Not fine: a type, return value, or dict key whose
+members you would name if you said them out loud.

@@ -14,6 +14,8 @@ source. Each file is imported here; edit the rule there, not in this file.
 @.cursor/rules/agent-temp-files.mdc
 @.cursor/rules/no-unasked-scrape-runs.mdc
 @.cursor/rules/name-matches-what-file-does.mdc
+@.cursor/rules/named-records-not-tuples.mdc
+@.cursor/rules/ask-before-string-vocabularies.mdc
 
 ## Orientation
 

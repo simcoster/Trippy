@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -16,6 +17,7 @@ from db.experiments import table_name
 from db.models import SubjectCategory
 from source.agent.constraints import claim_recency, today_il
 from source.agent.dates import _parse_iso_day, iso_day, stay_night_starts
+from source.agent.timing import stage
 from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
 from source.scraper.info_site.quote import quote_night
 from source.scraper.info_site.schemas import RatePeriod
@@ -23,6 +25,8 @@ from source.scraper.info_site.schemas import RatePeriod
 load_dotenv()
 
 _claims_embedder = ClaimsEmbeddingLLMClient()
+_query_vec_cache: dict[str, str] = {}
+_query_vec_lock = threading.Lock()
 
 # Site-wide rules for a candidate: this campsite and its parent. Sister
 # subcamps (Akhziv north vs south) do not share each other's rows.
@@ -33,12 +37,28 @@ _OWN_OR_PARENT_RULES = (
 OPEN_SLOTS_LIMIT = 80
 AVAILABILITY_TABLE_ENV = "TRIPPY_AVAILABILITY_TABLE"
 _LAST_OPEN_SLOTS_QUERY: dict[str, Any] | None = None
+# pg_trgm: typos on a similar-length name, and a short query inside a long
+# Hebrew title. 0.4 is below the default word_similarity threshold (0.6) so
+# Achziv/Akhziv still ranks; LIMIT 5 is the cap.
+NAME_LOOKUP_MIN_SCORE = 0.4
+NAME_LOOKUP_LIMIT = 5
 
-_NAMED_CAMPSITE_ALIASES = {
-    "horshat tal": "חורשת טל",
-    "horashat tal": "חורשת טל",
-    "hurshat tal": "חורשת טל",
-}
+LOOKUP_CAMPSITE_SQL = """
+SELECT id, name, english_name, booking_hotel_id, score
+FROM (
+    SELECT id, name, english_name, booking_hotel_id,
+           GREATEST(
+               similarity(%(q)s, name),
+               similarity(%(q)s, COALESCE(english_name, '')),
+               word_similarity(%(q)s, name),
+               word_similarity(%(q)s, COALESCE(english_name, ''))
+           ) AS score
+    FROM campsites
+) ranked
+WHERE score >= %(min_score)s
+ORDER BY score DESC, id
+LIMIT %(limit)s
+"""
 
 
 def _availability_relation() -> str:
@@ -190,10 +210,11 @@ def _load_list_prices(type_ids: list[int]) -> dict[int, list[SimpleNamespace]]:
         WHERE at.id = ANY(%s)
     """
     try:
-        with connect(db_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, (type_ids,))
-                rows = cur.fetchall()
+        with stage("sql"):
+            with connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (type_ids,))
+                    rows = cur.fetchall()
     except Exception:
         return {}
     by_type: dict[int, list[SimpleNamespace]] = {}
@@ -264,10 +285,11 @@ def search_open_slots(
     }
     _record_open_slots_query(query_record)
     try:
-        with connect(db_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("sql"):
+            with connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
     except Exception as e:
         query_record["error"] = str(e)
         return [{"error": f"Error searching availability: {e}"}]
@@ -324,50 +346,47 @@ def search_availability(
     )
 
 
-def _campsite_lookup_terms(name: str) -> list[str]:
-    text = (name or "").strip()
-    if not text:
-        return []
-    terms = [text]
-    key = " ".join(text.lower().replace("-", " ").split())
-    alias = _NAMED_CAMPSITE_ALIASES.get(key)
-    if alias and alias not in terms:
-        terms.append(alias)
-    return terms
-
-
 def lookup_campsite_by_name(name: str) -> list[dict]:
-    """Resolve a user-named park to campsite id(s). Not a catalog dump."""
+    """Resolve a user-named park to campsite id(s). Not a catalog dump.
+
+    Ranks the query against Hebrew `name` and stored `english_name` with
+    pg_trgm (`similarity` + `word_similarity`). Discovery fills English;
+    there is no alias list.
+    """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         return []
-    terms = _campsite_lookup_terms(name)
-    if not terms:
+    query = (name or "").strip()
+    if not query:
         return []
-    like_patterns = [f"%{term}%" for term in terms]
-    sql = """
-        SELECT id, name, booking_hotel_id
-        FROM campsites
-        WHERE name ILIKE ANY(%s)
-        ORDER BY id
-        LIMIT 5
-    """
     try:
-        with connect(db_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, (like_patterns,))
-                rows = cur.fetchall()
-        return [
-            {
-                "id": int(row[0]),
-                "name": row[1],
-                "hotel_id": int(row[0]),
-                "booking_hotel_id": row[2],
-            }
-            for row in rows
-        ]
+        with stage("sql"):
+            with connect(db_url) as conn:
+                with conn.cursor() as cur:
+                    return match_campsites_by_name(cur, query)
     except Exception as e:
         return [{"error": f"Error looking up campsite: {e}"}]
+
+
+def match_campsites_by_name(cur: Any, query: str) -> list[dict]:
+    """pg_trgm rank of `query` vs `campsites.name` / `english_name`."""
+    cur.execute(
+        LOOKUP_CAMPSITE_SQL,
+        {
+            "q": query,
+            "min_score": NAME_LOOKUP_MIN_SCORE,
+            "limit": NAME_LOOKUP_LIMIT,
+        },
+    )
+    return [
+        {
+            "id": int(row[0]),
+            "name": row[1],
+            "hotel_id": int(row[0]),
+            "booking_hotel_id": row[3],
+        }
+        for row in cur.fetchall()
+    ]
 
 
 def search_campsites(numeric_constraints):
@@ -403,8 +422,17 @@ def search_campsites(numeric_constraints):
 
 
 def _query_vec_literal(query: str) -> str:
-    embedding = _claims_embedder.embed([query])[0]
-    return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
+    key = " ".join((query or "").split())
+    with _query_vec_lock:
+        hit = _query_vec_cache.get(key)
+    if hit is not None:
+        return hit
+    with stage("embed"):
+        embedding = _claims_embedder.embed([query])[0]
+        literal = "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
+    with _query_vec_lock:
+        _query_vec_cache[key] = literal
+    return literal
 
 
 def search_stated_amenities(
@@ -454,11 +482,12 @@ def search_stated_amenities(
         LIMIT %s
     """
     try:
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("retrieve"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         return [
             {
                 "amenity": row[4],
@@ -520,11 +549,12 @@ def search_site_amenities(
         LIMIT %s
     """
     try:
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("retrieve"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         return [
             {
                 "amenity": row[3],
@@ -594,11 +624,12 @@ def search_campsite_rules(
         """
         params = [ids, vec_literal, vec_literal, limit]
     try:
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("rules"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         return [
             {
                 "campsite_id": int(row[0]),
@@ -693,11 +724,12 @@ def search_review_claims(
         )
     try:
         today = today_il()
-        with connect(db_url) as conn:
-            register_vector(conn)
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
+        with stage("retrieve"):
+            with connect(db_url) as conn:
+                register_vector(conn)
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
         hits: list[dict] = []
         for campsite_id, claim_text, is_positive, published_at, distance in rows:
             day, days_ago = claim_recency(published_at, today=today)
