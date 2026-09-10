@@ -26,9 +26,13 @@ just run-eval
 just run-eval -- --ids E01,H02
 just run-eval -- --no-copy
 just run-eval -- --model 30B
-just run-eval -- --judge-concurrency 4
+just run-eval -- --judge-concurrency 1
+just run-eval -- --no-judge-compact
 uv run python -m source.eval.run --ids E01,H02
 ```
+
+Judge defaults match production: compact JSON and 5 parallel live
+calls. `--judge-concurrency` / `--no-judge-compact` override.
 
 First copies `public` → `experiments` except `availability` (occupancy
 stays `availability_frozen`). `--no-copy` skips that refresh.

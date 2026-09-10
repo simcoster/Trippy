@@ -892,14 +892,16 @@ calls was not needed):
 
 - `relevant_claims` — every claim actually about the request, including
   forbiddens. Those are the only review claims the recommender sees.
-  Default: the model quotes the claim text. `TRIPPY_JUDGE_COMPACT=1`
-  (`--judge-compact` on eval; default off) asks for `relevant` as
+  Default: compact JSON (`TRIPPY_JUDGE_COMPACT=1`; Streamlit and
+  `just run-eval` inherit this). The model returns `relevant` as
   0-based indices into the in-memory claims plus a 4–5 word `reason`.
   The planner maps those indices back to the stored claim rows before
   the recommender sees them. On E02, compact cut judge completion
   tokens 824→376 and judge wall 20.4s→13.4s; prompt grew ~3.5k from
-  the compact suffix (experiments.md 2026-09-10 §6). Default stays
-  quoted until a full eval.
+  the compact suffix (experiments.md 2026-09-10 §6). Full eval
+  `2026-09-10_131406` was compact ×5 (23/26). Quoted output is
+  `TRIPPY_JUDGE_COMPACT=0` / `--no-judge-compact`. Live judge calls
+  run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5).
 - `satisfies` — true iff a relevant claim says yes **or** a granting
   rule exists. A no does not veto: fridge complaints do not drop
   `refrigerator` true; "no electricity at the tent" does not drop
@@ -964,9 +966,9 @@ writes `reports/evals/` (per-query seconds in the table, then a
 retrieved claims/rules, and the judge verdict). Each case prints
 token in/out (extractor + judge) before the report is written; the
 markdown has a **Tokens** table. `--model 30B` runs
-extractor+judge on the 30B; `--judge-concurrency 4` runs live judge
-calls four at a time; `--judge-compact` omits quoted claim text in
-the judge JSON (indices + a 4–5 word reason). `--no-copy` skips the
+extractor+judge on the 30B; `--judge-concurrency N` overrides the
+default of 5 parallel live judge calls; `--no-judge-compact` quotes
+claim text instead of indices. `--no-copy` skips the
 refresh. Case FAIL rows are scored in the report; the process still
 exits 0 unless a setup or runtime error stops the run.
 Gold is mostly campsite ids (`must_include_sites` /

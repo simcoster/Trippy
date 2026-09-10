@@ -220,17 +220,17 @@ _USAGE_LOCK = threading.Lock()
 
 
 def judge_concurrency() -> int:
-    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "1").strip()
+    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "5").strip()
     try:
         n = int(raw)
     except ValueError:
-        return 1
+        return 5
     return max(1, n)
 
 
 def judge_compact() -> bool:
-    raw = (os.environ.get("TRIPPY_JUDGE_COMPACT") or "").strip().casefold()
-    return raw in {"1", "true", "yes", "on"}
+    raw = (os.environ.get("TRIPPY_JUDGE_COMPACT") or "1").strip().casefold()
+    return raw not in {"0", "false", "no", "off"}
 
 
 def _judge_system() -> str:

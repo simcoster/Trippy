@@ -4,8 +4,8 @@
     just run-eval -- --ids E01,H02
     just run-eval -- --no-copy
     just run-eval -- --model 30B
-    just run-eval -- --judge-concurrency 4
-    just run-eval -- --judge-compact
+    just run-eval -- --judge-concurrency 1
+    just run-eval -- --no-judge-compact
     uv run python -m source.eval.run --ids E01,H02
 """
 
@@ -25,6 +25,7 @@ from langchain_core.messages import HumanMessage
 
 from db.connect import connect, database_url
 from db.experiments import SEARCH_PATH, copy_public, table_name
+from source.agent.claim_judge import judge_compact, judge_concurrency
 from source.agent.graph import extractor_node, planner_node
 from source.agent.timing import (
     STAGE_ORDER,
@@ -460,7 +461,8 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
         f"- env: `TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}` "
         f"`TRIPPY_AVAILABILITY_TABLE={os.environ.get('TRIPPY_AVAILABILITY_TABLE')}` "
         f"`TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}` "
-        f"`TRIPPY_JUDGE_COMPACT={os.environ.get('TRIPPY_JUDGE_COMPACT') or '0'}`",
+        f"`TRIPPY_JUDGE_COMPACT={int(judge_compact())}` "
+        f"`TRIPPY_JUDGE_CONCURRENCY={judge_concurrency()}`",
         "",
     ]
     totals = merge_snapshots([r.get("stages") or {} for r in rows])
@@ -572,12 +574,17 @@ def main(argv: list[str] | None = None) -> int:
         "--judge-concurrency",
         type=int,
         default=0,
-        help="Parallel claim-judge calls (default 1)",
+        help="Parallel claim-judge calls (default 5)",
     )
     parser.add_argument(
         "--judge-compact",
         action="store_true",
-        help="Judge returns claim indices and a 4-5 word reason (default off)",
+        help="Judge returns claim indices and a 4-5 word reason (default on)",
+    )
+    parser.add_argument(
+        "--no-judge-compact",
+        action="store_true",
+        help="Quoted claim text in the judge JSON (opt out of compact)",
     )
     args = parser.parse_args(argv)
     spec_path = Path(args.eval)
@@ -589,7 +596,9 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["TRIPPY_INSTRUCT_MODEL"] = args.model
     if args.judge_concurrency:
         os.environ["TRIPPY_JUDGE_CONCURRENCY"] = str(args.judge_concurrency)
-    if args.judge_compact:
+    if args.no_judge_compact:
+        os.environ["TRIPPY_JUDGE_COMPACT"] = "0"
+    elif args.judge_compact:
         os.environ["TRIPPY_JUDGE_COMPACT"] = "1"
     table = os.environ.get("TRIPPY_AVAILABILITY_TABLE") or "availability"
     print(f"TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}", flush=True)
@@ -599,11 +608,11 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
     print(
-        f"TRIPPY_JUDGE_CONCURRENCY={os.environ.get('TRIPPY_JUDGE_CONCURRENCY') or '1'}",
+        f"TRIPPY_JUDGE_CONCURRENCY={judge_concurrency()}",
         flush=True,
     )
     print(
-        f"TRIPPY_JUDGE_COMPACT={os.environ.get('TRIPPY_JUDGE_COMPACT') or '0'}",
+        f"TRIPPY_JUDGE_COMPACT={int(judge_compact())}",
         flush=True,
     )
     _require_frozen(table)

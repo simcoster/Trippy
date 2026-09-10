@@ -6,6 +6,28 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-10, scrape cadence on the MVP path)
+
+**Scheduled scrapes are part of cloudify** (`docs/plan-to-mvp.md` §2).
+Vacancy daily, reviews+claims weekly, sites/info/place-ids about
+monthly.
+
+### Done (2026-09-10, plan-to-mvp)
+
+**Forward path is `docs/plan-to-mvp.md`.** Sequence: recommender →
+cloudify → give people to try → final fixes → Medium + LinkedIn.
+This file stays the historical log.
+
+### Done (2026-09-10, compact judge ×5 is the default)
+
+**Live claim-judge default is compact JSON and 5 parallel calls.**
+Streamlit, Telegram, and `just run-eval` all read
+`judge_compact()` / `judge_concurrency()` (`TRIPPY_JUDGE_COMPACT`
+default on, `TRIPPY_JUDGE_CONCURRENCY` default 5). Opt out with
+`TRIPPY_JUDGE_COMPACT=0` / `--no-judge-compact`. Supersedes the
+“default off” / sequential note in the compact-flag entry below.
+Eval `2026-09-10_131406` already ran this way (23/26).
+
 ### Done (2026-09-10, English listing match)
 
 **`scrape-sites` crawls `en.parks.org.il/camping/` titles and the 235B
