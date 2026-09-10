@@ -29,6 +29,27 @@ all three `satisfies=false` (Western Galilee is not about the sea).
 false positive is semantic, not a missing-label problem. Akhziv sea
 does not live in breadcrumbs.
 
+### 2. Does a judge-prompt principle stop Dead Sea from satisfying "near the sea"?
+
+**Question.** 235B grants `near the sea` on `region:dead-sea` / `ארץ ים המלח`.
+Does a principle — breadcrumb `area:*`/`region:*` satisfy that region by
+name, not "near the sea" because the slug contains ים/sea — fix Masada
+without dropping Akhziv beach, `area:north` → north, `region:negev` →
+desert, or `region:dead-sea` → "Dead Sea"?
+
+**Setup.** Prompt change in `CLAIM_JUDGE_SYSTEM`. No embed, no DB writes.
+Eight production `judge_site_request` (235B) calls. Dump
+`temp/breadcrumb_sea_judge_prompt.json`. Control: same Dead Sea feeds
+were all `satisfies=true` in §1.
+
+**Result.** 8/8. Masada slug / Hebrew / both → `satisfies=false`. Akhziv
+beach → true. Western Galilee → false. `area:north` → "in the north"
+true. `region:negev` → desert true. `region:dead-sea` → "Dead Sea" true.
+8 calls, 225 s, $0.003.
+
+**Decision.** Keep the principle and the Dead Sea / beach few-shots in
+the judge prompt. design.md "Planner claim/rule judge".
+
 ## 2026-09-09
 
 ### 1. Can breadcrumb slugs retrieve and satisfy a north query without the claim splitter?

@@ -880,6 +880,13 @@ split into two calls was not needed):
   recommender. `dogs_allowed` false is not a yes for pet-friendly, but
   it also does not veto a granting claim. experiments.md 2026-09-08 §9.
 
+`area:*` / `region:*` breadcrumb claims satisfy a request for that area
+or region by name (`area:north` → north, `region:negev` → desert,
+`region:dead-sea` → Dead Sea). They do not satisfy `"near the sea"` /
+ליד הים because the slug contains sea/ים. Dead Sea and Kinneret are
+named places, not the Mediterranean or Red Sea coast; a beach-access
+review still grants. experiments.md 2026-09-10 §2 (8/8 on 235B).
+
 Claim-only fits the judge rejects are dropped. Listing hits at amenity
 **−0.7** are recall as well: the same judge runs on amenity-only fits and
 drops a site when `satisfies` is false (tent-as-desert, stove-as-

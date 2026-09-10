@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-10, judge prompt: region is not the sea)
+
+**Breadcrumb `area:*`/`region:*` satisfy that region by name, not
+`near the sea` via the word ים/sea.** 235B probe 8/8: Masada Dead Sea
+no longer grants sea; Akhziv beach, north, Negev→desert, and named
+Dead Sea still grant. experiments.md 2026-09-10 §2.
+
 ### Done (2026-09-10, Dead Sea breadcrumb judge probe)
 
 **Hebrew label + English slug still grants `near the sea` for Masada.**

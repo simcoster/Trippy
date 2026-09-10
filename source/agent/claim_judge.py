@@ -43,6 +43,12 @@ guest who brought a caravan; it does not satisfy electricity for a
 tent/room stay. electric_outlet in a bungalow/room DOES. Site-wide
 נקודות חשמל and a PITCH tent with חיבור חשמל DO (limited coverage is a
 caveat, not a no).
+area:* / region:* claims name the parks.org.il area. They satisfy a
+request for that area or region by name (north, Negev, Dead Sea,
+Western Galilee). They do not satisfy "near the sea" / beach / ליד הים
+just because the slug or Hebrew contains sea/ים. Dead Sea and Kinneret
+are named places, not the Mediterranean or Red Sea coast. A review
+about a beach or ים התיכון does.
 
 1. relevant_claims: every claim that is actually about the request, including
    complaints and forbiddens. Keep all of those even when satisfies is true
@@ -54,6 +60,8 @@ caveat, not a no).
    - "despite being in the desert" IS relevant to "in the desert".
    - "desert animals on the drive" is wildlife, not that the site is in the
      desert — not relevant.
+   - "region:dead-sea" / "ארץ ים המלח" is NOT relevant to "near the sea"
+     (shared word, different place).
    - Quote claim text exactly as given. Empty list if none are about it.
 
 2. satisfies: true iff a relevant claim says yes OR a campsite rule
@@ -75,6 +83,8 @@ caveat, not a no).
      "in the desert").
    - Limited coverage still satisfies ("electricity is available, though it
      does not reach every spot"; electric_hookup polarity true).
+   - area:north DOES satisfy "in the north". region:negev DOES satisfy
+     "desert". region:dead-sea does NOT satisfy "near the sea".
 
 Examples:
 Request "pet friendly". Claim "Pets are not allowed at the site."
@@ -116,6 +126,17 @@ not reach every spot." is_positive=true. Rule electric_hookup polarity=true.
 → {"relevant_claims": ["Electricity is available, though it does not reach every spot."],
    "satisfies": true, "satisfy_by": "both",
    "reason": "feature present; official hookup; limited coverage is a caveat"}
+
+Request "near the sea". Claim "region:dead-sea" is_positive=true.
+Claim "ארץ ים המלח" is_positive=true.
+→ {"relevant_claims": [], "satisfies": false, "satisfy_by": null,
+   "reason": "Dead Sea region is a named place, not the sea coast"}
+
+Request "near the sea". Claim "Access to the beach is accessible all
+the way to the water." is_positive=true.
+→ {"relevant_claims": ["Access to the beach is accessible all the way to the water."],
+   "satisfies": true, "satisfy_by": "claim",
+   "reason": "beach access is the sea coast"}
 
 Output JSON only:
 {"relevant_claims": [str], "satisfies": bool,
