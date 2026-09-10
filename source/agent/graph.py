@@ -37,11 +37,11 @@ from source.agent.planner import _semantic_evidence_payload, planner_fits_payloa
 from source.agent.prompts import (
     EMPTY_REPLY_FALLBACK,
     NOT_TRIP_REPLY,
-    RECOMMENDER_SYSTEM_PROMPT,
     TRIVIAL_PATTERNS,
     format_cleaning_prompt,
     format_extractor_system_prompt,
 )
+from source.agent.recommender import recommend_from_messages
 from source.agent.search import (
     _claims_embedder,
     _open_slots_sql,
@@ -107,7 +107,6 @@ class ChatState(TypedDict):
 # replies. Tools are invoked imperatively in planner_node. Binding tools made
 # Qwen return empty content + tool_calls, which surfaced as blank agent replies.
 light_model = make_agent_chat_model(temperature=0.7)
-heavy_model = make_agent_chat_model(temperature=0.7)
 # extractor_node only. planner_node is SQL + embeddings, not a chat model.
 # Named extractor_model (it used to be planner_model) so patches and traces
 # match the node. 235B: buried הקרוב was 2/5 on 30B, 5/5 here
@@ -280,16 +279,9 @@ def planner_node(state: ChatState) -> ChatState:
 
 
 def recommender_node(state: ChatState) -> ChatState:
-    """Generate final recommendation based on constraints and tool responses."""
-    system_msg = SystemMessage(content=RECOMMENDER_SYSTEM_PROMPT)
-
-    user_messages = [msg for msg in state["messages"] if isinstance(msg, HumanMessage)]
-    tool_messages = [msg for msg in state["messages"] if isinstance(msg, ChatMessage)]
-
-    recommendation = heavy_model.invoke([system_msg] + user_messages + tool_messages)
-    text = message_text(recommendation.content).strip() or EMPTY_REPLY_FALLBACK
-
-    return {"messages": [AIMessage(content=text)]}
+    """Pick 1–2 planner fits and write a cited Hebrew reply."""
+    result = recommend_from_messages(state["messages"])
+    return {"messages": [AIMessage(content=result.text)]}
 
 
 HeavyThrough = Literal["extractor", "planner", "recommender"]

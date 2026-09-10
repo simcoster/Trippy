@@ -1,4 +1,4 @@
-"""Optional wall-time buckets for extractor + planner stages.
+"""Optional wall-time buckets for extractor, planner, and recommender stages.
 
 A no-op unless `collect_stages()` is active (eval). Nested stages are
 independent: retrieve SQL is timed after the embed call returns.
@@ -20,6 +20,7 @@ STAGE_ORDER: tuple[str, ...] = (
     "retrieve",
     "rules",
     "judge",
+    "recommend",
 )
 
 

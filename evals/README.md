@@ -28,6 +28,7 @@ just run-eval -- --no-copy
 just run-eval -- --model 30B
 just run-eval -- --judge-concurrency 1
 just run-eval -- --no-judge-compact
+just run-eval -- --recommender
 uv run python -m source.eval.run --ids E01,H02
 ```
 
@@ -42,7 +43,10 @@ and `TRIPPY_TODAY=2026-09-08` from the JSON. Each case goes through
 **extractor then planner** (not the light cleaner). Writes
 `reports/evals/<timestamp>.md` plus a JSON dump. The markdown table
 has per-query seconds; **Cases** lists extractor constraints, planner
-queries, RAG claims/rules, and judge verdicts. A mixed score is still
+queries, RAG claims/rules, and judge verdicts. `--recommender` also runs
+the 235B picker after the planner and dumps 1–2 cited recs (not scored).
+`--from-json reports/evals/<stamp>.json` rebuilds the markdown (recommendation
+and cost tables) without re-running. A mixed score is still
 exit 0; only a setup or runtime error fails the recipe.
 
 Gold is campsite ids (`must_include_sites` / `must_exclude_sites`) on

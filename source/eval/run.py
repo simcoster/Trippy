@@ -6,7 +6,8 @@
     just run-eval -- --model 30B
     just run-eval -- --judge-concurrency 1
     just run-eval -- --no-judge-compact
-    uv run python -m source.eval.run --ids E01,H02
+    just run-eval -- --recommender
+    uv run python -m source.eval.run --from-json reports/evals/2026-09-10_185136.json
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from db.connect import connect, database_url
 from db.experiments import SEARCH_PATH, copy_public, table_name
 from source.agent.claim_judge import judge_compact, judge_concurrency
 from source.agent.graph import extractor_node, planner_node
+from source.agent.recommender import recommend_from_payload, recommendation_row
 from source.agent.timing import (
     STAGE_ORDER,
     collect_stages,
@@ -34,7 +36,11 @@ from source.agent.timing import (
     merge_snapshots,
 )
 from source.eval.score import score_case
-from source.scraper.amenity_enrichment.llm import collect_llm_usage
+from source.scraper.amenity_enrichment.llm import (
+    chat_usd_per_mtok,
+    collect_llm_usage,
+    embed_usd_per_mtok,
+)
 
 load_dotenv()
 
@@ -155,8 +161,74 @@ def _usage_role_cell(usage: dict | None, role: str) -> str:
     return ""
 
 
-def run_one(query: str) -> tuple[dict | None, dict | None, dict, dict]:
-    """Extractor then planner. Skips the light/cleaner node."""
+_COST_STEPS: tuple[tuple[str, str], ...] = (
+    ("extract", "extract"),
+    ("embed", "embed"),
+    ("claim_judge", "judge"),
+    ("recommend", "recommend"),
+)
+
+
+def _md_cell(value: object) -> str:
+    return " ".join(str(value or "").split()).replace("|", "\\|")
+
+
+def _bucket_cost_usd(bucket: dict) -> float:
+    raw = bucket.get("cost_usd")
+    if raw is not None:
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            pass
+    inn = int(bucket.get("input_tokens") or 0)
+    out = int(bucket.get("output_tokens") or 0)
+    model = bucket.get("model")
+    if (bucket.get("kind") or "chat") == "embed":
+        return inn * embed_usd_per_mtok(model) / 1_000_000
+    usd_in, usd_out = chat_usd_per_mtok(model)
+    return (inn * usd_in + out * usd_out) / 1_000_000
+
+
+def _role_cost_usd(usage: dict | None, role: str) -> float:
+    total = 0.0
+    for bucket in (usage or {}).get("by_role") or []:
+        if bucket.get("role") == role:
+            total += _bucket_cost_usd(bucket)
+    return total
+
+
+def _fmt_usd(value: float) -> str:
+    if value <= 0:
+        return ""
+    return f"${value:.4f}"
+
+
+def _price_cell(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if number.is_integer():
+        return f"₪{int(number)}"
+    return f"₪{number:g}"
+
+
+def _rec_pick_cell(item: dict) -> str:
+    name = item.get("campsite") or ""
+    typ = item.get("accommodation_type") or ""
+    title = " — ".join(p for p in (name, typ) if p) or str(item.get("campsite_id") or "")
+    price = _price_cell(item.get("price_per_night"))
+    if price:
+        title = f"{title} ({price})"
+    return title
+
+
+def run_one(
+    query: str, *, recommender: bool = False
+) -> tuple[dict | None, dict | None, dict | None, dict, dict]:
+    """Extractor then planner. Optional recommender. Skips the light/cleaner node."""
     with collect_stages() as clock, collect_llm_usage() as usage:
         messages = [HumanMessage(content=query)]
         extracted = extractor_node({"messages": messages})
@@ -175,12 +247,22 @@ def run_one(query: str) -> tuple[dict | None, dict | None, dict, dict]:
             if data is not None and "fits" in data:
                 planner = data
                 break
+        recommend = None
+        if recommender and planner is not None:
+            result = recommend_from_payload(query, planner)
+            recommend = {
+                "recommendations": [
+                    recommendation_row(row) for row in result.recommendations
+                ],
+                "empty": result.empty,
+                "text": result.text,
+            }
         usage_d = (
             usage.report("eval")
             if usage.chat_calls or usage.embed_calls
             else {}
         )
-        return extract, planner, clock.snapshot(), usage_d
+        return extract, planner, recommend, clock.snapshot(), usage_d
 
 
 def _summarize_planner(planner: dict | None) -> dict:
@@ -219,6 +301,8 @@ def _summarize_fit(row: dict) -> dict:
         "price_per_night": row.get("price_per_night"),
         "why": why,
     }
+    if row.get("booking_url"):
+        out["booking_url"] = row["booking_url"]
     if row.get("retrieved"):
         out["retrieved"] = row["retrieved"]
     if row.get("claim_judge"):
@@ -426,6 +510,40 @@ def _case_trace_lines(row: dict) -> list[str]:
         lines.extend(_site_trace_lines(rejected, dropped=True))
     if not fits and not rejected and not planner.get("skipped"):
         lines.append("- fits: (none)")
+    rec = row.get("recommend") or {}
+    recs = rec.get("recommendations") or []
+    if recs or rec.get("empty") or rec.get("text"):
+        lines.append("- recommendations:")
+        if rec.get("empty"):
+            lines.append(f"  - empty: {rec['empty']}")
+        for item in recs:
+            if not isinstance(item, dict):
+                continue
+            cid = item.get("campsite_id")
+            name = item.get("campsite") or ""
+            typ = item.get("accommodation_type") or ""
+            start = item.get("start") or ""
+            end = item.get("end") or ""
+            price = item.get("price_per_night")
+            bits = [str(cid)]
+            if name:
+                bits.append(str(name))
+            if typ:
+                bits.append(str(typ))
+            if start:
+                stay = str(start) if not end or end == start else f"{start}→{end}"
+                bits.append(stay)
+            if price is not None:
+                bits.append(str(price))
+            lines.append("  - " + " ".join(bits))
+            why = item.get("why")
+            if why:
+                lines.append(f"    why: {why}")
+        text = rec.get("text")
+        if text:
+            lines.append("  - reply:")
+            for line in str(text).splitlines() or [""]:
+                lines.append(f"    {line}")
     lines.append("")
     return lines
 
@@ -493,14 +611,48 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
             f"| {row['id']} | {row['difficulty']} | {mark} | {secs_s} | {date_s} | "
             f"{score.get('fit_sites')} | {fails} |"
         )
+    if any("recommend" in r for r in rows):
+        lines.extend(
+            [
+                "",
+                "## Recommendations",
+                "",
+                "| id | query | n | rec | why |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in rows:
+            rec = row.get("recommend") or {}
+            recs = [
+                item
+                for item in rec.get("recommendations") or []
+                if isinstance(item, dict)
+            ]
+            query = _md_cell(row.get("query"))
+            if recs:
+                pick = _md_cell(" · ".join(_rec_pick_cell(item) for item in recs))
+                why = _md_cell(
+                    " · ".join(
+                        str(item.get("why") or "") for item in recs if item.get("why")
+                    )
+                )
+                n_s = str(len(recs))
+            else:
+                pick = "(empty)" if rec else ""
+                why = _md_cell(rec.get("empty") or rec.get("text") or "")
+                n_s = "0" if rec else ""
+            lines.append(
+                f"| {row['id']} | {query} | {n_s} | {pick} | {why} |"
+            )
     if any(r.get("stages") for r in rows):
+        timing_cols = ["id", "s", *STAGE_ORDER]
         lines.extend(
             [
                 "",
                 "## Timing",
                 "",
-                "| id | s | extract | sql | embed | retrieve | rules | judge |",
-                "|---|---|---|---|---|---|---|---|",
+                "| " + " | ".join(timing_cols) + " |",
+                "|" + "|".join(["---"] * len(timing_cols)) + "|",
             ]
         )
         for row in rows:
@@ -512,32 +664,81 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
         total_cells = [_stage_cell(totals.get(name)) for name in STAGE_ORDER]
         lines.append(f"| **total** | {wall:.1f} | {' | '.join(total_cells)} |")
     if any(r.get("usage") for r in rows):
-        lines.extend(
-            [
-                "",
-                "## Tokens",
-                "",
-                "| id | in | out | extract | judge |",
-                "|---|---|---|---|---|",
-            ]
+        show_recommend = any(
+            _usage_role_cell(r.get("usage"), "recommend") for r in rows
         )
+        if show_recommend:
+            lines.extend(
+                [
+                    "",
+                    "## Tokens",
+                    "",
+                    "| id | in | out | extract | judge | recommend |",
+                    "|---|---|---|---|---|---|",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "",
+                    "## Tokens",
+                    "",
+                    "| id | in | out | extract | judge |",
+                    "|---|---|---|---|---|",
+                ]
+            )
         for row in rows:
             usage = row.get("usage") or {}
             inn = int(usage.get("input_tokens") or 0)
             out = int(usage.get("output_tokens") or 0)
             inn_s = "" if inn <= 0 and out <= 0 else str(inn)
             out_s = "" if inn <= 0 and out <= 0 else str(out)
-            lines.append(
+            cells = (
                 f"| {row['id']} | {inn_s} | {out_s} | "
                 f"{_usage_role_cell(usage, 'extract')} | "
-                f"{_usage_role_cell(usage, 'claim_judge')} |"
+                f"{_usage_role_cell(usage, 'claim_judge')}"
             )
+            if show_recommend:
+                cells += f" | {_usage_role_cell(usage, 'recommend')}"
+            lines.append(cells + " |")
         t_in = int(usage_totals.get("input_tokens") or 0)
         t_out = int(usage_totals.get("output_tokens") or 0)
-        lines.append(
+        total = (
             f"| **total** | {t_in} | {t_out} | "
             f"{_usage_role_cell(usage_totals, 'extract')} | "
-            f"{_usage_role_cell(usage_totals, 'claim_judge')} |"
+            f"{_usage_role_cell(usage_totals, 'claim_judge')}"
+        )
+        if show_recommend:
+            total += f" | {_usage_role_cell(usage_totals, 'recommend')}"
+        lines.append(total + " |")
+    if any(r.get("usage") for r in rows):
+        lines.extend(
+            [
+                "",
+                "## Cost",
+                "",
+                "| id | extract | embed | judge | recommend | total |",
+                "|---|---|---|---|---|---|",
+            ]
+        )
+        step_totals = {role: 0.0 for role, _label in _COST_STEPS}
+        grand = 0.0
+        for row in rows:
+            usage = row.get("usage") or {}
+            cells: list[str] = []
+            row_total = 0.0
+            for role, _label in _COST_STEPS:
+                amount = _role_cost_usd(usage, role)
+                step_totals[role] += amount
+                row_total += amount
+                cells.append(_fmt_usd(amount))
+            grand += row_total
+            lines.append(
+                f"| {row['id']} | {' | '.join(cells)} | {_fmt_usd(row_total)} |"
+            )
+        total_cells = [_fmt_usd(step_totals[role]) for role, _label in _COST_STEPS]
+        lines.append(
+            f"| **total** | {' | '.join(total_cells)} | {_fmt_usd(grand)} |"
         )
     fails = [r for r in rows if not r["score"]["ok"]]
     if fails:
@@ -586,9 +787,31 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Quoted claim text in the judge JSON (opt out of compact)",
     )
+    parser.add_argument(
+        "--recommender",
+        action="store_true",
+        help="After the planner, pick 1-2 fits and dump the Hebrew rec",
+    )
+    parser.add_argument(
+        "--from-json",
+        default="",
+        help="Rebuild markdown from a dump; do not run cases",
+    )
     args = parser.parse_args(argv)
     spec_path = Path(args.eval)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    if args.from_json:
+        dump_path = Path(args.from_json)
+        dump = json.loads(dump_path.read_text(encoding="utf-8"))
+        apply_run_env(spec)
+        md = dump_path.with_suffix(".md")
+        if args.out_dir:
+            md = Path(args.out_dir) / md.name
+        write_report(
+            md, spec, list(dump.get("cases") or []), float(dump.get("seconds") or 0)
+        )
+        print(f"report {md}", flush=True)
+        return 0
     if not args.no_copy:
         refresh_experiments_from_public()
     apply_run_env(spec)
@@ -615,6 +838,7 @@ def main(argv: list[str] | None = None) -> int:
         f"TRIPPY_JUDGE_COMPACT={int(judge_compact())}",
         flush=True,
     )
+    print(f"recommender={int(args.recommender)}", flush=True)
     _require_frozen(table)
 
     cases = list(spec.get("queries") or [])
@@ -641,7 +865,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== {cid} {case.get('difficulty')} ===", flush=True)
         print(query, flush=True)
         t0 = time.monotonic()
-        extract, planner, stages, usage = run_one(query)
+        extract, planner, recommend, stages, usage = run_one(
+            query, recommender=args.recommender
+        )
         elapsed = time.monotonic() - t0
         score = score_case(case.get("expect") or {}, extract, planner)
         mark = "PASS" if score["ok"] else "FAIL"
@@ -656,19 +882,22 @@ def main(argv: list[str] | None = None) -> int:
         usage_s = format_usage_line(usage)
         if usage_s:
             print(usage_s, flush=True)
-        rows.append(
-            {
-                "id": cid,
-                "difficulty": case.get("difficulty"),
-                "query": query,
-                "seconds": round(elapsed, 1),
-                "stages": stages,
-                "usage": usage,
-                "score": score,
-                "extract": extract,
-                "planner": _summarize_planner(planner),
-            }
-        )
+        if recommend and recommend.get("text"):
+            print(recommend["text"], flush=True)
+        row = {
+            "id": cid,
+            "difficulty": case.get("difficulty"),
+            "query": query,
+            "seconds": round(elapsed, 1),
+            "stages": stages,
+            "usage": usage,
+            "score": score,
+            "extract": extract,
+            "planner": _summarize_planner(planner),
+        }
+        if recommend is not None:
+            row["recommend"] = recommend
+        rows.append(row)
     wall = time.monotonic() - started
     dump = {
         "eval": spec.get("id"),
@@ -676,6 +905,7 @@ def main(argv: list[str] | None = None) -> int:
         "seconds": round(wall, 1),
         "pass": sum(1 for r in rows if r["score"]["ok"]),
         "n": len(rows),
+        "recommender": bool(args.recommender),
         "cases": rows,
     }
     report_json.write_text(

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, NamedTuple, TypeAlias
 
 from source.agent import search
+from source.agent.booking import attach_booking_urls
 from source.agent.constraints import (
     ROOM_LOCUS,
     party_size_from_numeric,
@@ -482,6 +483,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             fit["campsite_rules"] = rules
     # Stable, so equal scores keep the vacancy SQL's start_date / type ordering.
     fits.sort(key=lambda f: f["score"], reverse=True)
+    attach_booking_urls(fits, constraints_json)
 
     payload["fits"] = fits
     payload["rejected"] = rejected[:REJECTED_SAMPLE_LIMIT]

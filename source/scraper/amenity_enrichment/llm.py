@@ -585,8 +585,9 @@ class EmbeddingLLMClient:
             input=texts,
             dimensions=self.DIMENSIONS,
         )
-        if usage is not None:
-            usage.add_embed(resp.usage, role="embed", model=self.MODEL)
+        sink = usage if usage is not None else collected_llm_usage()
+        if sink is not None:
+            sink.add_embed(resp.usage, role="embed", model=self.MODEL)
         by_index = {item.index: item.embedding for item in resp.data}
         return [by_index[i] for i in range(len(texts))]
 

@@ -47,6 +47,7 @@ from langchain_core.outputs import LLMResult
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
+from source.agent.recommender import listen_recommend_text
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
@@ -1054,13 +1055,15 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        reply_box = st.empty()
         with st.spinner("Thinking…"):
             try:
-                reply, trace = invoke_agent(prompt, stop_after=stop_after)
+                with listen_recommend_text(reply_box.markdown):
+                    reply, trace = invoke_agent(prompt, stop_after=stop_after)
             except Exception as e:
                 reply = f"Sorry, I encountered an error: {e}"
                 trace = []
-        st.markdown(reply)
+        reply_box.markdown(reply)
         if trace:
             with st.expander("LangGraph trace", expanded=True):
                 _render_trace(trace)

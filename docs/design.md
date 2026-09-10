@@ -963,8 +963,11 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 `availability_frozen`). Then extractor then planner on every case and
 writes `reports/evals/` (per-query seconds in the table, then a
 **Cases** section with the extractor JSON, the planner RAG queries,
-retrieved claims/rules, and the judge verdict). Each case prints
-token in/out (extractor + judge) before the report is written; the
+retrieved claims/rules, and the judge verdict). `--recommender` also
+runs the 235B picker after the planner and dumps 1–2 cited recs (not
+scored). Each case prints
+token in/out (extractor + judge, plus `recommend` when that flag is
+on) before the report is written; the
 markdown has a **Tokens** table. `--model 30B` runs
 extractor+judge on the 30B; `--judge-concurrency N` overrides the
 default of 5 parallel live judge calls; `--no-judge-compact` quotes
@@ -985,4 +988,49 @@ still three listings (caravan-bay water+power, PITCH tent power, site-wide
 `caravan_bay_electric_hookup` / `caravan_bay_water_hookup` instead
 (experiments.md 2026-09-08 §1); PITCH and site-wide keep the generic
 names.
+
+## Recommender
+
+`recommender_node` (`source/agent/recommender.py`) is a 235B JSON
+picker, temperature 0 (`QWEN_INSTRUCT_MODEL`). It does not search. The
+planner payload is already the candidate list.
+
+The node does not dump raw LangGraph messages. It packs the original
+query, the extractor JSON (`constraints`), and compact `fits`: stay
+identity, `why`, `review_claims` (the judge’s relevant set, including
+nos), retrieved official rules as they are, and `claim_judge`. `score`
+and `rejected` stay out of the model input. The prompt tells it to
+cite a listing row only when that row is about the ask — retrieved
+rules are still unsifted nearest neighbors (tent-as-desert,
+stove-as-electricity). `relevant_rules` is not a judge field.
+
+Output is JSON: 1 stay, or 2 when they are distinct useful options,
+each with a `why` in one language — Hebrew only if the query is
+mostly Hebrew, English only if it is mostly English. The first
+language prompt still leaked Latin/CJK (`ゲuests`, `.pitch`,
+`בungalו`) because packed evidence is English (`text_en` claims,
+`tent_pitch` keys) and the prompt said “say guests report”
+(experiments.md 2026-09-10 §8). The prompt now says to paraphrase
+those fields and, in Hebrew, write אורחים מספרים. Picks whose
+`(campsite_id, accommodation_type, start, end)` is not in `fits` are
+dropped. Empty `fits` become an honest follow-up.
+
+After vacancies and the judge, each surviving fit gets a
+`booking_url`: `BE_Results.aspx` with `campsites.booking_hotel_id`
+(the parent’s id when the row is a subcamp), the stay dates, and
+`ad1` from extractor party size (`source/agent/booking.py`). That is
+the public search GET the availability scraper already uses — not
+the parks.org.il iframe session. The recommender is told to copy
+`booking_url` from the fit; render looks up the chosen stay and
+prints the fit’s URL, ignoring a hallucinated one. The spoken reply
+is rendered in code (day.month dates, campsite, type, price, then
+the booking URL). The 235B
+call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
+match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
+paints the rendered reply as soon as `parse_partial_json` can read a
+stay identity or `empty` — not the raw JSON. Telegram still sends one
+message when the node finishes. Usage is `role="recommend"`.
+`just run-eval -- --recommender` dumps those recs into
+`reports/evals/` without scoring them
+(experiments.md 2026-09-10 §7).
 

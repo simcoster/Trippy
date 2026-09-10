@@ -6,6 +6,50 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-10, booking URL on fits)
+
+**Each planner fit gets a `BE_Results.aspx` booking URL** (hotel id,
+dates, party size) after vacancies + judge. Subcamps inherit the
+parent `booking_hotel_id`. The recommender copies `booking_url` from
+the fit; the spoken reply prints the looked-up URL, not a
+model-invented one (`source/agent/booking.py`).
+
+### Done (2026-09-10, recommender Hebrew leaks)
+
+**Recommender still leaked Latin/CJK after the one-language prompt**
+(`ゲuests`, `.pitch`, `בungalו` on `2026-09-10_195239`). Cause:
+packed evidence is English and the prompt said “say guests report”.
+Prompt now paraphrases claims, uses `evidence_span` not subject
+keys, and writes אורחים מספרים in Hebrew (experiments.md
+2026-09-10 §8).
+
+### Done (2026-09-10, stream recommend)
+
+**Recommender streams tokens.** `recommend_from_payload` uses
+`ChatOpenAI.stream` with `stream_usage=True` (usage still matches
+invoke; experiments.md 2026-09-04 §1). Streamlit paints the spoken
+reply as JSON fields become parseable, not the raw JSON. Telegram
+still waits for the finished node.
+
+### Done (2026-09-10, recommender one language)
+
+**Recommender `why` / `empty` stay in one language:** mostly-Hebrew
+query → Hebrew only; mostly-English → English only. Prompt change after
+the first dump mixed Latin/CJK into Hebrew (experiments.md 2026-09-10
+§7).
+
+### Done (2026-09-10, recommender rewrite)
+
+**Rewrote `recommender_node` as a 235B JSON picker**
+(`source/agent/recommender.py`). Packs the original query, extractor
+JSON, and compact fits (`why`, relevant `review_claims` including nos,
+retrieved rules unsifted, `claim_judge`). Picks 1 or 2 stays, validates
+against `fits`, renders Hebrew. Judge unchanged. `just run-eval --
+--recommender` on `planner_v1` dumped recs
+(`reports/evals/2026-09-10_185136`; 15 one-rec, 11 empty, 0 two-rec;
+experiments.md 2026-09-10 §7). Supersedes the first-draft prose node
+that dumped HumanMessages + planner ChatMessages.
+
 ### Done (2026-09-10, scrape cadence on the MVP path)
 
 **Scheduled scrapes are part of cloudify** (`docs/plan-to-mvp.md` §2).

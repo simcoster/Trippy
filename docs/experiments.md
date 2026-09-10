@@ -143,6 +143,65 @@ kept `satisfies=true` on every site.
 wins decode and this case's wall; shorten the compact suffix if
 the extra prompt tokens matter.
 
+### 7. First 235B recommender dump on planner_v1
+
+**Question.** After rewriting `recommender_node` as a JSON picker
+(query + extract + compact fits, relevant claims, unsifted retrieved
+rules), what does it actually say on the 26-query set? Does it stay
+inside `fits`, pick 1–2, and cite listing vs guests?
+
+**Setup.** `just run-eval -- --recommender`. Experiments schema,
+`availability_frozen`, `TRIPPY_TODAY=2026-09-08`, compact judge ×5,
+235B. No writes to `public`. Recs are not scored. Report
+`reports/evals/2026-09-10_185136.md`.
+
+**Result.** Planner 19/26 (easy 11/14, hard 8/12) — same gold as
+before; H07 still fails caravan bays (1113 s judge). Wall 1290 s.
+Tokens in=574313 out=11162 (extract 56920/2392×26, claim_judge
+409089/5606×173, recommend 108304/3164×26). ~$0.12 total, ~$0.024
+of that on recommend.
+
+15 cases emitted one rec; 11 emitted empty; **none emitted two**.
+Empty was right when `fits` was empty (E14/H11 no dates; H10 dogs
+forbidden; named-site misses). Picks stayed inside `fits` (E04/H02
+Akhziv sea, E10 Masada couple tent, H12 south Shabbat plate, H07
+Tel Arad family tent not a bay). Caveats showed up (E04 dirty beach,
+H02 warm fridges).
+
+Failure modes for the next pass: never used the second slot (H06
+sea∨desert recommended only Akhziv); English/Chinese leaks in the
+Hebrew `why` (H12 `accommodation`/`dank`, E10 `二人`, H02
+`מקampינג`); E05 cited caravan stations as desert color; empty
+replies sometimes echo the planner's English miss (`Horashat Tal`
+on H08).
+
+**Decision.** Keep the picker. Correct from this dump: ask for 2
+when two loci or two sites fit; forbid Latin in Hebrew `why`.
+design.md "Recommender".
+
+### 8. Did “Hebrew only” stop Latin/CJK in recommender `why`?
+
+**Question.** After the one-language prompt (no Latin/Chinese, not
+`pitch` / `camping` / `Stay`), does the 235B still leak foreign
+scripts into Hebrew `why`?
+
+**Setup.** Same `--recommender` dump as production path; report
+`reports/evals/2026-09-10_195239.md` (after the language prompt).
+No new calls for this note.
+
+**Result.** Leaks in 7 of the 15 one-rec Hebrew replies. Same
+glitch forms: `ゲuests` (E02, E03, E06, E12, H03), `הospites`
+(E08, E10), `.pitch` / `.pitch tent` (E03, E12), `בungalו` (E11),
+`איןoutlets` (E12). E03 is the tent+₪80 case: `יש.pitch ל אוהלים`
+plus `ゲuests דיווחו`.
+
+**Decision.** The forbid-list was not enough. Packed input is
+English (`review_claims.claim` is `text_en`, rules `subject` is
+`tent_pitch`) and the prompt cued “say guests report”, which Qwen
+emits as `ゲuests` / `ospites`. Prompt now: paraphrase claims,
+use `evidence_span` not the subject key, Hebrew reviews as
+אורחים מספרים. design.md "Recommender".
+
 ## 2026-09-09
 
 ### 1. Can breadcrumb slugs retrieve and satisfy a north query without the claim splitter?
