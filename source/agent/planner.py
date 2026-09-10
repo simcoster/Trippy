@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, NamedTuple, TypeAlias
 
 from source.agent import search
 from source.agent.constraints import (
@@ -23,6 +24,35 @@ CLAIM_MATCH_MAX_DISTANCE = -0.6
 CLAIM_RECENCY_HALF_LIFE_DAYS = 365
 CLAIM_EVIDENCE_LIMIT = 5
 REJECTED_SAMPLE_LIMIT = 5
+
+_WhyRows: TypeAlias = list[dict[str, Any]]
+_ClaimsBySite: TypeAlias = dict[str, _WhyRows]
+_RulesByCampsite: TypeAlias = dict[int, _WhyRows]
+_RulesByQuery: TypeAlias = dict[str, _RulesByCampsite]
+
+
+class _SlotKey(NamedTuple):
+    """One vacant unit: a campsite plus an accommodation type."""
+
+    campsite_id: str
+    accommodation_type_id: int
+
+
+def _slot_key(slot: dict) -> _SlotKey:
+    return _SlotKey(
+        campsite_id=str(slot["campsite_id"]),
+        accommodation_type_id=int(slot["accommodation_type_id"]),
+    )
+
+
+@dataclass
+class _SemanticWhy:
+    """Retrieve result for vacant slots: who matched, who missed, evidence."""
+
+    why_by_slot: dict[_SlotKey, _WhyRows]
+    reject_why_by_slot: dict[_SlotKey, _WhyRows]
+    claims_by_site: _ClaimsBySite
+    rules_by_query: _RulesByQuery
 
 
 def _semantic_evidence_payload(queries: list[str], *, limit: int = 5) -> dict:
@@ -153,13 +183,8 @@ def _claim_evidence(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _semantic_why_by_slot(
     slots: list[dict],
     semantic_constraints: list,
-) -> tuple[
-    dict[tuple[str, int], list[dict[str, Any]]],
-    dict[tuple[str, int], list[dict[str, Any]]],
-    dict[str, list[dict[str, Any]]],
-    dict[str, dict[int, list[dict[str, Any]]]],
-]:
-    """AND-groups → (matched why, rejected why) per slot, plus claims and
+) -> _SemanticWhy:
+    """AND-groups → matched/rejected why per slot, plus claims and
     official rules by site.
 
     A group is satisfied for a slot when any lane hits: the unit's stated
@@ -169,25 +194,29 @@ def _semantic_why_by_slot(
     Official `campsite_rules` use the same query vector as claims so the
     judge does not embed or retrieve.
     """
-    keys = list(
-        dict.fromkeys(
-            (str(s["campsite_id"]), int(s["accommodation_type_id"])) for s in slots
-        )
-    )
+    keys = list(dict.fromkeys(_slot_key(s) for s in slots))
     type_ids = list(dict.fromkeys(int(s["accommodation_type_id"]) for s in slots))
     site_ids = list(dict.fromkeys(int(s["campsite_id"]) for s in slots))
-    claims_by_site: dict[str, list[dict[str, Any]]] = {
-        str(sid): [] for sid in site_ids
-    }
-    rules_by_query: dict[str, dict[int, list[dict[str, Any]]]] = {}
+    claims_by_site: _ClaimsBySite = {str(sid): [] for sid in site_ids}
+    rules_by_query: _RulesByQuery = {}
     if not keys:
-        return {}, {}, claims_by_site, rules_by_query
+        return _SemanticWhy(
+            why_by_slot={},
+            reject_why_by_slot={},
+            claims_by_site=claims_by_site,
+            rules_by_query=rules_by_query,
+        )
     groups = semantic_locus_groups(semantic_constraints)
     if not groups:
-        return {key: [] for key in keys}, {}, claims_by_site, rules_by_query
+        return _SemanticWhy(
+            why_by_slot={key: [] for key in keys},
+            reject_why_by_slot={},
+            claims_by_site=claims_by_site,
+            rules_by_query=rules_by_query,
+        )
 
-    why: dict[tuple[str, int], list[dict[str, Any]]] = {key: [] for key in keys}
-    missing: dict[tuple[str, int], list[dict[str, Any]]] = {key: [] for key in keys}
+    why: dict[_SlotKey, _WhyRows] = {key: [] for key in keys}
+    missing: dict[_SlotKey, _WhyRows] = {key: [] for key in keys}
     matching = set(keys)
     seen_claims: set[tuple] = set()
 
@@ -266,11 +295,15 @@ def _semantic_why_by_slot(
                         "distance": hit.get("distance"),
                     },
                 )
-        for cid, tid in keys:
+        for key in keys:
             # Official evidence first, guest reviews last.
-            hit = by_type.get(tid) or by_site.get(cid) or by_claim.get(cid)
+            hit = (
+                by_type.get(key.accommodation_type_id)
+                or by_site.get(key.campsite_id)
+                or by_claim.get(key.campsite_id)
+            )
             if hit is not None:
-                why[(cid, tid)].append({**hit, "locus": "room"} if is_room else hit)
+                why[key].append({**hit, "locus": "room"} if is_room else hit)
             else:
                 miss: dict[str, Any] = {
                     "reason": (
@@ -280,20 +313,22 @@ def _semantic_why_by_slot(
                 }
                 if is_room:
                     miss["locus"] = "room"
-                missing[(cid, tid)].append(miss)
-                matching.discard((cid, tid))
-    return (
-        {key: why[key] for key in keys if key in matching},
-        {key: missing[key] for key in keys if key not in matching},
-        claims_by_site,
-        rules_by_query,
+                missing[key].append(miss)
+                matching.discard(key)
+    return _SemanticWhy(
+        why_by_slot={key: why[key] for key in keys if key in matching},
+        reject_why_by_slot={
+            key: missing[key] for key in keys if key not in matching
+        },
+        claims_by_site=claims_by_site,
+        rules_by_query=rules_by_query,
     )
 
 
 def _rules_hits_by_site(
     query: str, vec: str, site_ids: list[int]
-) -> dict[int, list[dict[str, Any]]]:
-    by_site: dict[int, list[dict[str, Any]]] = {int(i): [] for i in site_ids}
+) -> _RulesByCampsite:
+    by_site: _RulesByCampsite = {int(i): [] for i in site_ids}
     for hit in search.search_campsite_rules(
         query,
         limit=CLAIM_EVIDENCE_LIMIT,
@@ -309,9 +344,9 @@ def _rules_hits_by_site(
 
 
 def _rules_for_fit(
-    rules_by_query: dict[str, dict[int, list[dict[str, Any]]]],
+    rules_by_query: _RulesByQuery,
     campsite_id: int,
-) -> dict[str, list[dict[str, Any]]]:
+) -> dict[str, _WhyRows]:
     return {
         query: list(by_site.get(int(campsite_id)) or [])
         for query, by_site in rules_by_query.items()
@@ -403,9 +438,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         query_records[0] if len(query_records) == 1 else query_records
     )
 
-    why_by_slot, reject_why_by_slot, claims_by_site, rules_by_query = (
-        _semantic_why_by_slot(slots, semantic)
-    )
+    found = _semantic_why_by_slot(slots, semantic)
     fits: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
@@ -425,26 +458,26 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         }
 
     for slot in slots:
-        key = (str(slot["campsite_id"]), int(slot["accommodation_type_id"]))
-        if key in why_by_slot:
-            fits.append(_slot_row(slot, why_by_slot[key]))
+        key = _slot_key(slot)
+        if key in found.why_by_slot:
+            fits.append(_slot_row(slot, found.why_by_slot[key]))
         else:
             rejected.append(
                 _slot_row(
                     slot,
-                    reject_why_by_slot.get(key)
+                    found.reject_why_by_slot.get(key)
                     or [{"reason": "semantic_mismatch"}],
                 )
             )
 
     # Claims rank the survivors and supply evidence; they never veto a fit.
     for fit in fits:
-        hits = claims_by_site.get(str(fit["campsite_id"])) or []
+        hits = found.claims_by_site.get(str(fit["campsite_id"])) or []
         fit["score"] = _claim_score(hits)
         evidence = _claim_evidence(hits)
         if evidence:
             fit["review_claims"] = evidence
-        rules = _rules_for_fit(rules_by_query, int(fit["campsite_id"]))
+        rules = _rules_for_fit(found.rules_by_query, int(fit["campsite_id"]))
         if rules:
             fit["campsite_rules"] = rules
     # Stable, so equal scores keep the vacancy SQL's start_date / type ordering.

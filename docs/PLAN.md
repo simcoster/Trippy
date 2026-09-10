@@ -6,6 +6,37 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Open (2026-09-10, H07 caravan bays)
+
+**Judge returns true on caravan parking bays for a tent stay.** Eval
+`2026-09-10_131406` (compact, ×5): 23/26; H07 still fails
+`must_exclude_types` עמדת/עמדות חניה לקרוואן פרטי (sites 1, 13, 15).
+Leave it; fix later.
+
+Cause: extractor splits `בלי קרוואן` into a second site-locus ask
+`not caravan`. Retrieve pins `electric_hookup` on the bay itself.
+The judge scores `(campsite_id, query)`, not the unit, so tent /
+`tent_pitch` rules from other types at the same site make
+`tent with electricity` true (`tent and hookup provided`). `not
+caravan` is treated as a grant, not a type filter (Tel Arad: `tent
+lodging provided`; Besor: `area:south implies not caravan`; Horshat:
+`no caravan rule needed`). Prompt already says a caravan-bay hookup
+does not satisfy electricity for a tent stay — it never fires because
+the site also has tents.
+
+### Done (2026-09-10, `_SlotKey` NamedTuple)
+
+**Vacant-unit dict keys are `_SlotKey(campsite_id, accommodation_type_id)`**,
+not `tuple[str, int]`. Rule now: TypeAlias / NamedTuple / dataclass —
+anonymous tuples including lookup keys
+(`.cursor/rules/named-records-not-tuples.mdc`).
+
+### Done (2026-09-10, `_SemanticWhy` dataclass)
+
+**`_semantic_why_by_slot` returns a named record**, not a 4-tuple of
+dicts. Rule: same-typed tuple members → dataclass
+(`.cursor/rules/named-records-not-tuples.mdc`).
+
 ### Done (2026-09-10, judge no longer retrieves)
 
 **Planner embeds the semantic query once and fetches claims, amenities,
