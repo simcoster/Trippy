@@ -87,6 +87,10 @@ class Campsite(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    # Title from en.parks.org.il/camping/, matched on scrape-sites by one
+    # 235B call. Lookup ranks the query against `name` and this column
+    # with pg_trgm.
+    english_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     # NULL on a subcamp: both of a split site's subcamps share one page. UNIQUE
     # stays — standard SQL NULLs are distinct, so children coexist under it.
     url: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)

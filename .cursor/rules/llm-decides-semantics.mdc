@@ -24,8 +24,12 @@ match = adjudicator.pick_match(term, candidates, term_context=..., candidate_con
 
 Allowed without an LLM call:
 
-- A trivial comparison: equality, `in`, or choosing between two or three fixed variants.
+- Equality of two values you already have.
 - A list we know for certain is closed and finite, such as an enumeration the code itself defines (connection types: IPv4, IPv6, Wi-Fi; `QualifierUnit`; `SubjectCategory`).
+- pg_trgm (`similarity` / `word_similarity`) for name typos, against a stored English name when scripts differ. A small LLM call when many genuine name variants are expected, not just typos.
+
+Do not add a list of string literals, a regex, or `"str" in "str2"` to
+decide meaning. Ask first (`.cursor/rules/ask-before-string-vocabularies.mdc`).
 
 Natural-language suffixes, synonyms, antonyms and "words that mean a quantity" are not closed lists.
 

@@ -1,0 +1,37 @@
+---
+description: Ask before string lists, regex, or substring membership
+alwaysApply: true
+---
+
+# No hand-built string vocabularies
+
+Do not add a list of string literals, a regex, or `"str" in "str2"` /
+`needle in haystack` to decide what text means or whether two names
+match. Those fail silent when the vocabulary is incomplete (Horshat /
+Horashat / Hurshat; Achziv with no Hebrew alias).
+
+**Last resort only, and ask first.** If a list, regex, or substring
+check still looks necessary, say so in the conversation and wait for a
+yes. Do not add it quietly.
+
+```python
+# BAD — aliases in code; ILIKE / `in` as "close enough"
+_NAMED_CAMPSITE_ALIASES = {"horshat tal": "חורשת טל", ...}
+if "achziv" in name.casefold():
+    ...
+
+# GOOD — campsites.english_name + pg_trgm (similarity / word_similarity).
+# scrape-sites fills English with one 235B call over every Hebrew name.
+# Typos (Horashat / Horshat) and a short name inside a long title are
+# ranked in SQL; there is no alias list.
+```
+
+Still fine without asking:
+
+- Equality of two values you already have (`a == b`, `key in dict`)
+- A closed enumeration the code itself defines (`SubjectCategory`,
+  `QualifierUnit`)
+- Edit distance / pg_trgm between two strings
+
+`naming.opposed()` / `ANTONYM_PAIRS` is the existing sanctioned
+exception (measured 2026-09-04; see `llm-decides-semantics.mdc`).

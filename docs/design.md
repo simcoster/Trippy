@@ -859,6 +859,22 @@ prompt and the 235B full prompt are both 30/30 (experiments.md
 2026-09-08 §2). Extractor moved to 235B: p50 4.0s → 2.4s, ~$0.00025 →
 ~$0.00050 per search (experiments.md 2026-09-08 §3).
 
+## Named campsite lookup
+
+The extractor may emit English (`Achziv`, `Horashat Tal`) or a Hebrew
+fragment (`חורשת טל`, `אכזיב`). `campsites.name` is the parks.org.il
+title. `campsites.english_name` is a title from
+`https://en.parks.org.il/camping/`. `scrape-sites` crawls those names
+and asks the **235B once** to match each Hebrew `campsites.name` to
+that closed list (subcamps append North/South). No alias table.
+
+`lookup_campsite_by_name` ranks the query with **pg_trgm** already in
+`extensions`: `GREATEST(similarity, word_similarity)` against `name`
+and `english_name`, threshold 0.4, top 5. `similarity` covers
+same-length typos (`Horashat` / `Horshat`); `word_similarity` covers a
+short query inside a long title (`אכזיב` in the southern subcamp name).
+That is character trigrams, not embeddings.
+
 ## Planner claim/rule judge
 
 The claim retrieve gate is **−0.6** (`CLAIM_MATCH_MAX_DISTANCE`), top 5

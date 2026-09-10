@@ -6,6 +6,24 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-10, English listing match)
+
+**`scrape-sites` crawls `en.parks.org.il/camping/` titles and the 235B
+matches Hebrew names to that closed list** (one call). Subcamps append
+North/South. Replaces inventing English. Yehudia has no English listing
+card, so it stays unmatched.
+
+### Done (2026-09-10, named-site pg_trgm)
+
+**Removed `_NAMED_CAMPSITE_ALIASES` and `ILIKE`.** H03 failed because
+the extractor emitted `Achziv` and lookup only aliased Horshat
+spellings to Hebrew. `campsites.english_name` is filled on
+`scrape-sites` by one 235B call. Lookup ranks `name` /
+`english_name` with pg_trgm (`similarity` + `word_similarity`). Rule:
+ask before string lists / regex / `"str" in "str2"`
+(`.cursor/rules/ask-before-string-vocabularies.mdc`). English names
+are empty until the next `just scrape-sites` (or a one-off fill).
+
 ### Open (2026-09-10, H07 caravan bays)
 
 **Judge returns true on caravan parking bays for a tent stay.** Eval
