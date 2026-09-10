@@ -7,9 +7,9 @@ from source.agent.claim_judge import (
 )
 
 
-def test_judge_compact_default_off(monkeypatch):
+def test_judge_compact_default_on(monkeypatch):
     monkeypatch.delenv("TRIPPY_JUDGE_COMPACT", raising=False)
-    assert judge_compact() is False
+    assert judge_compact() is True
 
 
 def test_judge_compact_env_on(monkeypatch):
