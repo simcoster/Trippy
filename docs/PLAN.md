@@ -6,6 +6,18 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-10, scrape cadence on the MVP path)
+
+**Scheduled scrapes are part of cloudify** (`docs/plan-to-mvp.md` §2).
+Vacancy daily, reviews+claims weekly, sites/info/place-ids about
+monthly.
+
+### Done (2026-09-10, plan-to-mvp)
+
+**Forward path is `docs/plan-to-mvp.md`.** Sequence: recommender →
+cloudify → give people to try → final fixes → Medium + LinkedIn.
+This file stays the historical log.
+
 ### Done (2026-09-10, compact judge ×5 is the default)
 
 **Live claim-judge default is compact JSON and 5 parallel calls.**
