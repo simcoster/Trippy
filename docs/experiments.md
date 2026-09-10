@@ -50,6 +50,99 @@ true. `region:negev` → desert true. `region:dead-sea` → "Dead Sea" true.
 **Decision.** Keep the principle and the Dead Sea / beach few-shots in
 the judge prompt. design.md "Planner claim/rule judge".
 
+### 3. Can one 235B call judge all (site, query) jobs for a planner case?
+
+**Question.** Eval cases with 20 judge calls: is a single batched JSON
+list as accurate as one call per (campsite, query), and how much wall
+time does it save?
+
+**Setup.** No planner rerun, no DB writes. Jobs from
+`reports/evals/2026-09-10_102209.json` retrieved payloads for E03, H02,
+H07 (20 jobs each). Same current `CLAIM_JUDGE_SYSTEM`. One-by-one
+`judge_site_request` vs one batch call (`max_tokens=8000`) that returns
+`judgements[]`. Dump `temp/judge_batch_compare.json`. 63 calls.
+
+**Result.** Satisfies agree 16/20 (E03), 20/20 (H02), 20/20 (H07). The
+four misses are all E03 `tent`: one-by-one grants `tent_pitch` polarity
+true; batch treats `tent` polarity false as no tent lodging (Yehudiya,
+Horshat, Akhziv N/S). Wall: 20.7s→13.3s, 16.7s→9.5s, 17.1s→7.6s.
+Tokens: 60 singles 119k in / 3.6k out $0.026; 3 batches 27k in / 4.5k
+out $0.008. Total $0.034.
+
+**Decision.** Do not batch in production yet. H02/H07 matched; E03 tent
+vs tent_pitch is a real quality drop. Parallel singles (`--judge-concurrency 4`)
+already cut wall without changing the verdict schema.
+
+### 4. Are batches of 5 or 10 (site, query) jobs more accurate than 20?
+
+**Question.** Same E03/H02/H07 jobs and one-by-one verdicts as §3.
+Does chunking the list to 5 or 10 recover the E03 tent/`tent_pitch`
+misses?
+
+**Setup.** No DB writes. Stored one-by-one from
+`temp/judge_batch_compare.json`. New 235B batch calls of 5 and 10.
+Dump `temp/judge_batch_chunks.json`. 18 calls, $0.021.
+
+**Result.** Agree vs one-by-one (satisfies):
+
+| size | E03 | H02 | H07 |
+| 20 (§3) | 16/20 | 20/20 | 20/20 |
+| 10 | 17/20 | 20/20 | 18/20 |
+| 5 | 17/20 | 20/20 | 19/20 |
+
+E03 still drops Horshat + Akhziv N/S `tent` (`tent` polarity false
+overrides `tent_pitch`). Yehudiya recovered vs size 20. H07 picked up
+a `no caravan` false no on Besor. Sequential chunk walls ~22–31s are
+not faster than 20 one-by-one (~17–21s) because chunks run one after
+another.
+
+**Decision.** Smaller batches do not fix the tent_pitch error. Stay on
+one-call-per-job; speed via concurrency, not list size.
+
+### 5. Does the 30B judge match 235B on the three heaviest eval cases?
+
+**Question.** Same E03/H02/H07 jobs as §3. One-by-one 30B vs stored
+235B `satisfies`. Is it as accurate, and is it faster?
+
+**Setup.** No DB writes. `TRIPPY_INSTRUCT_MODEL=30B`. 60
+`judge_site_request` calls. Dump `temp/judge_30b_compare.json`.
+
+**Result.** Satisfies agree 20/20, 20/20, 19/20. The one miss (Tel Arad
+`no caravan`) is `max_tokens=600` truncation: the 30B JSON said
+`satisfies: true` then was marked false as unparseable. Wall 19.8 / 17.0
+/ 24.8s vs 235B 20.8 / 16.7 / 17.2s — no sequential speedup (RTT).
+Cost $0.013 vs $0.026 for the 235B sixty.
+
+**Decision.** Do not switch the production judge to 30B on this probe
+alone. Accuracy is close; sequential latency is not the win. Concurrency
+on 235B still owns wall time.
+
+### 6. Does compact judge output cut tokens and wall on E02?
+
+**Question.** E02 (`camping` × 10 sites). Compact (`relevant` indices +
+4–5 word `reason`) vs quoted `relevant_claims`. Same 235B, sequential,
+`--no-copy`. Does decode drop, and does wall follow?
+
+**Setup.** `just run-eval -- --ids E02 --no-copy --model 235B` twice,
+once `--judge-compact`. Experiments schema. Reports
+`2026-09-10_121353` (compact) and `2026-09-10_121442` (quoted).
+22 chat calls.
+
+**Result.** Both PASS. Extractor identical (2185 in / 93 out).
+
+| | judge in | judge out | judge wall | cost |
+| quoted | 20186 | 824 | 20.4s×10 | $0.0045 |
+| compact | 23736 | 376 | 13.4s×10 | $0.0050 |
+
+Out ~half (82 → 38 tokens/call). In *up* ~3.5k from the compact
+suffix few-shots, so judge cost is slightly higher. Reasons are
+4–5 words (`tent pitch granted`) vs long quoted paragraphs. Both
+kept `satisfies=true` on every site.
+
+**Decision.** Keep the flag default off until a full eval. Compact
+wins decode and this case's wall; shorten the compact suffix if
+the extra prompt tokens matter.
+
 ## 2026-09-09
 
 ### 1. Can breadcrumb slugs retrieve and satisfy a north query without the claim splitter?

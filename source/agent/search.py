@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -24,6 +25,8 @@ from source.scraper.info_site.schemas import RatePeriod
 load_dotenv()
 
 _claims_embedder = ClaimsEmbeddingLLMClient()
+_query_vec_cache: dict[str, str] = {}
+_query_vec_lock = threading.Lock()
 
 # Site-wide rules for a candidate: this campsite and its parent. Sister
 # subcamps (Akhziv north vs south) do not share each other's rows.
@@ -407,9 +410,17 @@ def search_campsites(numeric_constraints):
 
 
 def _query_vec_literal(query: str) -> str:
+    key = " ".join((query or "").split())
+    with _query_vec_lock:
+        hit = _query_vec_cache.get(key)
+    if hit is not None:
+        return hit
     with stage("embed"):
         embedding = _claims_embedder.embed([query])[0]
-        return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
+        literal = "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
+    with _query_vec_lock:
+        _query_vec_cache[key] = literal
+    return literal
 
 
 def search_stated_amenities(

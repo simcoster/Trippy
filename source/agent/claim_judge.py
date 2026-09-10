@@ -10,12 +10,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
-from source.agent import search
 from source.agent.planner import CLAIM_EVIDENCE_LIMIT
 from source.agent.timing import record_stage, stage
 from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     _parse_json_payload,
+    collected_llm_usage,
     instruct_chat_model,
     make_nebius_openai_client,
 )
@@ -143,6 +143,37 @@ Output JSON only:
  "satisfy_by": "claim" | "rule" | "both" | null, "reason": str}
 """.strip()
 
+CLAIM_JUDGE_COMPACT_SUFFIX = """
+COMPACT OUTPUT. The examples above quote claim strings in relevant_claims;
+do not copy that shape. Each claim in the user JSON has i. relevant is
+those i values (ints), never the claim text. reason is 4-5 English words
+maximum.
+
+Examples:
+Request "pet friendly". Claim i=0 "Pets are not allowed at the site."
+→ {"relevant": [0], "satisfies": false, "satisfy_by": null,
+   "reason": "only forbids pets"}
+
+Request "in the desert". Claim i=0 "The tent is clean despite being in
+the desert with winds."
+→ {"relevant": [0], "satisfies": true, "satisfy_by": "claim",
+   "reason": "concessive desert aside"}
+
+Request "electricity". Claim i=0 "No electricity at the tent."
+Rule electric_hookup polarity=true.
+→ {"relevant": [0], "satisfies": true, "satisfy_by": "rule",
+   "reason": "hookup grants electricity"}
+
+Request "near the sea". Claim i=0 "region:dead-sea". Claim i=1
+"ארץ ים המלח".
+→ {"relevant": [], "satisfies": false, "satisfy_by": null,
+   "reason": "Dead Sea not coast"}
+
+Output JSON only:
+{"relevant": [int], "satisfies": bool,
+ "satisfy_by": "claim" | "rule" | "both" | null, "reason": str}
+""".strip()
+
 
 def _norm(text: str) -> str:
     return " ".join((text or "").split())
@@ -197,6 +228,64 @@ def judge_concurrency() -> int:
     return max(1, n)
 
 
+def judge_compact() -> bool:
+    raw = (os.environ.get("TRIPPY_JUDGE_COMPACT") or "").strip().casefold()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _judge_system() -> str:
+    if judge_compact():
+        return CLAIM_JUDGE_SYSTEM + "\n\n" + CLAIM_JUDGE_COMPACT_SUFFIX
+    return CLAIM_JUDGE_SYSTEM
+
+
+def _as_claim_index(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def _relevant_claim_texts(
+    parsed: dict[str, Any],
+    claim_rows: list[dict[str, Any]],
+    *,
+    compact: bool,
+) -> list[str]:
+    """Map a judge payload to claim strings. Compact uses indices into claim_rows."""
+    if not compact:
+        rel = parsed.get("relevant_claims") or []
+        if not isinstance(rel, list):
+            return []
+        return [str(x) for x in rel]
+    raw = parsed.get("relevant")
+    if raw is None:
+        raw = parsed.get("relevant_claims") or []
+    if not isinstance(raw, list):
+        return []
+    texts: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        idx = _as_claim_index(item)
+        if idx is not None:
+            if 0 <= idx < len(claim_rows):
+                text = str(claim_rows[idx].get("claim") or "")
+                key = _norm(text)
+                if text and key not in seen:
+                    seen.add(key)
+                    texts.append(text)
+            continue
+        if isinstance(item, str) and item.strip():
+            key = _norm(item)
+            if key not in seen:
+                seen.add(key)
+                texts.append(item)
+    return texts
+
+
 def judge_site_request(
     *,
     query: str,
@@ -215,19 +304,32 @@ def judge_site_request(
             "satisfy_by": None,
             "reason": "no claims or rules",
         }
+    compact = judge_compact()
+    claim_rows = [
+        {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
+        for c in claims
+    ]
+    if compact:
+        claim_rows = [row for row in claim_rows if row.get("claim")]
+        payload_claims = [{"i": i, **row} for i, row in enumerate(claim_rows)]
+        note = (
+            "Most claims and rules are probably not about the request. "
+            "Always use both lists. satisfies is true if any source "
+            "grants; nos belong in relevant (their i values) and do not veto."
+        )
+    else:
+        payload_claims = claim_rows
+        note = (
+            "Most claims and rules are probably not about the request. "
+            "Always use both lists. satisfies is true if any source "
+            "grants; nos belong in relevant_claims and do not veto."
+        )
     user = json.dumps(
         {
             "request": query,
             "campsite": campsite,
-            "note": (
-                "Most claims and rules are probably not about the request. "
-                "Always use both lists. satisfies is true if any source "
-                "grants; nos belong in relevant_claims and do not veto."
-            ),
-            "claims": [
-                {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
-                for c in claims
-            ],
+            "note": note,
+            "claims": payload_claims,
             "campsite_rules": [
                 {
                     "subject": r.get("subject"),
@@ -244,26 +346,25 @@ def judge_site_request(
     )
     model = instruct_chat_model()
     api = client or make_nebius_openai_client()
+    messages = [
+        {"role": "system", "content": _judge_system()},
+        {"role": "user", "content": user},
+    ]
+    max_tokens = 200 if compact else 600
     if time_stage:
         with stage("judge"):
             response = api.chat.completions.create(
                 model=model,
                 temperature=0,
-                max_tokens=600,
-                messages=[
-                    {"role": "system", "content": CLAIM_JUDGE_SYSTEM},
-                    {"role": "user", "content": user},
-                ],
+                max_tokens=max_tokens,
+                messages=messages,
             )
     else:
         response = api.chat.completions.create(
             model=model,
             temperature=0,
-            max_tokens=600,
-            messages=[
-                {"role": "system", "content": CLAIM_JUDGE_SYSTEM},
-                {"role": "user", "content": user},
-            ],
+            max_tokens=max_tokens,
+            messages=messages,
         )
     if usage is not None:
         with _USAGE_LOCK:
@@ -279,11 +380,10 @@ def judge_site_request(
             "satisfy_by": None,
             "reason": f"unparseable: {raw[:200]}",
         }
-    rel = parsed.get("relevant_claims") or []
-    if not isinstance(rel, list):
-        rel = []
     return {
-        "relevant_claims": [str(x) for x in rel],
+        "relevant_claims": _relevant_claim_texts(
+            parsed, claim_rows, compact=compact
+        ),
         "satisfies": bool(parsed.get("satisfies")),
         "satisfy_by": parsed.get("satisfy_by"),
         "reason": str(parsed.get("reason") or ""),
@@ -294,20 +394,35 @@ def judge_site_request(
 _LIVE_JUDGE = judge_site_request
 
 
+def _queries_for_fit(fit: dict[str, Any]) -> list[str]:
+    why = list(fit.get("why") or [])
+    claims = list(fit.get("review_claims") or [])
+    return list(
+        dict.fromkeys(
+            q
+            for q in [_why_query(w) for w in why]
+            + [c.get("query") for c in claims]
+            if isinstance(q, str) and q
+        )
+    )
+
+
+def _rules_from_fit(fit: dict[str, Any], query: str) -> list[dict[str, Any]]:
+    raw = fit.get("campsite_rules")
+    if isinstance(raw, dict):
+        return list(raw.get(query) or [])
+    if isinstance(raw, list):
+        return list(raw)
+    return []
+
+
 def _rules_by_site(
     query: str,
     campsite_ids: list[int],
     *,
-    search_rules: Callable[..., list[dict[str, Any]]] | None = None,
+    search_rules: Callable[..., list[dict[str, Any]]],
 ) -> dict[int, list[dict[str, Any]]]:
-    fetch = search_rules or search.search_campsite_rules
-    kwargs: dict[str, Any] = {
-        "limit": CLAIM_EVIDENCE_LIMIT,
-        "campsite_ids": campsite_ids,
-    }
-    if search_rules is None:
-        kwargs["embedding"] = search._query_vec_literal(query)
-    hits = fetch(query, **kwargs)
+    hits = search_rules(query, limit=CLAIM_EVIDENCE_LIMIT, campsite_ids=campsite_ids)
     by_site: dict[int, list[dict[str, Any]]] = {int(i): [] for i in campsite_ids}
     for hit in hits:
         if hit.get("error"):
@@ -371,11 +486,12 @@ def apply_claim_rule_judgements(
 ) -> dict[str, Any]:
     """Filter fits the judge says do not satisfy; keep relevant claims as evidence.
 
-    Retrieve always supplies claims and official rules; the judge sees both.
-    Listing hits at amenity −0.7 are recall (tent-as-desert, stove-as-
-    electricity). The judge sifts those too, not only claim-only why
-    (experiments.md 2026-09-07 §8). Nos in relevant_claims stay on the
-    survivor for the recommender; they do not veto a granting rule or claim.
+    Claims and official rules are already on the fit (planner retrieve).
+    The judge does not embed or search. Listing hits at amenity −0.7 are
+    recall (tent-as-desert, stove-as-electricity). The judge sifts those
+    too, not only claim-only why (experiments.md 2026-09-07 §8). Nos in
+    relevant_claims stay on the survivor for the recommender; they do not
+    veto a granting rule or claim.
     """
     fits = list(payload.get("fits") or [])
     if not fits:
@@ -388,23 +504,20 @@ def apply_claim_rule_judgements(
     kept: list[dict[str, Any]] = []
     extra_rejected: list[dict[str, Any]] = []
 
-    for fit in fits:
-        cid = int(fit["campsite_id"])
-        why = list(fit.get("why") or [])
-        claims = list(fit.get("review_claims") or [])
-        queries = list(
-            dict.fromkeys(
-                q
-                for q in [_why_query(w) for w in why]
-                + [c.get("query") for c in claims]
-                if isinstance(q, str) and q
-            )
-        )
-        for query in queries:
+    def _rules_for_query(fit: dict[str, Any], query: str, cid: int) -> list[dict[str, Any]]:
+        if search_rules is not None:
             if query not in rules_cache:
                 rules_cache[query] = _rules_by_site(
                     query, site_ids, search_rules=search_rules
                 )
+            return rules_cache[query].get(cid) or []
+        return _rules_from_fit(fit, query)
+
+    for fit in fits:
+        cid = int(fit["campsite_id"])
+        claims = list(fit.get("review_claims") or [])
+        queries = _queries_for_fit(fit)
+        for query in queries:
             key = (cid, query)
             if key in pending:
                 continue
@@ -413,7 +526,7 @@ def apply_claim_rule_judgements(
                 "query": query,
                 "campsite": str(fit.get("campsite") or ""),
                 "claims": q_claims,
-                "rules": rules_cache[query].get(cid) or [],
+                "rules": _rules_for_query(fit, query, cid),
             }
 
     cache = _run_judge_jobs(
@@ -424,14 +537,7 @@ def apply_claim_rule_judgements(
         cid = int(fit["campsite_id"])
         why = list(fit.get("why") or [])
         claims = list(fit.get("review_claims") or [])
-        queries = list(
-            dict.fromkeys(
-                q
-                for q in [_why_query(w) for w in why]
-                + [c.get("query") for c in claims]
-                if isinstance(q, str) and q
-            )
-        )
+        queries = _queries_for_fit(fit)
         if not queries:
             kept.append(fit)
             continue
@@ -443,7 +549,7 @@ def apply_claim_rule_judgements(
         for query in queries:
             key = (cid, query)
             q_claims = [c for c in claims if c.get("query") == query] or claims
-            q_rules = (rules_cache.get(query) or {}).get(cid) or []
+            q_rules = _rules_for_query(fit, query, cid)
             retrieved.append(
                 {
                     "query": query,
@@ -492,4 +598,7 @@ def apply_claim_rule_judgements(
             usage.chat_calls,
             usage.cost_usd,
         )
+    sink = collected_llm_usage()
+    if sink is not None:
+        sink.merge(usage)
     return payload

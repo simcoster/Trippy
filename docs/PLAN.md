@@ -6,6 +6,52 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-10, judge no longer retrieves)
+
+**Planner embeds the semantic query once and fetches claims, amenities,
+and official rules with that vector.** The judge only scores the
+payload (`campsite_rules` + `review_claims` + the query). Duplicate
+query strings reuse the cached vector.
+
+### Done (2026-09-10, E02 compact vs quoted tokens)
+
+**E02 235B sequential: compact judge out 376 vs quoted 824** (10
+calls). Judge wall 13.4s vs 20.4s. Prompt *up* ~3.5k from the
+compact suffix. Both PASS. experiments.md 2026-09-10 §6.
+
+### Done (2026-09-10, eval token counts)
+
+**Eval prints token in/out after each case and on the report.** Extractor
+and claim-judge usage land on one `LlmUsage` sink. Markdown gets a
+Tokens table (in / out / extract / judge).
+
+### Done (2026-09-10, compact judge output flag)
+
+**`TRIPPY_JUDGE_COMPACT` / `--judge-compact`, default off.** Compact
+asks the judge for claim indices (`relevant`) and a 4–5 word
+`reason` instead of quoting claim text. The planner keeps the
+retrieved claims in memory and maps those indices back before the
+recommender. Production still quotes.
+
+### Done (2026-09-10, 30B judge on E03/H02/H07)
+
+**30B one-by-one vs stored 235B: 59/60 satisfies.** The miss is a
+truncated JSON, not a semantic flip. Sequential wall ~same as 235B
+(~1s/call). $0.013 vs $0.026. experiments.md 2026-09-10 §5.
+
+### Done (2026-09-10, judge batch size 5 and 10)
+
+**Chunks of 5 or 10 vs one-by-one: 17/20, 20/20, 19/20 (size 5) and
+17/20, 20/20, 18/20 (size 10).** E03 tent/`tent_pitch` still misses.
+Not wired in. experiments.md 2026-09-10 §4.
+
+### Done (2026-09-10, batched judge probe)
+
+**One 235B call for all (site, query) jobs vs one-by-one.** E03/H02/H07
+(20 jobs each). Satisfies 16/20, 20/20, 20/20. Batch faster; E03 tent
+missed tent_pitch. Not wired into the planner.
+experiments.md 2026-09-10 §3.
+
 ### Done (2026-09-10, judge prompt: region is not the sea)
 
 **Breadcrumb `area:*`/`region:*` satisfy that region by name, not

@@ -157,13 +157,17 @@ def _semantic_why_by_slot(
     dict[tuple[str, int], list[dict[str, Any]]],
     dict[tuple[str, int], list[dict[str, Any]]],
     dict[str, list[dict[str, Any]]],
+    dict[str, dict[int, list[dict[str, Any]]]],
 ]:
-    """AND-groups → (matched why, rejected why) per slot, plus claims by site.
+    """AND-groups → (matched why, rejected why) per slot, plus claims and
+    official rules by site.
 
     A group is satisfied for a slot when any lane hits: the unit's stated
     amenities, the campsite's site-wide amenities (site locus only), or a
     positive review claim about that campsite. For a site-locus ask the
     claim and site-amenity lanes always both retrieve; satisfaction is OR.
+    Official `campsite_rules` use the same query vector as claims so the
+    judge does not embed or retrieve.
     """
     keys = list(
         dict.fromkeys(
@@ -175,11 +179,12 @@ def _semantic_why_by_slot(
     claims_by_site: dict[str, list[dict[str, Any]]] = {
         str(sid): [] for sid in site_ids
     }
+    rules_by_query: dict[str, dict[int, list[dict[str, Any]]]] = {}
     if not keys:
-        return {}, {}, claims_by_site
+        return {}, {}, claims_by_site, rules_by_query
     groups = semantic_locus_groups(semantic_constraints)
     if not groups:
-        return {key: [] for key in keys}, {}, claims_by_site
+        return {key: [] for key in keys}, {}, claims_by_site, rules_by_query
 
     why: dict[tuple[str, int], list[dict[str, Any]]] = {key: [] for key in keys}
     missing: dict[tuple[str, int], list[dict[str, Any]]] = {key: [] for key in keys}
@@ -193,6 +198,10 @@ def _semantic_why_by_slot(
         by_claim: dict[str, dict[str, Any]] = {}
         for query in group["queries"]:
             vec = search._query_vec_literal(query)
+            if query not in rules_by_query:
+                rules_by_query[query] = _rules_hits_by_site(
+                    query, vec, site_ids
+                )
             for hit in search.search_stated_amenities(
                 query,
                 limit=max(len(type_ids), 1),
@@ -277,7 +286,36 @@ def _semantic_why_by_slot(
         {key: why[key] for key in keys if key in matching},
         {key: missing[key] for key in keys if key not in matching},
         claims_by_site,
+        rules_by_query,
     )
+
+
+def _rules_hits_by_site(
+    query: str, vec: str, site_ids: list[int]
+) -> dict[int, list[dict[str, Any]]]:
+    by_site: dict[int, list[dict[str, Any]]] = {int(i): [] for i in site_ids}
+    for hit in search.search_campsite_rules(
+        query,
+        limit=CLAIM_EVIDENCE_LIMIT,
+        embedding=vec,
+        campsite_ids=site_ids,
+    ):
+        if hit.get("error"):
+            continue
+        cid = int(hit["campsite_id"])
+        if cid in by_site:
+            by_site[cid].append(hit)
+    return by_site
+
+
+def _rules_for_fit(
+    rules_by_query: dict[str, dict[int, list[dict[str, Any]]]],
+    campsite_id: int,
+) -> dict[str, list[dict[str, Any]]]:
+    return {
+        query: list(by_site.get(int(campsite_id)) or [])
+        for query, by_site in rules_by_query.items()
+    }
 
 
 def _named_site_ids(name: str) -> tuple[list[int], dict[str, Any] | None]:
@@ -365,8 +403,8 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         query_records[0] if len(query_records) == 1 else query_records
     )
 
-    why_by_slot, reject_why_by_slot, claims_by_site = _semantic_why_by_slot(
-        slots, semantic
+    why_by_slot, reject_why_by_slot, claims_by_site, rules_by_query = (
+        _semantic_why_by_slot(slots, semantic)
     )
     fits: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
@@ -406,6 +444,9 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         evidence = _claim_evidence(hits)
         if evidence:
             fit["review_claims"] = evidence
+        rules = _rules_for_fit(rules_by_query, int(fit["campsite_id"]))
+        if rules:
+            fit["campsite_rules"] = rules
     # Stable, so equal scores keep the vacancy SQL's start_date / type ordering.
     fits.sort(key=lambda f: f["score"], reverse=True)
 

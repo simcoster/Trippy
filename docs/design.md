@@ -866,13 +866,24 @@ hits per site. That is recall: campfires match `"desert"`, “pets not
 allowed” matches `"pet friendly"`. Precision is a 235B call per
 (query, campsite) in `planner_node` (`source/agent/claim_judge.py`).
 
-The judge sees the top-5 claims **and** the nearest official
-`campsite_rules` (all categories, including polarity false). One JSON
-object returns both decisions (experiments.md 2026-09-07 §5, 35/35; a
-split into two calls was not needed):
+The planner retrieve (one query embedding) loads the top-5 claims
+**and** the nearest official `campsite_rules` (all categories,
+including polarity false) onto each fit. The 235B judge in
+`planner_node` (`source/agent/claim_judge.py`) only scores that
+payload — it does not embed or search. One JSON object returns both
+decisions (experiments.md 2026-09-07 §5, 35/35; a split into two
+calls was not needed):
 
 - `relevant_claims` — every claim actually about the request, including
   forbiddens. Those are the only review claims the recommender sees.
+  Default: the model quotes the claim text. `TRIPPY_JUDGE_COMPACT=1`
+  (`--judge-compact` on eval; default off) asks for `relevant` as
+  0-based indices into the in-memory claims plus a 4–5 word `reason`.
+  The planner maps those indices back to the stored claim rows before
+  the recommender sees them. On E02, compact cut judge completion
+  tokens 824→376 and judge wall 20.4s→13.4s; prompt grew ~3.5k from
+  the compact suffix (experiments.md 2026-09-10 §6). Default stays
+  quoted until a full eval.
 - `satisfies` — true iff a relevant claim says yes **or** a granting
   rule exists. A no does not veto: fridge complaints do not drop
   `refrigerator` true; "no electricity at the tent" does not drop
@@ -934,9 +945,13 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 `availability_frozen`). Then extractor then planner on every case and
 writes `reports/evals/` (per-query seconds in the table, then a
 **Cases** section with the extractor JSON, the planner RAG queries,
-retrieved claims/rules, and the judge verdict). `--model 30B` runs
+retrieved claims/rules, and the judge verdict). Each case prints
+token in/out (extractor + judge) before the report is written; the
+markdown has a **Tokens** table. `--model 30B` runs
 extractor+judge on the 30B; `--judge-concurrency 4` runs live judge
-calls four at a time. `--no-copy` skips the refresh. Case FAIL rows are scored in the report; the process still
+calls four at a time; `--judge-compact` omits quoted claim text in
+the judge JSON (indices + a 4–5 word reason). `--no-copy` skips the
+refresh. Case FAIL rows are scored in the report; the process still
 exits 0 unless a setup or runtime error stops the run.
 Gold is mostly campsite ids (`must_include_sites` /
 `must_exclude_sites`); a few cases also substring-match fit

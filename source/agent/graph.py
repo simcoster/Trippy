@@ -62,7 +62,9 @@ from source.agent.search import (
 from source.agent.timing import stage
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_MODEL,
+    collected_llm_usage,
     instruct_chat_model,
+    langchain_chat_usage,
     make_agent_chat_model,
 )
 
@@ -198,6 +200,10 @@ def extractor_node(state: ChatState) -> ChatState:
 
     with stage("extract"):
         response = _extractor_chat().invoke([system_msg] + state["messages"])
+    sink = collected_llm_usage()
+    raw_usage = langchain_chat_usage(response)
+    if sink is not None and raw_usage is not None:
+        sink.add_chat(raw_usage, role="extract", model=instruct_chat_model())
     raw = message_text(response.content)
     tool_calls = getattr(response, "tool_calls", None) or []
     user_text = latest_user_text(state["messages"])

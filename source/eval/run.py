@@ -5,6 +5,7 @@
     just run-eval -- --no-copy
     just run-eval -- --model 30B
     just run-eval -- --judge-concurrency 4
+    just run-eval -- --judge-compact
     uv run python -m source.eval.run --ids E01,H02
 """
 
@@ -32,6 +33,7 @@ from source.agent.timing import (
     merge_snapshots,
 )
 from source.eval.score import score_case
+from source.scraper.amenity_enrichment.llm import collect_llm_usage
 
 load_dotenv()
 
@@ -94,9 +96,67 @@ def _require_frozen(table: str) -> None:
     print(f"{rel}: {n} row(s)", flush=True)
 
 
-def run_one(query: str) -> tuple[dict | None, dict | None, dict]:
+def format_usage_line(usage: dict | None) -> str:
+    if not usage:
+        return ""
+    inn = int(usage.get("input_tokens") or 0)
+    out = int(usage.get("output_tokens") or 0)
+    if inn <= 0 and out <= 0:
+        return ""
+    bits = [f"tokens in={inn} out={out}"]
+    for bucket in usage.get("by_role") or []:
+        role = str(bucket.get("role") or "")
+        bi = int(bucket.get("input_tokens") or 0)
+        bo = int(bucket.get("output_tokens") or 0)
+        n = int(bucket.get("calls") or 0)
+        if n > 1:
+            bits.append(f"{role} in={bi} out={bo}×{n}")
+        elif n > 0 or bi or bo:
+            bits.append(f"{role} in={bi} out={bo}")
+    return " ".join(bits)
+
+
+def _usage_totals(rows: list[dict]) -> dict:
+    inn = 0
+    out = 0
+    roles: dict[str, dict[str, int]] = {}
+    for row in rows:
+        usage = row.get("usage") or {}
+        inn += int(usage.get("input_tokens") or 0)
+        out += int(usage.get("output_tokens") or 0)
+        for bucket in usage.get("by_role") or []:
+            role = str(bucket.get("role") or "")
+            slot = roles.setdefault(
+                role, {"input_tokens": 0, "output_tokens": 0, "calls": 0}
+            )
+            slot["input_tokens"] += int(bucket.get("input_tokens") or 0)
+            slot["output_tokens"] += int(bucket.get("output_tokens") or 0)
+            slot["calls"] += int(bucket.get("calls") or 0)
+    return {
+        "input_tokens": inn,
+        "output_tokens": out,
+        "by_role": [{"role": role, **slot} for role, slot in roles.items()],
+    }
+
+
+def _usage_role_cell(usage: dict | None, role: str) -> str:
+    for bucket in (usage or {}).get("by_role") or []:
+        if bucket.get("role") != role:
+            continue
+        inn = int(bucket.get("input_tokens") or 0)
+        out = int(bucket.get("output_tokens") or 0)
+        n = int(bucket.get("calls") or 0)
+        if inn <= 0 and out <= 0:
+            return ""
+        if n > 1:
+            return f"{inn}/{out}×{n}"
+        return f"{inn}/{out}"
+    return ""
+
+
+def run_one(query: str) -> tuple[dict | None, dict | None, dict, dict]:
     """Extractor then planner. Skips the light/cleaner node."""
-    with collect_stages() as clock:
+    with collect_stages() as clock, collect_llm_usage() as usage:
         messages = [HumanMessage(content=query)]
         extracted = extractor_node({"messages": messages})
         extract_msgs = extracted.get("messages") or []
@@ -114,7 +174,12 @@ def run_one(query: str) -> tuple[dict | None, dict | None, dict]:
             if data is not None and "fits" in data:
                 planner = data
                 break
-        return extract, planner, clock.snapshot()
+        usage_d = (
+            usage.report("eval")
+            if usage.chat_calls or usage.embed_calls
+            else {}
+        )
+        return extract, planner, clock.snapshot(), usage_d
 
 
 def _summarize_planner(planner: dict | None) -> dict:
@@ -342,6 +407,9 @@ def _case_trace_lines(row: dict) -> list[str]:
         for item in fails:
             lines.append(f"- fail: {item}")
     lines.extend(_extract_lines(row.get("extract")))
+    usage_s = format_usage_line(row.get("usage"))
+    if usage_s:
+        lines.append(f"- {usage_s}")
     queries = _planner_queries(row)
     lines.append(
         "- planner queries: " + (", ".join(queries) if queries else "(none)")
@@ -391,13 +459,19 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
         f"- pass: **{passed}/{len(rows)}** (easy {easy_p}/{easy_n}, hard {hard_p}/{hard_n})",
         f"- env: `TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}` "
         f"`TRIPPY_AVAILABILITY_TABLE={os.environ.get('TRIPPY_AVAILABILITY_TABLE')}` "
-        f"`TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}`",
+        f"`TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}` "
+        f"`TRIPPY_JUDGE_COMPACT={os.environ.get('TRIPPY_JUDGE_COMPACT') or '0'}`",
         "",
     ]
     totals = merge_snapshots([r.get("stages") or {} for r in rows])
     totals_s = format_stages(totals)
     if totals_s:
         lines.append(f"- stages: {totals_s}")
+    usage_totals = _usage_totals(rows)
+    usage_s = format_usage_line(usage_totals)
+    if usage_s:
+        lines.append(f"- {usage_s}")
+    if totals_s or usage_s:
         lines.append("")
     lines.extend(
         [
@@ -435,6 +509,34 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
             lines.append(f"| {row['id']} | {secs_s} | {' | '.join(cells)} |")
         total_cells = [_stage_cell(totals.get(name)) for name in STAGE_ORDER]
         lines.append(f"| **total** | {wall:.1f} | {' | '.join(total_cells)} |")
+    if any(r.get("usage") for r in rows):
+        lines.extend(
+            [
+                "",
+                "## Tokens",
+                "",
+                "| id | in | out | extract | judge |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in rows:
+            usage = row.get("usage") or {}
+            inn = int(usage.get("input_tokens") or 0)
+            out = int(usage.get("output_tokens") or 0)
+            inn_s = "" if inn <= 0 and out <= 0 else str(inn)
+            out_s = "" if inn <= 0 and out <= 0 else str(out)
+            lines.append(
+                f"| {row['id']} | {inn_s} | {out_s} | "
+                f"{_usage_role_cell(usage, 'extract')} | "
+                f"{_usage_role_cell(usage, 'claim_judge')} |"
+            )
+        t_in = int(usage_totals.get("input_tokens") or 0)
+        t_out = int(usage_totals.get("output_tokens") or 0)
+        lines.append(
+            f"| **total** | {t_in} | {t_out} | "
+            f"{_usage_role_cell(usage_totals, 'extract')} | "
+            f"{_usage_role_cell(usage_totals, 'claim_judge')} |"
+        )
     fails = [r for r in rows if not r["score"]["ok"]]
     if fails:
         lines.extend(["", "## Failures", ""])
@@ -472,6 +574,11 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="Parallel claim-judge calls (default 1)",
     )
+    parser.add_argument(
+        "--judge-compact",
+        action="store_true",
+        help="Judge returns claim indices and a 4-5 word reason (default off)",
+    )
     args = parser.parse_args(argv)
     spec_path = Path(args.eval)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
@@ -482,6 +589,8 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["TRIPPY_INSTRUCT_MODEL"] = args.model
     if args.judge_concurrency:
         os.environ["TRIPPY_JUDGE_CONCURRENCY"] = str(args.judge_concurrency)
+    if args.judge_compact:
+        os.environ["TRIPPY_JUDGE_COMPACT"] = "1"
     table = os.environ.get("TRIPPY_AVAILABILITY_TABLE") or "availability"
     print(f"TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}", flush=True)
     print(f"TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}", flush=True)
@@ -491,6 +600,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(
         f"TRIPPY_JUDGE_CONCURRENCY={os.environ.get('TRIPPY_JUDGE_CONCURRENCY') or '1'}",
+        flush=True,
+    )
+    print(
+        f"TRIPPY_JUDGE_COMPACT={os.environ.get('TRIPPY_JUDGE_COMPACT') or '0'}",
         flush=True,
     )
     _require_frozen(table)
@@ -519,7 +632,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== {cid} {case.get('difficulty')} ===", flush=True)
         print(query, flush=True)
         t0 = time.monotonic()
-        extract, planner, stages = run_one(query)
+        extract, planner, stages, usage = run_one(query)
         elapsed = time.monotonic() - t0
         score = score_case(case.get("expect") or {}, extract, planner)
         mark = "PASS" if score["ok"] else "FAIL"
@@ -531,6 +644,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         if stages_s:
             print(stages_s, flush=True)
+        usage_s = format_usage_line(usage)
+        if usage_s:
+            print(usage_s, flush=True)
         rows.append(
             {
                 "id": cid,
@@ -538,6 +654,7 @@ def main(argv: list[str] | None = None) -> int:
                 "query": query,
                 "seconds": round(elapsed, 1),
                 "stages": stages,
+                "usage": usage,
                 "score": score,
                 "extract": extract,
                 "planner": _summarize_planner(planner),
@@ -559,6 +676,9 @@ def main(argv: list[str] | None = None) -> int:
     write_report(report_md, spec, rows, wall)
     passed = dump["pass"]
     print(f"\n{passed}/{len(rows)} pass in {wall:.1f}s", flush=True)
+    totals_usage_s = format_usage_line(_usage_totals(rows))
+    if totals_usage_s:
+        print(totals_usage_s, flush=True)
     print(f"report {report_md}", flush=True)
     print(f"dump   {report_json}", flush=True)
     return 0
