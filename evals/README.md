@@ -44,7 +44,7 @@ and `TRIPPY_TODAY=2026-09-08` from the JSON. Each case goes through
 `reports/evals/<timestamp>.md` plus a JSON dump. The markdown table
 has per-query seconds; **Cases** lists extractor constraints, planner
 queries, RAG claims/rules, and judge verdicts. `--recommender` also runs
-the 235B picker after the planner and dumps 1–2 cited recs (not scored).
+the Super picker after the planner and dumps 1–2 cited recs (not scored).
 `--from-json reports/evals/<stamp>.json` rebuilds the markdown (recommendation
 and cost tables) without re-running. A mixed score is still
 exit 0; only a setup or runtime error fails the recipe.

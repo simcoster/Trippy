@@ -234,6 +234,62 @@ Be'erot (17). H03/H06/H07 still fail. H12 now unexpected Akhziv
 Flags: `TRIPPY_JUDGE_BATCH` / `--judge-batch`,
 `TRIPPY_JUDGE_MODEL=glm`. design.md "Planner claim/rule judge".
 
+### 9. Nemotron Lightning / Super as the recommender?
+
+**Question.** Can NVIDIA Nemotron 3.5 Lightning or Nemotron 3
+Super 120B-A12B replace Qwen 235B on the Hebrew `why`, on the
+five longest recs from eval `2026-09-11_154623`?
+
+**Setup.** Planner once per case (235B extract+judge, frozen
+occupancy, `experiments`, no `public` writes). Same packed fits
+then recommended by 235B, `nvidia/Nemotron-3_5-Lightning`
+($0.06/$0.24), and `nvidia/nemotron-3-super-120b-a12b`
+($0.30/$0.90). Thinking off (`/no_think` +
+`chat_template_kwargs.enable_thinking=false`; Super rejects
+`reasoning_effort=none`). Cases E03, E04, E06, E12, H03 (longest
+recommend completions that actually picked a stay: 304 / 248 /
+253 / 249 / 229 out). Dump
+`temp/recommender_nemotron_2026-09-11_202946.json`. 15 recommend
+calls + planner. 86 s recommend+planner wall.
+
+**Result.** Same first stay as live 235B on E03/E04/E06. E12
+Lightning+Super picked Yehudiya, 235B kept Mamshit. H03 Super
+and Lightning picked `חושה`; 235B picked `חושה עם מזגן…`.
+
+| | 235B | Lightning | Super |
+|---|---|---|---|
+| recommend s | 19.8 | **8.8** | 17.0 |
+| recommend $ | 0.009 | **0.003** | 0.015 |
+| Hebrew why | yes, `pitch`/`outlets` leaks | **English on 5/5** | yes, **0 leaks** |
+| n=1 | 5/5 | 1/5 (else n=2) | 5/5 |
+
+Lightning quotes subject keys (`mini_refrigerator`, tent pitch)
+and ignores the one-language rule. Super’s Hebrew is cleaner
+than 235B (E03 `שקע חשמל` not `איןoutlets`) but E06 invents
+`טוקול` and H03 leads with fridge complaints.
+
+**Decision.** Do not switch. Lightning cannot write Hebrew.
+Super is the interesting Hebrew candidate, not cheaper, not a
+clear quality win on five cases. Stay 235B. design.md
+"Recommender".
+
+### 10. Ship Super as the recommender anyway?
+
+**Question.** §9 left Super as the Hebrew candidate: 0 Latin
+leaks vs 235B `pitch`/`outlets`, same first stay on 3/5, not
+faster (16.9s vs 19.8s), 1.5× $. Ship it?
+
+**Setup.** No new calls. Same dump
+`temp/recommender_nemotron_2026-09-11_202946.json`.
+
+**Result.** The leak-free Hebrew is the product reason. Cost
+and wall are not. Lightning stays out.
+
+**Decision.** Recommender → Nemotron Super 120B-A12B, thinking
+off (`/no_think` + `chat_template_kwargs.enable_thinking=false`).
+Extractor, light, and judge stay 235B. `TRIPPY_RECOMMENDER_MODEL=235B`
+opts back. design.md "Recommender".
+
 ## 2026-09-10
 
 ### 1. Does feeding the Hebrew breadcrumb label with the English slug stop Dead Sea from satisfying "near the sea"?

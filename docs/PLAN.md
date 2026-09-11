@@ -6,6 +6,20 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-11, Super recommender)
+
+**Recommender is Nemotron Super 120B-A12B, thinking off.** Hebrew
+`why` had 0 Latin leaks on the five long recs vs 235B
+`pitch`/`outlets`. Not faster, 1.5× $. Extractor/judge stay 235B
+(experiments.md 2026-09-11 §9–§10).
+
+### Done (2026-09-11, Nemotron recommender probe)
+
+**Five long-why recs, same planner pack:** Lightning is English
+on all five and often picks two stays. Super writes clean
+Hebrew (no `pitch`/`outlets`) but is not cheaper and invented
+`טוקול` on E06. Stay 235B (experiments.md 2026-09-11 §9).
+
 ### Done (2026-09-11, GLM batch judge full eval)
 
 **`planner_v1` with one GLM-5.2 judge call per case, thinking

@@ -38,6 +38,9 @@ QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK = 0.30
 GLM_INSTRUCT_MODEL = "zai-org/GLM-5.2"
 GLM_INSTRUCT_INPUT_USD_PER_MTOK = 1.40
 GLM_INSTRUCT_OUTPUT_USD_PER_MTOK = 4.40
+NEMOTRON_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+NEMOTRON_SUPER_INPUT_USD_PER_MTOK = 0.30
+NEMOTRON_SUPER_OUTPUT_USD_PER_MTOK = 0.90
 
 
 def instruct_chat_model(default: str | None = None) -> str:
@@ -65,6 +68,11 @@ def chat_usd_per_mtok(model: str | None) -> tuple[float, float]:
         return (
             GLM_INSTRUCT_INPUT_USD_PER_MTOK,
             GLM_INSTRUCT_OUTPUT_USD_PER_MTOK,
+        )
+    if "nemotron-3-super" in name.casefold():
+        return (
+            NEMOTRON_SUPER_INPUT_USD_PER_MTOK,
+            NEMOTRON_SUPER_OUTPUT_USD_PER_MTOK,
         )
     return (QWEN_INSTRUCT_INPUT_USD_PER_MTOK, QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK)
 
@@ -379,10 +387,12 @@ class AgentChatClient:
         *,
         temperature: float | None = None,
         model: str | None = None,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         self._client = client
         self.model = model or self.MODEL
         self.temperature = self.TEMPERATURE if temperature is None else temperature
+        self.extra_body = extra_body
 
     @property
     def client(self) -> OpenAI:
@@ -395,22 +405,28 @@ class AgentChatClient:
         api_key = os.environ.get("NEBIUS_API_KEY")
         if not api_key:
             raise RuntimeError("NEBIUS_API_KEY is required")
-        return ChatOpenAI(
-            model=self.model,
-            api_key=api_key,
-            base_url=NEBIUS_BASE_URL,
-            temperature=self.temperature,
-            http_client=httpx.Client(verify=ssl_context(), timeout=120.0),
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "api_key": api_key,
+            "base_url": NEBIUS_BASE_URL,
+            "temperature": self.temperature,
+            "http_client": httpx.Client(verify=ssl_context(), timeout=120.0),
+        }
+        if self.extra_body:
+            kwargs["extra_body"] = self.extra_body
+        return ChatOpenAI(**kwargs)
 
 
 def make_agent_chat_model(
     *,
     temperature: float = 0.7,
     model: str | None = None,
+    extra_body: dict[str, Any] | None = None,
 ) -> ChatOpenAI:
     """Factory for a LangChain chat model on Nebius Qwen instruct."""
-    return AgentChatClient(temperature=temperature, model=model).as_langchain()
+    return AgentChatClient(
+        temperature=temperature, model=model, extra_body=extra_body
+    ).as_langchain()
 
 
 class ExtractorLLMClient:

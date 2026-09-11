@@ -25,9 +25,10 @@ from source.agent.messages import latest_user_text, message_text
 from source.agent.prompts import EMPTY_REPLY_FALLBACK
 from source.agent.timing import stage
 from source.scraper.amenity_enrichment.llm import (
+    NEMOTRON_SUPER_MODEL,
+    QWEN_INSTRUCT_MODEL,
     _parse_json_payload,
     collected_llm_usage,
-    instruct_chat_model,
     langchain_chat_usage,
     make_agent_chat_model,
 )
@@ -95,8 +96,8 @@ Output JSON only:
  "empty": str | null}
 """.strip()
 
-_recommender_model = make_agent_chat_model(temperature=0)
-_recommender_model.stream_usage = True
+RECOMMENDER_NO_THINK_SUFFIX = "/no_think"
+
 _override_recommender = None
 _override_recommender_key = None
 _recommend_text_sink: ContextVar[Callable[[str], None] | None] = ContextVar(
@@ -136,15 +137,41 @@ class RecommendResult:
     elapsed_ms: float | None = None
 
 
+def recommender_model() -> str:
+    """Nemotron Super unless `TRIPPY_RECOMMENDER_MODEL` is 235B / super / a full id."""
+    raw = (os.environ.get("TRIPPY_RECOMMENDER_MODEL") or "").strip()
+    key = raw.casefold()
+    if not raw:
+        return NEMOTRON_SUPER_MODEL
+    if key in {"super", "nemotron", "nemotron-super"}:
+        return NEMOTRON_SUPER_MODEL
+    if key in {"235b", "big", "qwen"}:
+        return QWEN_INSTRUCT_MODEL
+    return raw
+
+
+def _recommender_system() -> str:
+    prompt = RECOMMENDER_SYSTEM_PROMPT
+    if "nemotron" in recommender_model().casefold():
+        return f"{prompt}\n\n{RECOMMENDER_NO_THINK_SUFFIX}"
+    return prompt
+
+
+def _recommender_extra_body() -> dict[str, Any] | None:
+    if "nemotron" in recommender_model().casefold():
+        return {"chat_template_kwargs": {"enable_thinking": False}}
+    return None
+
+
 def _recommender_chat():
-    """Default 235B recommender; `TRIPPY_INSTRUCT_MODEL` rebuilds for eval probes."""
+    """Default Super recommender; `TRIPPY_RECOMMENDER_MODEL` rebuilds for probes."""
     global _override_recommender, _override_recommender_key
-    key = (os.environ.get("TRIPPY_INSTRUCT_MODEL") or "").strip()
-    if not key:
-        return _recommender_model
+    model = recommender_model()
+    extra = _recommender_extra_body()
+    key = (model, json.dumps(extra, sort_keys=True) if extra else "")
     if _override_recommender is None or _override_recommender_key != key:
         _override_recommender = make_agent_chat_model(
-            temperature=0, model=instruct_chat_model()
+            temperature=0, model=model, extra_body=extra
         )
         _override_recommender.stream_usage = True
         _override_recommender_key = key
@@ -585,7 +612,7 @@ def recommend_from_payload(
     chat: Any | None = None,
 ) -> RecommendResult:
     pack = pack_recommender_input(query, payload)
-    system_msg = SystemMessage(content=RECOMMENDER_SYSTEM_PROMPT)
+    system_msg = SystemMessage(content=_recommender_system())
     user_msg = HumanMessage(
         content=json.dumps(pack, ensure_ascii=False, default=str)
     )
@@ -638,7 +665,7 @@ def recommend_from_payload(
     sink = collected_llm_usage()
     raw_usage = langchain_chat_usage(usage_from) if usage_from is not None else None
     if sink is not None and raw_usage is not None:
-        sink.add_chat(raw_usage, role="recommend", model=instruct_chat_model())
+        sink.add_chat(raw_usage, role="recommend", model=recommender_model())
     raw = "".join(parts)
     parsed = parse_recommender_payload(raw)
     recs = validate_recommendations(parsed, fits)

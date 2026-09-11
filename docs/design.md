@@ -973,7 +973,7 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 writes `reports/evals/` (per-query seconds in the table, then a
 **Cases** section with the extractor JSON, the planner RAG queries,
 retrieved claims/rules, and the judge verdict). `--recommender` also
-runs the 235B picker after the planner and dumps 1–2 cited recs (not
+runs the Super picker after the planner and dumps 1–2 cited recs (not
 scored). Each case prints
 token in/out (extractor + judge, plus `recommend` when that flag is
 on) before the report is written; the
@@ -1000,9 +1000,11 @@ names.
 
 ## Recommender
 
-`recommender_node` (`source/agent/recommender.py`) is a 235B JSON
-picker, temperature 0 (`QWEN_INSTRUCT_MODEL`). It does not search. The
-planner payload is already the candidate list.
+`recommender_node` (`source/agent/recommender.py`) is a Nemotron
+Super JSON picker, temperature 0, thinking off
+(`nvidia/nemotron-3-super-120b-a12b`, `TRIPPY_RECOMMENDER_MODEL`).
+It does not search. The planner payload is already the candidate
+list. Extractor, light, and judge stay 235B.
 
 The node does not dump raw LangGraph messages. It packs the original
 query, the extractor JSON (`constraints`), and compact `fits`: stay
@@ -1020,7 +1022,16 @@ language prompt still leaked Latin/CJK (`ゲuests`, `.pitch`,
 `בungalו`) because packed evidence is English (`text_en` claims,
 `tent_pitch` keys) and the prompt said “say guests report”
 (experiments.md 2026-09-10 §8). The prompt now says to paraphrase
-those fields and, in Hebrew, write אורחים מספרים. Picks whose
+those fields and, in Hebrew, write אורחים מספרים. Nemotron Super
+replaced 235B because on the five longest recs it wrote Hebrew
+with **0** Latin leaks (`שקע חשמל` not `איןoutlets`); 235B still
+leaked `pitch`/`outlets`. Super is not faster (16.9s vs 19.8s)
+and is 1.5× the 235B rate. Lightning wrote English on all five
+and is out. Thinking stays off: Super rejects
+`reasoning_effort=none`, so the call uses `/no_think` plus
+`chat_template_kwargs.enable_thinking=false` (experiments.md
+2026-09-11 §9–§10). `TRIPPY_RECOMMENDER_MODEL=235B` opts back.
+Picks whose
 `(campsite_id, accommodation_type, start, end)` is not in `fits` are
 dropped. Empty `fits` become an honest follow-up.
 

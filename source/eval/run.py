@@ -34,7 +34,11 @@ from source.agent.claim_judge import (
     judge_model,
 )
 from source.agent.graph import extractor_node, planner_node
-from source.agent.recommender import recommend_from_payload, recommendation_row
+from source.agent.recommender import (
+    recommend_from_payload,
+    recommendation_row,
+    recommender_model,
+)
 from source.agent.timing import (
     STAGE_ORDER,
     collect_stages,
@@ -588,7 +592,8 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
         f"`TRIPPY_JUDGE_COMPACT={int(judge_compact())}` "
         f"`TRIPPY_JUDGE_CONCURRENCY={judge_concurrency()}` "
         f"`TRIPPY_JUDGE_BATCH={int(judge_batch())}` "
-        f"`TRIPPY_JUDGE_MODEL={judge_model()}`",
+        f"`TRIPPY_JUDGE_MODEL={judge_model()}` "
+        f"`TRIPPY_RECOMMENDER_MODEL={recommender_model()}`",
         "",
     ]
     totals = merge_snapshots([r.get("stages") or {} for r in rows])
@@ -811,6 +816,11 @@ def main(argv: list[str] | None = None) -> int:
         help="After the planner, pick 1-2 fits and dump the Hebrew rec",
     )
     parser.add_argument(
+        "--recommender-model",
+        default="",
+        help="Recommender model: super, 235B, or a full Nebius id",
+    )
+    parser.add_argument(
         "--from-json",
         default="",
         help="Rebuild markdown from a dump; do not run cases",
@@ -845,6 +855,8 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["TRIPPY_JUDGE_BATCH"] = "1"
     if args.judge_model:
         os.environ["TRIPPY_JUDGE_MODEL"] = args.judge_model
+    if args.recommender_model:
+        os.environ["TRIPPY_RECOMMENDER_MODEL"] = args.recommender_model
     table = os.environ.get("TRIPPY_AVAILABILITY_TABLE") or "availability"
     print(f"TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}", flush=True)
     print(f"TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}", flush=True)
@@ -866,6 +878,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(
         f"TRIPPY_JUDGE_MODEL={judge_model()}",
+        flush=True,
+    )
+    print(
+        f"TRIPPY_RECOMMENDER_MODEL={recommender_model()}",
         flush=True,
     )
     print(f"recommender={int(args.recommender)}", flush=True)
