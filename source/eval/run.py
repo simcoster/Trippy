@@ -7,6 +7,7 @@
     just run-eval -- --judge-concurrency 1
     just run-eval -- --no-judge-compact
     just run-eval -- --recommender
+    just run-eval -- --judge-batch --judge-model glm
     uv run python -m source.eval.run --from-json reports/evals/2026-09-10_185136.json
 """
 
@@ -26,7 +27,12 @@ from langchain_core.messages import HumanMessage
 
 from db.connect import connect, database_url
 from db.experiments import SEARCH_PATH, copy_public, table_name
-from source.agent.claim_judge import judge_compact, judge_concurrency
+from source.agent.claim_judge import (
+    judge_batch,
+    judge_compact,
+    judge_concurrency,
+    judge_model,
+)
 from source.agent.graph import extractor_node, planner_node
 from source.agent.recommender import recommend_from_payload, recommendation_row
 from source.agent.timing import (
@@ -580,7 +586,9 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
         f"`TRIPPY_AVAILABILITY_TABLE={os.environ.get('TRIPPY_AVAILABILITY_TABLE')}` "
         f"`TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}` "
         f"`TRIPPY_JUDGE_COMPACT={int(judge_compact())}` "
-        f"`TRIPPY_JUDGE_CONCURRENCY={judge_concurrency()}`",
+        f"`TRIPPY_JUDGE_CONCURRENCY={judge_concurrency()}` "
+        f"`TRIPPY_JUDGE_BATCH={int(judge_batch())}` "
+        f"`TRIPPY_JUDGE_MODEL={judge_model()}`",
         "",
     ]
     totals = merge_snapshots([r.get("stages") or {} for r in rows])
@@ -788,6 +796,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Quoted claim text in the judge JSON (opt out of compact)",
     )
     parser.add_argument(
+        "--judge-batch",
+        action="store_true",
+        help="One judge call per planner case (all site/query jobs)",
+    )
+    parser.add_argument(
+        "--judge-model",
+        default="",
+        help="Judge model: glm, 30B, 235B, or a full Nebius id",
+    )
+    parser.add_argument(
         "--recommender",
         action="store_true",
         help="After the planner, pick 1-2 fits and dump the Hebrew rec",
@@ -823,6 +841,10 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["TRIPPY_JUDGE_COMPACT"] = "0"
     elif args.judge_compact:
         os.environ["TRIPPY_JUDGE_COMPACT"] = "1"
+    if args.judge_batch:
+        os.environ["TRIPPY_JUDGE_BATCH"] = "1"
+    if args.judge_model:
+        os.environ["TRIPPY_JUDGE_MODEL"] = args.judge_model
     table = os.environ.get("TRIPPY_AVAILABILITY_TABLE") or "availability"
     print(f"TRIPPY_SCHEMA={os.environ.get('TRIPPY_SCHEMA')}", flush=True)
     print(f"TRIPPY_TODAY={os.environ.get('TRIPPY_TODAY')}", flush=True)
@@ -836,6 +858,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(
         f"TRIPPY_JUDGE_COMPACT={int(judge_compact())}",
+        flush=True,
+    )
+    print(
+        f"TRIPPY_JUDGE_BATCH={int(judge_batch())}",
+        flush=True,
+    )
+    print(
+        f"TRIPPY_JUDGE_MODEL={judge_model()}",
         flush=True,
     )
     print(f"recommender={int(args.recommender)}", flush=True)

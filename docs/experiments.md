@@ -7,6 +7,233 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-11
+
+### 1. Is Streamlit slower than eval on the same occupancy?
+
+**Question.** The live-occupancy AppTest of E15/E03/E04 was 67s / 77s /
+300s timeout. Eval `2026-09-11_154623` on frozen nights was 13.3s /
+19.5s / 17.6s. Same Streamlit graph, eval env
+(`TRIPPY_SCHEMA=experiments`, `availability_frozen`,
+`TRIPPY_TODAY=2026-09-08`), with `collect_stages` + claim_judge call
+counts.
+
+**Setup.** AppTest of `scripts/streamlit_chat.py`, recommender path.
+No copy, no writes to `public`. Three queries. Dump
+`reports/streamlit_evalenv_2026-09-11_130528.json`. 40 judge calls.
+
+**Result.**
+
+| query | live AppTest | eval | Streamlit+frozen |
+|---|---|---|---|
+| couple 17 Sep (E15) | 67s (planner 57s) | 13.3s judge 3.6s×10 | **16.3s** judge 10 / 3.7s×10 |
+| tent ≤₪80 (E03) | 77s (planner 32s, light 34s) | 19.5s judge 6.6s×20 | **17.0s** judge 20 / 4.6s×20 |
+| sea, 4 friends (E04) | 300s timeout | 17.6s judge 4.7s×10 | **12.1s** judge 10 / 2.6s×10 |
+
+~58 s wall. Recommend 6–7s in all three.
+
+**Decision.** Streamlit is not a slower runtime. The earlier minutes
+were live vacancy fan-out / a cold Nebius (light 34s). Keep stage +
+`judge_calls` on the Streamlit trace. design.md "Recommender".
+
+### 2. Live occupancy Streamlit with judge call counts
+
+**Question.** On `public.availability`, do the same three queries fan
+out more judge jobs than frozen (10 / 20 / 10), and does that explain
+the first live 67s / 77s / 300s timeout?
+
+**Setup.** AppTest, recommender path, no `TRIPPY_SCHEMA` /
+`availability_frozen` / `TRIPPY_TODAY`. Reads `public` only. Timeout
+600s. Dump `reports/streamlit_live_2026-09-11_131703.json`. 40 judge
+calls.
+
+**Result.** Same job counts as frozen: 10 / 20 / 10. Walls **47.6s /
+43.1s / 46.1s**. Judge wall 16.6s×10 / 6.9s×20 / 16.6s×10 (frozen was
+3.7 / 4.6 / 2.6). Extract 4.7 / 10.8 / 9.0s. Sea finished; it did not
+need extra sites. ~158 s wall.
+
+**Decision.** Today's live night does not add judge jobs on these
+asks. The first 300s timeout was a stall, not a larger fan-out.
+Per-call 235B/extract is what stretched live vs frozen.
+
+### 3. Is the 12s Streamlit light node the frozen vs live env?
+
+**Question.** Live AppTest light was 12.8s then 10.6s (285–297
+prompt tokens, 2 completion, KEEP). Frozen Streamlit light on the
+same couple query was 2.0s. Light never reads occupancy. Is the
+gap the three env pins, or Nebius?
+
+**Setup.** Direct `light_node` (no Streamlit, no extractor/planner),
+couple query E15, 5 interleaved pairs: frozen pins then live
+(unset). Same 235B cleaner. 10 calls. Dump
+`reports/light_frozen_vs_live_2026-09-11_133327.json`. No DB.
+
+**Result.** Every call KEEP (`{}`). Frozen 0.35–1.81s, mean
+**0.69s**. Live 0.31–1.37s, mean **0.73s**. First call 1.81s
+(warmup); the rest overlap.
+
+**Decision.** Frozen vs live env does not slow light. The 12s
+Streamlit light was Nebius TTFT/queue in that process, not the
+pins. design.md unchanged.
+
+### 4. Is the ~47s live turn Streamlit/AppTest?
+
+**Question.** Live AppTest E15 was 47.6s (light 12.8s, judge
+16.6s×10, recommend 9.4s). Isolated `light_node` is ~0.7s. Does
+the same full graph without Streamlit still take ~47s?
+
+**Setup.** `build_graph(stop_after="recommender")` in-process,
+`compiled.stream` with `collect_stages` + claim_judge counts. No
+AppTest, no widget serialize. Five repeats, live
+`public.availability`, E15. ~50 LLM calls. Dump
+`reports/full_nostreamlit_2026-09-11_145919.json`.
+
+**Result.** Mean **18.6s** (8.9–44.6). Same 23 fits except run 4
+skipped RAG/judge (extractor emitted no amenity queries; planner
+0.1s).
+
+| n | wall | light | extract | planner | judge | recommend |
+|---|---|---|---|---|---|---|
+| 1 | **44.6s** | 4.2s | 0.9s | 6.3s | 3.3s×10 | **33.3s** |
+| 2 | 10.1s | 0.7s | 1.1s | 3.6s | 2.2s×10 | 4.7s |
+| 3 | 17.0s | 0.7s | 1.3s | 8.3s | 7.0s×10 | 6.7s |
+| 4 | 8.9s | 0.8s | 2.0s | 0.1s | 0 | 6.0s |
+| 5 | 12.6s | 0.6s | 1.4s | 4.7s | 2.9s×10 | 5.9s |
+
+**Decision.** AppTest is not the 47s. First-turn Nebius is
+(here recommend 33s, not light). After that, live full flow is
+~10–17s, in the frozen Streamlit band. design.md unchanged.
+
+### 5. Does a newer model make one batched judge call accurate?
+
+**Question.** One-call-per-case batch still dropped E03 `tent` vs
+`tent_pitch` on the 235B (2026-09-10 §3). Do Qwen3.5-397B-A17B,
+DeepSeek V4 Pro, or GLM-5.2 match stored one-by-one 235B `satisfies`
+on a compact batch, and is the wall worth it?
+
+**Setup.** No planner rerun, no DB writes. Jobs + gold from eval
+`2026-09-11_154623` (fits + rejected) for E03/H02/H07/E04/H10
+(20/20/20/10/10). Same `CLAIM_JUDGE_SYSTEM` + compact suffix + a
+`judgements[]` wrapper. Four Nebius models, thinking disabled when
+the API accepted it, `max_tokens=8000`. 20 calls. Dump
+`temp/judge_batch_models_2026-09-11_191112.json`. $0.36.
+
+**Result.** Agree vs stored one-by-one 235B:
+
+| model | all | E03 | H02 | H07 | E04 | H10 | wall | $ |
+|---|---|---|---|---|---|---|---|---|
+| Qwen3-235B (current) | 74/80 | **16/20** | 20/20 | 18/20 | 10/10 | 10/10 | **35.5s** | 0.009 |
+| Qwen3.5-397B-A17B | **77/80** | **20/20** | 20/20 | 17/20 | 10/10 | 10/10 | 176s | 0.111 |
+| DeepSeek V4 Pro | 68/80 | **11/20** | 20/20 | 17/20 | 10/10 | 10/10 | 22.5s | 0.079 |
+| GLM-5.2 | 60/80 | **20/20** | 20/20 | **0/20** | 10/10 | 10/10 | 57s | 0.164 |
+
+E03 tent misses on 235B are the same four sites as 2026-09-10 §3
+(Yehudiya, Horshat, Akhziv N/S): batch treats `tent` polarity false
+as no lodging and ignores `tent_pitch` true. 397B and GLM grant
+those. DeepSeek drops more tents (11/20). H07 Akhziv `not caravan`
+false-yes on 235B/397B/DeepSeek (gold false). GLM H07 wrote a
+prose analysis until `max_tokens=8000` (no JSON). 397B/GLM billed
+3–8k completion tokens/call on compact JSON (thinking still
+counted). Current 5-wide 235B singles on E03 were 6.6s.
+
+**Decision.** Stay on one-call-per-job 235B with concurrency 5.
+397B fixes E03 tent but is slower and ~12× the batch 235B cost,
+and still misses H07 caravan. GLM matches when it returns JSON
+and dies when it does not. DeepSeek is fast and worse on tent.
+design.md unchanged.
+
+### 6. Does a 2000 completion cap make the batch models usable?
+
+**Question.** §5 billed 3–8k completion tokens on 397B/GLM
+(thinking or prose). Compact 20-job JSON on 235B was ~720 tokens.
+Does `max_tokens=2000` (~2.5× that) keep JSON and cut cost/wall?
+
+**Setup.** Same jobs, gold, prompt, and four models as §5. Only
+change: `max_tokens` 8000→2000. 20 calls. Dump
+`temp/judge_batch_models_2026-09-11_192628.json`. $0.25.
+
+**Result.**
+
+| model | all | E03 | H02 | H07 | E04 | H10 | wall | $ | finish |
+|---|---|---|---|---|---|---|---|---|---|
+| Qwen3-235B | 74/80 | 16/20 | 20/20 | 18/20 | 10/10 | 10/10 | 48s | 0.009 | all stop, ~350–750 out |
+| Qwen3.5-397B | **0/80** | 0 | 0 | 0 | 0 | 0 | 72s | 0.058 | **all length**, 2000 out, no JSON |
+| DeepSeek V4 Pro | 73/80 | 19/20 | 20/20 | 14/20 | 10/10 | 10/10 | 35s | 0.078 | all stop, ~380–950 out |
+| GLM-5.2 | 10/80 | 0 | 0 | 0 | 0 | 10/10 | 24s | 0.100 | length except H10 stop |
+
+397B and GLM spent the budget on thinking/prose and never reached
+`judgements[]` (GLM E04 started JSON and truncated). 235B scores
+match §5. DeepSeek E03 moved 11/20→19/20 at `stop` (under the
+cap); H07 got worse 17/20→14/20 — run noise, not the cap.
+
+**Decision.** A compact-sized cap does not tame 397B/GLM; it
+deletes their JSON. Stay on per-job 235B. design.md "Planner
+claim/rule judge".
+
+### 7. Does turning thinking off make the 2000-token batch work?
+
+**Question.** §6 failed because 397B/GLM spent the 2000-token cap
+on thinking. Same cap, same jobs: if thinking is off
+(`reasoning_effort=none`, `chat_template_kwargs.enable_thinking=false`,
+`thinking.type=disabled`), do they emit compact JSON and match gold?
+
+**Setup.** Same as §6 plus the no-think flags on every model
+including 235B. `max_tokens=2000`. 20 calls. Dump
+`temp/judge_batch_models_2026-09-11_193236.json`. $0.19.
+
+**Result.** All `finish=stop`, `reasoning_tokens=0`, ~360–950 out.
+
+| model | all | E03 | H02 | H07 | E04 | H10 | wall | $ |
+|---|---|---|---|---|---|---|---|---|
+| Qwen3-235B | 74/80 | **16/20** | 20/20 | 18/20 | 10/10 | 10/10 | 49s | 0.009 |
+| Qwen3.5-397B | **78/80** | **20/20** | 20/20 | 18/20 | 10/10 | 10/10 | 27s | 0.034 |
+| DeepSeek V4 Pro | 74/80 | **20/20** | 20/20 | 14/20 | 10/10 | 10/10 | 21s | 0.078 |
+| GLM-5.2 | **78/80** | **20/20** | 20/20 | 18/20 | 10/10 | 10/10 | **8.4s** | 0.073 |
+
+397B/GLM/235B share the same two H07 misses: Akhziv N/S `not
+caravan` gold false, batch true via rule. DeepSeek E03 tent is
+now 20/20; H07 is the noisy case (6 misses).
+
+**Decision.** Thinking must be off for a compact batch. 397B and
+GLM then beat 235B batch on E03 tent and are faster. Do not
+switch production yet: five cases, and the Akhziv caravan miss is
+still real. Stay per-job 235B until a full eval. design.md
+"Planner claim/rule judge".
+
+### 8. Does GLM-5.2 one-call (thinking off) match 235B on planner_v1?
+
+**Question.** §7 GLM batch was 78/80 vs stored 235B singles on five
+cases. On the full 27, with thinking off and one judge call per
+case, does the planner score hold, and what does it cost?
+
+**Setup.** `just run-eval -- --recommender --judge-batch
+--judge-model glm`. Frozen occupancy, experiments schema copy
+(skip availability). Extractor and recommender stay 235B. Judge
+is GLM-5.2, compact, `max_tokens=2000`, thinking off. 18 judge
+calls (cases with jobs). Dump
+`reports/evals/2026-09-11_230420`. ~75 LLM calls, 322 s.
+
+**Result.** **22/27** (easy 14/15, hard 8/12) — same count as
+235B singles `2026-09-11_154623`, different misses.
+
+| | 235B 5-wide | GLM batch |
+|---|---|---|
+| pass | 22/27 | 22/27 |
+| judge | 70.8s×189 | **30.6s×18** |
+| judge in/out | 447k / 6.2k | 134k / 7.0k |
+| judge $ | ~0.09 | ~0.22 |
+| wall | 335s | 322s |
+
+E10 couple-tent at Masada **PASS** (was empty). E05 desert drops
+Be'erot (17). H03/H06/H07 still fail. H12 now unexpected Akhziv
+37 (was missing 38). Recommend still ~154s of the wall.
+
+**Decision.** Same score, not a quality win. Batch is ~2.4× the
+235B judge $ (not 10× — the system prompt is no longer repeated
+189 times) and about half the judge wall. Stay on per-job 235B.
+Flags: `TRIPPY_JUDGE_BATCH` / `--judge-batch`,
+`TRIPPY_JUDGE_MODEL=glm`. design.md "Planner claim/rule judge".
+
 ## 2026-09-10
 
 ### 1. Does feeding the Hebrew breadcrumb label with the English slug stop Dead Sea from satisfying "near the sea"?

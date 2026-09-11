@@ -901,7 +901,16 @@ calls was not needed):
   the compact suffix (experiments.md 2026-09-10 §6). Full eval
   `2026-09-10_131406` was compact ×5 (23/26). Quoted output is
   `TRIPPY_JUDGE_COMPACT=0` / `--no-judge-compact`. Live judge calls
-  run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5).
+run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5).
+A single batched `judgements[]` call still drops E03 tent vs
+`tent_pitch` on this 235B (16/20). With thinking off and
+`max_tokens=2000`, Qwen3.5-397B and GLM-5.2 both hit 78/80 and
+grant those tents (27s / 8.4s); DeepSeek 74/80. A full
+`planner_v1` on GLM-5.2 batch (`--judge-batch --judge-model glm`)
+was still **22/27** (same as 235B singles): E10 couple-tent
+recovered, E05 dropped Be'erot. Judge 31s×18 vs 71s×189, ~2.4×
+judge $. Stay per-job 235B; the flags stay opt-in
+(experiments.md 2026-09-11 §5–§8).
 - `satisfies` — true iff a relevant claim says yes **or** a granting
   rule exists. A no does not veto: fridge complaints do not drop
   `refrigerator` true; "no electricity at the tent" does not drop
@@ -950,8 +959,8 @@ parent. Looking only at `COALESCE(parent_id, id)` made the judge search
 parent 2, which has no fridge rule. Pulling every child of that parent
 would mix אכזיב דרום with אכזיב צפון.
 
-Planner benchmark v1 (`evals/planner_v1.json`) is **26 queries**
-(14 easy / 12 hard) covering dates, no-dates, prices, capacity,
+Planner benchmark v1 (`evals/planner_v1.json`) is **27 queries**
+(15 easy / 12 hard) covering dates, no-dates, prices, capacity,
 amenities and rules. Amenity/rule gold is the parks.org.il page,
 not `campsite_rules`. Occupancy is `experiments.availability_frozen`
 (snapshot of `public.availability` on 2026-09-08, nights 7–19 Sep).
@@ -1024,7 +1033,9 @@ the parks.org.il iframe session. The recommender is told to copy
 `booking_url` from the fit; render looks up the chosen stay and
 prints the fit’s URL, ignoring a hallucinated one. The spoken reply
 is rendered in code (day.month dates, campsite, type, price, then
-the booking URL). The 235B
+the booking URL). Streamlit's turn summary also records `collect_stages()`
+buckets and `judge_calls` (claim_judge HTTP count) so a planner blob
+is not silent 235B. The 235B
 call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
 match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a

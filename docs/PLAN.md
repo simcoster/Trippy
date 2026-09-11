@@ -6,6 +6,76 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-11, GLM batch judge full eval)
+
+**`planner_v1` with one GLM-5.2 judge call per case, thinking
+off:** 22/27, same as 235B singles. Judge 31s×18 vs 71s×189.
+E10 recovered, E05 Be'erot dropped. Stay per-job 235B
+(experiments.md 2026-09-11 §8).
+
+### Done (2026-09-11, batched judge thinking off)
+
+**Same 2000-token batch with thinking disabled.** All
+`reasoning_tokens=0`. 397B and GLM **78/80** (E03 tent 20/20);
+235B still 74/80 (16/20 tent). GLM wall **8.4s**. Stay per-job
+235B until a full eval (experiments.md 2026-09-11 §7).
+
+### Done (2026-09-11, batched judge max_tokens=2000)
+
+**Same four-model batch as §5 with completion capped at 2000.**
+235B still 74/80 (`stop`). 397B 0/80 and GLM 10/80 (`length`,
+no JSON). DeepSeek 73/80, still `stop`. Cap does not make
+thinking models batch-safe (experiments.md 2026-09-11 §6).
+
+### Done (2026-09-11, batched judge × four models)
+
+**One compact batch call per case on E03/H02/H07/E04/H10.**
+Vs stored one-by-one 235B: 397B 77/80 (E03 tent **20/20**),
+current 235B 74/80 (E03 still 16/20 tent_pitch), DeepSeek
+68/80, GLM 60/80 (H07 prose, hit 8k). Stay on per-job 235B
+(experiments.md 2026-09-11 §5).
+
+### Done (2026-09-11, full graph without Streamlit)
+
+**Five live E15 turns via `build_graph`, no AppTest:** mean 18.6s
+(8.9–44.6). First turn 44.6s (recommend 33s); later 10–17s. The
+47s live AppTest was a slow Nebius turn, not Streamlit
+(experiments.md 2026-09-11 §4).
+
+### Done (2026-09-11, light_node frozen vs live)
+
+**Five interleaved `light_node` calls on E15:** frozen mean 0.69s
+(0.35–1.81), live mean 0.73s (0.31–1.37). All KEEP. Occupancy pins
+do not explain Streamlit's 12s light (experiments.md 2026-09-11 §3).
+
+### Done (2026-09-11, live Streamlit judge counts)
+
+**Same three queries on `public.availability`:** 48s / 43s / 46s,
+judge **10 / 20 / 10** (same N as frozen; slower 235B waves). Sea
+finished. First 300s timeout was not extra jobs (experiments.md
+2026-09-11 §2).
+
+### Done (2026-09-11, Streamlit matches eval on frozen occupancy)
+
+**E15/E03/E04 through Streamlit on `availability_frozen` were 16s /
+17s / 12s** (judge 10 / 20 / 10 calls). Live occupancy had been 67s /
+77s / 300s timeout. Trace now logs `collect_stages()` and
+`judge_calls` (experiments.md 2026-09-11 §1).
+
+### Done (2026-09-11, recommend stream survives bad JSON escapes)
+
+**`parse_partial_json` crashed eval on E04** (`Invalid \escape`) when
+the 235B wrote `\pitch` inside `why`. Stream parse drops illegal
+backslashes and retries; the final payload does the same
+(`source/agent/recommender.py`).
+
+### Done (2026-09-11, E15 couple on 17 Sep)
+
+**`planner_v1` gained E15** (`קמפינג לזוג ב-17 בספטמבר 2026 ללילה אחד`).
+Same capacity ask as E02, vacant night 17 Sep (Masada + Yotvata
+couple tents). The other two Streamlit trial queries were already
+E03 and E04. Set is 27 (15 easy / 12 hard).
+
 ### Done (2026-09-10, booking URL on fits)
 
 **Each planner fit gets a `BE_Results.aspx` booking URL** (hotel id,

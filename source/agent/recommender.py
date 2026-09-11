@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -101,6 +102,9 @@ _override_recommender_key = None
 _recommend_text_sink: ContextVar[Callable[[str], None] | None] = ContextVar(
     "trippy_recommend_text", default=None
 )
+_recommend_timing: ContextVar[dict[str, float | None] | None] = ContextVar(
+    "trippy_recommend_timing", default=None
+)
 
 
 class _StayKey(NamedTuple):
@@ -127,6 +131,9 @@ class RecommendResult:
     recommendations: tuple[Recommendation, ...]
     empty: str | None
     text: str
+    ttft_chunk_ms: float | None = None
+    ttft_spoken_ms: float | None = None
+    elapsed_ms: float | None = None
 
 
 def _recommender_chat():
@@ -142,6 +149,11 @@ def _recommender_chat():
         _override_recommender.stream_usage = True
         _override_recommender_key = key
     return _override_recommender
+
+
+def last_recommend_timing() -> dict[str, float | None] | None:
+    """TTFT inside the recommend call: first LLM chunk, first spoken paint."""
+    return _recommend_timing.get()
 
 
 @contextmanager
@@ -327,11 +339,15 @@ def latest_planner_payload(messages: list[BaseMessage]) -> dict[str, Any]:
 
 
 def parse_recommender_payload(raw: str) -> dict[str, Any]:
+    text = raw or ""
     try:
-        parsed = _parse_json_payload(raw)
+        parsed = _parse_json_payload(text)
     except (json.JSONDecodeError, ValueError):
-        logger.warning("recommender unparseable: %s", (raw or "")[:200])
-        return {"recommendations": [], "empty": None}
+        try:
+            parsed = _parse_json_payload(_drop_invalid_json_escapes(text))
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("recommender unparseable: %s", text[:200])
+            return {"recommendations": [], "empty": None}
     recs = parsed.get("recommendations")
     if not isinstance(recs, list):
         recs = []
@@ -489,6 +505,46 @@ def _json_object_prefix(raw: str) -> str:
     return raw[start:]
 
 
+def _drop_invalid_json_escapes(text: str) -> str:
+    """Keep only JSON string escapes; turn `\\pitch` into `pitch`."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] != "\\":
+            out.append(text[i])
+            i += 1
+            continue
+        nxt = text[i + 1] if i + 1 < n else ""
+        if nxt in '"\\/bfnrt':
+            out.append(text[i : i + 2])
+            i += 2
+            continue
+        hex_digits = "0123456789abcdefABCDEF"
+        if (
+            nxt == "u"
+            and i + 5 < n
+            and all(ch in hex_digits for ch in text[i + 2 : i + 6])
+        ):
+            out.append(text[i : i + 6])
+            i += 6
+            continue
+        i += 1
+    return "".join(out)
+
+
+def _parse_stream_json(blob: str) -> dict[str, Any] | None:
+    """parse_partial_json re-raises on a finished-but-illegal `\\escape`."""
+    for candidate in (blob, _drop_invalid_json_escapes(blob)):
+        try:
+            parsed = parse_partial_json(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
 def _draft_spoken_text(
     raw: str,
     fits: list[dict[str, Any]],
@@ -499,8 +555,8 @@ def _draft_spoken_text(
     blob = _json_object_prefix(raw)
     if not blob:
         return None
-    parsed = parse_partial_json(blob)
-    if not isinstance(parsed, dict):
+    parsed = _parse_stream_json(blob)
+    if parsed is None:
         return None
     rec_rows = parsed.get("recommendations")
     if not isinstance(rec_rows, list):
@@ -543,6 +599,9 @@ def recommend_from_payload(
     parts: list[str] = []
     usage_from: Any = None
     last_chunk: Any = None
+    started = time.perf_counter()
+    chunk_at: float | None = None
+    spoken_at: float | None = None
     with stage("recommend"):
         for chunk in _iter_chat_chunks(
             chat or _recommender_chat(), [system_msg, user_msg]
@@ -553,16 +612,29 @@ def recommend_from_payload(
             delta = _chunk_text(chunk)
             if not delta:
                 continue
+            if chunk_at is None:
+                chunk_at = time.perf_counter()
             parts.append(delta)
-            if on_text is None:
-                continue
             draft = _draft_spoken_text("".join(parts), fits, date_notice=notice)
             if draft is None or draft == last_draft:
                 continue
             last_draft = draft
-            on_text(draft)
+            if spoken_at is None:
+                spoken_at = time.perf_counter()
+            if on_text is not None:
+                on_text(draft)
         if usage_from is None:
             usage_from = last_chunk
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    chunk_ms = (chunk_at - started) * 1000 if chunk_at is not None else None
+    spoken_ms = (spoken_at - started) * 1000 if spoken_at is not None else None
+    _recommend_timing.set(
+        {
+            "chunk_ms": chunk_ms,
+            "spoken_ms": spoken_ms,
+            "total_ms": elapsed_ms,
+        }
+    )
     sink = collected_llm_usage()
     raw_usage = langchain_chat_usage(usage_from) if usage_from is not None else None
     if sink is not None and raw_usage is not None:
@@ -574,7 +646,14 @@ def recommend_from_payload(
     text = render_recommendations(recs, empty=empty, date_notice=notice)
     if on_text is not None and text != last_draft:
         on_text(text)
-    return RecommendResult(recommendations=tuple(recs), empty=empty, text=text)
+    return RecommendResult(
+        recommendations=tuple(recs),
+        empty=empty,
+        text=text,
+        ttft_chunk_ms=chunk_ms,
+        ttft_spoken_ms=spoken_ms,
+        elapsed_ms=elapsed_ms,
+    )
 
 
 def recommend_from_messages(messages: list[BaseMessage]) -> RecommendResult:

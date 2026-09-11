@@ -35,6 +35,9 @@ QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK = 0.60
 QWEN_INSTRUCT_30B_MODEL = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 QWEN_INSTRUCT_30B_INPUT_USD_PER_MTOK = 0.10
 QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK = 0.30
+GLM_INSTRUCT_MODEL = "zai-org/GLM-5.2"
+GLM_INSTRUCT_INPUT_USD_PER_MTOK = 1.40
+GLM_INSTRUCT_OUTPUT_USD_PER_MTOK = 4.40
 
 
 def instruct_chat_model(default: str | None = None) -> str:
@@ -57,6 +60,11 @@ def chat_usd_per_mtok(model: str | None) -> tuple[float, float]:
         return (
             QWEN_INSTRUCT_30B_INPUT_USD_PER_MTOK,
             QWEN_INSTRUCT_30B_OUTPUT_USD_PER_MTOK,
+        )
+    if "GLM" in name:
+        return (
+            GLM_INSTRUCT_INPUT_USD_PER_MTOK,
+            GLM_INSTRUCT_OUTPUT_USD_PER_MTOK,
         )
     return (QWEN_INSTRUCT_INPUT_USD_PER_MTOK, QWEN_INSTRUCT_OUTPUT_USD_PER_MTOK)
 

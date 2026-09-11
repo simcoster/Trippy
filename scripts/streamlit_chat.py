@@ -17,6 +17,7 @@ driveable (text_area + submit).
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import warnings
@@ -44,14 +45,25 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import LLMResult
 
+load_dotenv(_ROOT / ".env")
+
+import importlib
+
+import source.agent.recommender as _recommender_mod
+
+if not hasattr(_recommender_mod, "last_recommend_timing"):
+    importlib.reload(_recommender_mod)
+
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.recommender import listen_recommend_text
+from source.agent.recommender import last_recommend_timing, listen_recommend_text
+from source.agent.timing import collect_stages, format_stages
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
     chat_usd_per_mtok,
+    collect_llm_usage,
 )
 
 HEAVY_PATH_LABELS: dict[HeavyThrough, str] = {
@@ -59,8 +71,6 @@ HEAVY_PATH_LABELS: dict[HeavyThrough, str] = {
     "planner": "Extractor + planner",
     "recommender": "Extractor + planner + recommender",
 }
-
-load_dotenv(_ROOT / ".env")
 
 st.set_page_config(
     page_title="Trippy Agent (local)",
@@ -700,6 +710,11 @@ def _render_trace_metrics(trace: list[dict[str, Any]]) -> None:
 
     with st.container(horizontal=True):
         st.metric("Latency", _format_latency(summary.get("latency_ms")), border=True)
+        st.metric(
+            "TTFT",
+            _format_latency(summary.get("turn_ttft_spoken_ms")),
+            border=True,
+        )
         st.metric("Cost", f"${float(summary.get('cost_usd') or 0):.5f}", border=True)
         st.metric(
             "Tokens in",
@@ -714,6 +729,12 @@ def _render_trace_metrics(trace: list[dict[str, Any]]) -> None:
         embed = int(summary.get("embed_tokens") or 0)
         if embed:
             st.metric("Embed tokens", f"{embed:,}", border=True)
+        judge_n = int(summary.get("judge_calls") or 0)
+        if judge_n or summary.get("stages"):
+            st.metric("Judge calls", f"{judge_n}", border=True)
+    stages_line = format_stages(summary.get("stages"))
+    if stages_line:
+        st.caption(stages_line)
 
     rows = summary.get("by_node") or []
     if rows:
@@ -864,76 +885,111 @@ def invoke_agent(
 
     final_messages: list[BaseMessage] | None = None
     turn_started = time.perf_counter()
+    stages_snap: dict[str, dict[str, float | int]] | None = None
+    judge_calls = 0
     try:
-        for mode, chunk in compiled.stream(
-            state,
-            config=config,
-            stream_mode=["updates", "values"],
-        ):
-            if mode == "updates" and isinstance(chunk, dict):
-                for node_name, update in chunk.items():
-                    if node_name == "planner" and isinstance(update, dict):
-                        queries = _tool_queries_since_node_start(trace, "planner")
-                        fits_payload: dict[str, Any] | None = None
-                        for msg in update.get("messages") or []:
-                            raw = _content_to_str(getattr(msg, "content", ""))
-                            try:
-                                data = json.loads(raw)
-                            except json.JSONDecodeError:
-                                continue
-                            if isinstance(data, dict) and "fits" in data:
-                                fits_payload = data
-                                break
-                        serialized_update = {"queries": queries}
-                        if fits_payload is not None:
-                            serialized_update["fits"] = fits_payload.get("fits")
-                            serialized_update["rejected"] = fits_payload.get(
-                                "rejected"
-                            )
-                            serialized_update["rejected_count"] = (
-                                fits_payload.get("rejected_count")
-                            )
-                            for key in (
-                                "error",
-                                "skipped",
-                                "constraints",
-                                "open_slots_query",
-                            ):
-                                if fits_payload.get(key) is not None:
-                                    serialized_update[key] = fits_payload[key]
-                    elif isinstance(update, dict) and "messages" in update:
-                        serialized_update = {
-                            "messages": _serialize_messages(update["messages"])
-                        }
-                    else:
-                        serialized_update = update
-                    started_stack = handler.node_started_at.get(node_name) or []
-                    started = started_stack.pop(0) if started_stack else None
-                    latency_ms = (
-                        (time.perf_counter() - started) * 1000
-                        if started is not None
-                        else None
-                    )
-                    trace.append(
-                        {
-                            "kind": "node",
-                            "name": node_name,
-                            "phase": "update",
-                            "update": serialized_update,
-                            "latency_ms": latency_ms,
-                        }
-                    )
-            elif mode == "values" and isinstance(chunk, dict):
-                final_messages = chunk.get("messages")
+        with collect_stages() as clock, collect_llm_usage() as usage:
+            for mode, chunk in compiled.stream(
+                state,
+                config=config,
+                stream_mode=["updates", "values"],
+            ):
+                if mode == "updates" and isinstance(chunk, dict):
+                    for node_name, update in chunk.items():
+                        if node_name == "planner" and isinstance(update, dict):
+                            queries = _tool_queries_since_node_start(trace, "planner")
+                            fits_payload: dict[str, Any] | None = None
+                            for msg in update.get("messages") or []:
+                                raw = _content_to_str(getattr(msg, "content", ""))
+                                try:
+                                    data = json.loads(raw)
+                                except json.JSONDecodeError:
+                                    continue
+                                if isinstance(data, dict) and "fits" in data:
+                                    fits_payload = data
+                                    break
+                            serialized_update = {"queries": queries}
+                            if fits_payload is not None:
+                                serialized_update["fits"] = fits_payload.get("fits")
+                                serialized_update["rejected"] = fits_payload.get(
+                                    "rejected"
+                                )
+                                serialized_update["rejected_count"] = (
+                                    fits_payload.get("rejected_count")
+                                )
+                                for key in (
+                                    "error",
+                                    "skipped",
+                                    "constraints",
+                                    "open_slots_query",
+                                ):
+                                    if fits_payload.get(key) is not None:
+                                        serialized_update[key] = fits_payload[key]
+                        elif isinstance(update, dict) and "messages" in update:
+                            serialized_update = {
+                                "messages": _serialize_messages(update["messages"])
+                            }
+                        else:
+                            serialized_update = update
+                        started_stack = handler.node_started_at.get(node_name) or []
+                        started = started_stack.pop(0) if started_stack else None
+                        latency_ms = (
+                            (time.perf_counter() - started) * 1000
+                            if started is not None
+                            else None
+                        )
+                        trace.append(
+                            {
+                                "kind": "node",
+                                "name": node_name,
+                                "phase": "update",
+                                "update": serialized_update,
+                                "latency_ms": latency_ms,
+                            }
+                        )
+                elif mode == "values" and isinstance(chunk, dict):
+                    final_messages = chunk.get("messages")
+            if final_messages is None:
+                result = compiled.invoke(state, config=config)
+                final_messages = result["messages"]
+            stages_snap = clock.snapshot()
+            judge_calls = sum(
+                int(b.calls)
+                for b in usage.by_role()
+                if b.role == "claim_judge"
+            )
     finally:
         _current_trace = None
 
-    if final_messages is None:
-        result = compiled.invoke(state, config=config)
-        final_messages = result["messages"]
-
     total_ms = (time.perf_counter() - turn_started) * 1000
     summary = _compute_trace_summary(trace, total_latency_ms=total_ms)
+    if stages_snap is not None:
+        summary["stages"] = stages_snap
+        summary["judge_calls"] = judge_calls
+        stages_line = format_stages(stages_snap)
+        print(
+            f"judge={judge_calls} {stages_line} wall={total_ms / 1000:.1f}s",
+            flush=True,
+        )
+    timing = last_recommend_timing()
+    if timing:
+        summary["recommend_ttft_chunk_ms"] = timing.get("chunk_ms")
+        summary["recommend_ttft_spoken_ms"] = timing.get("spoken_ms")
+        summary["recommend_elapsed_ms"] = timing.get("total_ms")
+        before_ms = 0.0
+        for event in trace:
+            if event.get("kind") != "node" or event.get("phase") != "update":
+                continue
+            if event.get("name") == "recommender":
+                break
+            if event.get("latency_ms") is not None:
+                before_ms += float(event["latency_ms"])
+        spoken = timing.get("spoken_ms")
+        if spoken is not None:
+            summary["turn_ttft_spoken_ms"] = before_ms + float(spoken)
+        chunk = timing.get("chunk_ms")
+        if chunk is not None:
+            summary["turn_ttft_chunk_ms"] = before_ms + float(chunk)
     trace.append({"kind": "summary", **summary})
 
     st.session_state.graph_messages = final_messages
@@ -949,6 +1005,8 @@ _init_session()
 st.title("Trippy agent")
 st.caption(
     f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
+    f"`{(os.environ.get('TRIPPY_SCHEMA') or 'public')}`."
+    f"`{(os.environ.get('TRIPPY_AVAILABILITY_TABLE') or 'availability')}` · "
     "production remains Telegram"
 )
 

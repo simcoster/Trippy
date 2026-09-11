@@ -13,6 +13,9 @@ from typing import Any, Callable
 from source.agent.planner import CLAIM_EVIDENCE_LIMIT
 from source.agent.timing import record_stage, stage
 from source.scraper.amenity_enrichment.llm import (
+    GLM_INSTRUCT_MODEL,
+    QWEN_INSTRUCT_30B_MODEL,
+    QWEN_INSTRUCT_MODEL,
     LlmUsage,
     _parse_json_payload,
     collected_llm_usage,
@@ -174,6 +177,20 @@ Output JSON only:
  "satisfy_by": "claim" | "rule" | "both" | null, "reason": str}
 """.strip()
 
+CLAIM_JUDGE_BATCH_SUFFIX = """
+BATCH. The user JSON is jobs[], one object per (campsite, request) with i.
+Judge EACH job independently with the same rules above. Do not let one
+job's rules or claims decide another.
+
+Return JSON only:
+{"judgements": [
+  {"i": 0, "relevant": [int], "satisfies": bool,
+   "satisfy_by": "claim" | "rule" | "both" | null, "reason": str},
+  ...
+]}
+One object per job, same i, same order. reason is 4-5 English words.
+""".strip()
+
 
 def _norm(text: str) -> str:
     return " ".join((text or "").split())
@@ -233,10 +250,91 @@ def judge_compact() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
+def judge_batch() -> bool:
+    raw = (os.environ.get("TRIPPY_JUDGE_BATCH") or "0").strip().casefold()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def judge_model() -> str:
+    """Judge model. `TRIPPY_JUDGE_MODEL` (glm / 30B / a full id) else instruct."""
+    raw = (os.environ.get("TRIPPY_JUDGE_MODEL") or "").strip()
+    key = raw.casefold()
+    if not raw:
+        return instruct_chat_model()
+    if key in {"glm", "glm-5.2", "glm52"}:
+        return GLM_INSTRUCT_MODEL
+    if key in {"30b", "little", "small"}:
+        return QWEN_INSTRUCT_30B_MODEL
+    if key in {"235b", "big"}:
+        return QWEN_INSTRUCT_MODEL
+    return raw
+
+
 def _judge_system() -> str:
     if judge_compact():
         return CLAIM_JUDGE_SYSTEM + "\n\n" + CLAIM_JUDGE_COMPACT_SUFFIX
     return CLAIM_JUDGE_SYSTEM
+
+
+def _no_think_kwargs() -> dict[str, Any]:
+    return {
+        "reasoning_effort": "none",
+        "extra_body": {
+            "enable_thinking": False,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking": {"type": "disabled"},
+        },
+    }
+
+
+def _judge_chat(api: Any, **kwargs: Any) -> Any:
+    extra = _no_think_kwargs()
+    try:
+        return api.chat.completions.create(**kwargs, **extra)
+    except Exception:
+        logger.warning("judge no-think extra_body rejected; retrying reasoning_effort")
+        try:
+            return api.chat.completions.create(
+                **kwargs,
+                reasoning_effort="none",
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            )
+        except Exception:
+            return api.chat.completions.create(**kwargs, reasoning_effort="none")
+
+
+def _empty_verdict() -> dict[str, Any]:
+    return {
+        "relevant_claims": [],
+        "satisfies": False,
+        "satisfy_by": None,
+        "reason": "no claims or rules",
+    }
+
+
+def _unparseable_verdict(raw: str) -> dict[str, Any]:
+    return {
+        "relevant_claims": [],
+        "satisfies": False,
+        "satisfy_by": None,
+        "reason": f"unparseable: {raw[:200]}",
+    }
+
+
+def _verdict_from_parsed(
+    parsed: dict[str, Any],
+    claim_rows: list[dict[str, Any]],
+    *,
+    compact: bool,
+) -> dict[str, Any]:
+    return {
+        "relevant_claims": _relevant_claim_texts(
+            parsed, claim_rows, compact=compact
+        ),
+        "satisfies": bool(parsed.get("satisfies")),
+        "satisfy_by": parsed.get("satisfy_by"),
+        "reason": str(parsed.get("reason") or ""),
+    }
 
 
 def _as_claim_index(value: Any) -> int | None:
@@ -344,28 +442,24 @@ def judge_site_request(
         },
         ensure_ascii=False,
     )
-    model = instruct_chat_model()
+    model = judge_model()
     api = client or make_nebius_openai_client()
     messages = [
         {"role": "system", "content": _judge_system()},
         {"role": "user", "content": user},
     ]
     max_tokens = 200 if compact else 600
+    create = {
+        "model": model,
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "messages": messages,
+    }
     if time_stage:
         with stage("judge"):
-            response = api.chat.completions.create(
-                model=model,
-                temperature=0,
-                max_tokens=max_tokens,
-                messages=messages,
-            )
+            response = api.chat.completions.create(**create)
     else:
-        response = api.chat.completions.create(
-            model=model,
-            temperature=0,
-            max_tokens=max_tokens,
-            messages=messages,
-        )
+        response = api.chat.completions.create(**create)
     if usage is not None:
         with _USAGE_LOCK:
             usage.add_chat(response.usage, role="claim_judge", model=model)
@@ -374,20 +468,8 @@ def judge_site_request(
         parsed = _parse_json_payload(raw)
     except (json.JSONDecodeError, ValueError):
         logger.warning("claim_judge unparseable for %s %r: %s", campsite, query, raw[:200])
-        parsed = {
-            "relevant_claims": [],
-            "satisfies": False,
-            "satisfy_by": None,
-            "reason": f"unparseable: {raw[:200]}",
-        }
-    return {
-        "relevant_claims": _relevant_claim_texts(
-            parsed, claim_rows, compact=compact
-        ),
-        "satisfies": bool(parsed.get("satisfies")),
-        "satisfy_by": parsed.get("satisfy_by"),
-        "reason": str(parsed.get("reason") or ""),
-    }
+        return _unparseable_verdict(raw)
+    return _verdict_from_parsed(parsed, claim_rows, compact=compact)
 
 
 # Bound at import so a test patch of `judge_site_request` does not look like live Nebius.
@@ -433,6 +515,118 @@ def _rules_by_site(
     return by_site
 
 
+def _claim_rows_for_job(
+    claims: list[dict[str, Any]], *, compact: bool
+) -> list[dict[str, Any]]:
+    rows = [
+        {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
+        for c in claims
+    ]
+    if compact:
+        return [row for row in rows if row.get("claim")]
+    return rows
+
+
+def _parse_batch_rows(raw: str, n: int) -> list[dict[str, Any] | None]:
+    parsed = _parse_json_payload(raw)
+    rows = parsed.get("judgements")
+    if not isinstance(rows, list):
+        rows = parsed.get("judgments")
+    if not isinstance(rows, list):
+        raise ValueError("no judgements list")
+    out: list[dict[str, Any] | None] = [None] * n
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        idx = row.get("i")
+        if isinstance(idx, int) and 0 <= idx < n:
+            out[idx] = row
+    if all(item is None for item in out) and len(rows) == n:
+        for idx, row in enumerate(rows):
+            if isinstance(row, dict):
+                out[idx] = row
+    return out
+
+
+def _run_judge_jobs_batch(
+    pending: dict[tuple[int, str], dict[str, Any]],
+    *,
+    usage: LlmUsage,
+) -> dict[tuple[int, str], dict[str, Any]]:
+    compact = judge_compact()
+    model = judge_model()
+    cache: dict[tuple[int, str], dict[str, Any]] = {}
+    live_keys: list[tuple[int, str]] = []
+    claim_rows_by_i: list[list[dict[str, Any]]] = []
+    jobs_payload: list[dict[str, Any]] = []
+    note = (
+        "Most claims and rules are probably not about the request. "
+        "Always use both lists. satisfies is true if any source "
+        "grants; nos belong in relevant (their i values) and do not veto."
+    )
+    for key, job in pending.items():
+        claims = list(job.get("claims") or [])
+        rules = [r for r in (job.get("rules") or []) if not r.get("error")]
+        if not claims and not rules:
+            cache[key] = _empty_verdict()
+            continue
+        rows = _claim_rows_for_job(claims, compact=compact)
+        live_keys.append(key)
+        claim_rows_by_i.append(rows)
+        payload_claims = (
+            [{"i": j, **row} for j, row in enumerate(rows)] if compact else rows
+        )
+        jobs_payload.append(
+            {
+                "i": len(live_keys) - 1,
+                "request": job["query"],
+                "campsite": job["campsite"],
+                "claims": payload_claims,
+                "campsite_rules": [
+                    {
+                        "subject": r.get("subject"),
+                        "category": r.get("category"),
+                        "polarity": r.get("polarity"),
+                        "qualifier": r.get("qualifier"),
+                        "evidence_span": r.get("evidence_span"),
+                    }
+                    for r in rules
+                ],
+            }
+        )
+    if not live_keys:
+        return cache
+    user = json.dumps({"note": note, "jobs": jobs_payload}, ensure_ascii=False)
+    system = _judge_system() + "\n\n" + CLAIM_JUDGE_BATCH_SUFFIX
+    api = make_nebius_openai_client()
+    started = time.perf_counter()
+    response = _judge_chat(
+        api,
+        model=model,
+        temperature=0,
+        max_tokens=2000,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+    record_stage("judge", time.perf_counter() - started, calls=1)
+    usage.add_chat(response.usage, role="claim_judge", model=model)
+    raw = (response.choices[0].message.content or "").strip()
+    try:
+        parsed_rows = _parse_batch_rows(raw, len(live_keys))
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("claim_judge batch unparseable: %s", raw[:200])
+        parsed_rows = [None] * len(live_keys)
+    for i, key in enumerate(live_keys):
+        row = parsed_rows[i]
+        if row is None:
+            cache[key] = _unparseable_verdict(raw)
+            continue
+        cache[key] = _verdict_from_parsed(row, claim_rows_by_i[i], compact=compact)
+    return cache
+
+
 def _run_judge_jobs(
     pending: dict[tuple[int, str], dict[str, Any]],
     *,
@@ -443,6 +637,8 @@ def _run_judge_jobs(
     cache: dict[tuple[int, str], dict[str, Any]] = {}
     if not pending:
         return cache
+    if live and judge_batch() and judge_fn is _LIVE_JUDGE:
+        return _run_judge_jobs_batch(pending, usage=usage)
     workers = judge_concurrency() if live else 1
     extra: dict[str, Any] = {}
     if live and workers > 1 and judge_fn is _LIVE_JUDGE:

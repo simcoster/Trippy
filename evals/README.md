@@ -1,6 +1,6 @@
 # Planner benchmark v1
 
-26 Hebrew queries (14 easy / 12 hard) against a **frozen occupancy
+27 Hebrew queries (15 easy / 12 hard) against a **frozen occupancy
 snapshot**. Ingest and retrieve can change; who is vacant that night
 does not.
 
@@ -55,7 +55,7 @@ every dated case. Six cases also substring-match fit type names:
 H07, H08. Every query states a party. E03 `לאדם` is per-person
 price, not party (`אדם אחד` is).
 
-The full 26 is tens of 235B judge calls (tens of minutes). `--ids` is the
+The full 27 is tens of 235B judge calls (tens of minutes). `--ids` is the
 smoke path.
 
 Requires `just setup-experiments freeze-availability` once so the frozen
@@ -68,7 +68,7 @@ table exists. `copy` does not drop it.
 | Dates | E01, E09, E13 | H05 buried Friday |
 | No dates | E14 | H11 |
 | Prices | E03, E12 | H04 sea + ≤200 for 3 |
-| Capacity | E02, E10 | H08 hut occ=4 vs 6 |
+| Capacity | E02, E10, E15 | H08 hut occ=4 vs 6 |
 | Amenities | E04 sea, E05 desert, E06 fridge, E08 showers, E11 AC | H01 sea∧power, H02 sea∧fridge, H03 room fridge, H06 OR, H07 tent power not caravan |
 | Rules | — | H09 weekend min-2, H10 dogs forbidden, H12 south Shabbat only |
 
