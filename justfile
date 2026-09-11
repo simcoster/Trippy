@@ -60,6 +60,7 @@ setup-experiments *args:
 
 # Extractor + planner on evals/planner_v1.json (LLM; frozen occupancy).
 # Copies public → experiments first, except availability.
+# `just run-eval -- --recommender` also dumps 1–2 cited recs (not scored).
 run-eval *args:
     uv run python -m source.eval.run {{ trim_start_match(args, "-- ") }}
 

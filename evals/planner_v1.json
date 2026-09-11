@@ -221,6 +221,19 @@
       "gold": "No stay dates. Planner today returns fits=[] skipped=no_date. Website still has Horshat as a night camp."
     },
     {
+      "id": "E15",
+      "difficulty": "easy",
+      "dimensions": ["dates", "capacity"],
+      "query": "קמפינג לזוג ב-17 בספטמבר 2026 ללילה אחד",
+      "expect": {
+        "date": {"start": "2026-09-17", "end": "2026-09-18"},
+        "party_size": 2,
+        "must_include_sites": [14, 18],
+        "notes": "Same ask as E02, vacant night is 17 Sep. Couple tents at Masada and Yotvata. Private-tent pitches have unknown occupancy so they also pass party_size=2."
+      },
+      "gold": "Masada page: השכרת אוהל קמפינג זוגי (עד 2 לנים). Yotvata same. Both vacant 17 Sep (E02 used 10 Sep)."
+    },
+    {
       "id": "H01",
       "difficulty": "hard",
       "dimensions": ["amenities", "dates"],

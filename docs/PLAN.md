@@ -6,6 +6,134 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-11, Super recommender)
+
+**Recommender is Nemotron Super 120B-A12B, thinking off.** Hebrew
+`why` had 0 Latin leaks on the five long recs vs 235B
+`pitch`/`outlets`. Not faster, 1.5× $. Extractor/judge stay 235B
+(experiments.md 2026-09-11 §9–§10).
+
+### Done (2026-09-11, Nemotron recommender probe)
+
+**Five long-why recs, same planner pack:** Lightning is English
+on all five and often picks two stays. Super writes clean
+Hebrew (no `pitch`/`outlets`) but is not cheaper and invented
+`טוקול` on E06. Stay 235B (experiments.md 2026-09-11 §9).
+
+### Done (2026-09-11, GLM batch judge full eval)
+
+**`planner_v1` with one GLM-5.2 judge call per case, thinking
+off:** 22/27, same as 235B singles. Judge 31s×18 vs 71s×189.
+E10 recovered, E05 Be'erot dropped. Stay per-job 235B
+(experiments.md 2026-09-11 §8).
+
+### Done (2026-09-11, batched judge thinking off)
+
+**Same 2000-token batch with thinking disabled.** All
+`reasoning_tokens=0`. 397B and GLM **78/80** (E03 tent 20/20);
+235B still 74/80 (16/20 tent). GLM wall **8.4s**. Stay per-job
+235B until a full eval (experiments.md 2026-09-11 §7).
+
+### Done (2026-09-11, batched judge max_tokens=2000)
+
+**Same four-model batch as §5 with completion capped at 2000.**
+235B still 74/80 (`stop`). 397B 0/80 and GLM 10/80 (`length`,
+no JSON). DeepSeek 73/80, still `stop`. Cap does not make
+thinking models batch-safe (experiments.md 2026-09-11 §6).
+
+### Done (2026-09-11, batched judge × four models)
+
+**One compact batch call per case on E03/H02/H07/E04/H10.**
+Vs stored one-by-one 235B: 397B 77/80 (E03 tent **20/20**),
+current 235B 74/80 (E03 still 16/20 tent_pitch), DeepSeek
+68/80, GLM 60/80 (H07 prose, hit 8k). Stay on per-job 235B
+(experiments.md 2026-09-11 §5).
+
+### Done (2026-09-11, full graph without Streamlit)
+
+**Five live E15 turns via `build_graph`, no AppTest:** mean 18.6s
+(8.9–44.6). First turn 44.6s (recommend 33s); later 10–17s. The
+47s live AppTest was a slow Nebius turn, not Streamlit
+(experiments.md 2026-09-11 §4).
+
+### Done (2026-09-11, light_node frozen vs live)
+
+**Five interleaved `light_node` calls on E15:** frozen mean 0.69s
+(0.35–1.81), live mean 0.73s (0.31–1.37). All KEEP. Occupancy pins
+do not explain Streamlit's 12s light (experiments.md 2026-09-11 §3).
+
+### Done (2026-09-11, live Streamlit judge counts)
+
+**Same three queries on `public.availability`:** 48s / 43s / 46s,
+judge **10 / 20 / 10** (same N as frozen; slower 235B waves). Sea
+finished. First 300s timeout was not extra jobs (experiments.md
+2026-09-11 §2).
+
+### Done (2026-09-11, Streamlit matches eval on frozen occupancy)
+
+**E15/E03/E04 through Streamlit on `availability_frozen` were 16s /
+17s / 12s** (judge 10 / 20 / 10 calls). Live occupancy had been 67s /
+77s / 300s timeout. Trace now logs `collect_stages()` and
+`judge_calls` (experiments.md 2026-09-11 §1).
+
+### Done (2026-09-11, recommend stream survives bad JSON escapes)
+
+**`parse_partial_json` crashed eval on E04** (`Invalid \escape`) when
+the 235B wrote `\pitch` inside `why`. Stream parse drops illegal
+backslashes and retries; the final payload does the same
+(`source/agent/recommender.py`).
+
+### Done (2026-09-11, E15 couple on 17 Sep)
+
+**`planner_v1` gained E15** (`קמפינג לזוג ב-17 בספטמבר 2026 ללילה אחד`).
+Same capacity ask as E02, vacant night 17 Sep (Masada + Yotvata
+couple tents). The other two Streamlit trial queries were already
+E03 and E04. Set is 27 (15 easy / 12 hard).
+
+### Done (2026-09-10, booking URL on fits)
+
+**Each planner fit gets a `BE_Results.aspx` booking URL** (hotel id,
+dates, party size) after vacancies + judge. Subcamps inherit the
+parent `booking_hotel_id`. The recommender copies `booking_url` from
+the fit; the spoken reply prints the looked-up URL, not a
+model-invented one (`source/agent/booking.py`).
+
+### Done (2026-09-10, recommender Hebrew leaks)
+
+**Recommender still leaked Latin/CJK after the one-language prompt**
+(`ゲuests`, `.pitch`, `בungalו` on `2026-09-10_195239`). Cause:
+packed evidence is English and the prompt said “say guests report”.
+Prompt now paraphrases claims, uses `evidence_span` not subject
+keys, and writes אורחים מספרים in Hebrew (experiments.md
+2026-09-10 §8).
+
+### Done (2026-09-10, stream recommend)
+
+**Recommender streams tokens.** `recommend_from_payload` uses
+`ChatOpenAI.stream` with `stream_usage=True` (usage still matches
+invoke; experiments.md 2026-09-04 §1). Streamlit paints the spoken
+reply as JSON fields become parseable, not the raw JSON. Telegram
+still waits for the finished node.
+
+### Done (2026-09-10, recommender one language)
+
+**Recommender `why` / `empty` stay in one language:** mostly-Hebrew
+query → Hebrew only; mostly-English → English only. Prompt change after
+the first dump mixed Latin/CJK into Hebrew (experiments.md 2026-09-10
+§7).
+
+### Done (2026-09-10, recommender rewrite)
+
+**Rewrote `recommender_node` as a 235B JSON picker**
+(`source/agent/recommender.py`). Packs the original query, extractor
+JSON, and compact fits (`why`, relevant `review_claims` including nos,
+retrieved rules unsifted, `claim_judge`). Picks 1 or 2 stays, validates
+against `fits`, renders Hebrew. Judge unchanged. `just run-eval --
+--recommender` on `planner_v1` dumped recs
+(`reports/evals/2026-09-10_185136`; 15 one-rec, 11 empty, 0 two-rec;
+experiments.md 2026-09-10 §7). Supersedes the first-draft prose node
+that dumped HumanMessages + planner ChatMessages.
+
 ### Done (2026-09-10, scrape cadence on the MVP path)
 
 **Scheduled scrapes are part of cloudify** (`docs/plan-to-mvp.md` §2).

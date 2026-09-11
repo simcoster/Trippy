@@ -901,7 +901,16 @@ calls was not needed):
   the compact suffix (experiments.md 2026-09-10 §6). Full eval
   `2026-09-10_131406` was compact ×5 (23/26). Quoted output is
   `TRIPPY_JUDGE_COMPACT=0` / `--no-judge-compact`. Live judge calls
-  run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5).
+run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5).
+A single batched `judgements[]` call still drops E03 tent vs
+`tent_pitch` on this 235B (16/20). With thinking off and
+`max_tokens=2000`, Qwen3.5-397B and GLM-5.2 both hit 78/80 and
+grant those tents (27s / 8.4s); DeepSeek 74/80. A full
+`planner_v1` on GLM-5.2 batch (`--judge-batch --judge-model glm`)
+was still **22/27** (same as 235B singles): E10 couple-tent
+recovered, E05 dropped Be'erot. Judge 31s×18 vs 71s×189, ~2.4×
+judge $. Stay per-job 235B; the flags stay opt-in
+(experiments.md 2026-09-11 §5–§8).
 - `satisfies` — true iff a relevant claim says yes **or** a granting
   rule exists. A no does not veto: fridge complaints do not drop
   `refrigerator` true; "no electricity at the tent" does not drop
@@ -950,8 +959,8 @@ parent. Looking only at `COALESCE(parent_id, id)` made the judge search
 parent 2, which has no fridge rule. Pulling every child of that parent
 would mix אכזיב דרום with אכזיב צפון.
 
-Planner benchmark v1 (`evals/planner_v1.json`) is **26 queries**
-(14 easy / 12 hard) covering dates, no-dates, prices, capacity,
+Planner benchmark v1 (`evals/planner_v1.json`) is **27 queries**
+(15 easy / 12 hard) covering dates, no-dates, prices, capacity,
 amenities and rules. Amenity/rule gold is the parks.org.il page,
 not `campsite_rules`. Occupancy is `experiments.availability_frozen`
 (snapshot of `public.availability` on 2026-09-08, nights 7–19 Sep).
@@ -963,8 +972,11 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 `availability_frozen`). Then extractor then planner on every case and
 writes `reports/evals/` (per-query seconds in the table, then a
 **Cases** section with the extractor JSON, the planner RAG queries,
-retrieved claims/rules, and the judge verdict). Each case prints
-token in/out (extractor + judge) before the report is written; the
+retrieved claims/rules, and the judge verdict). `--recommender` also
+runs the Super picker after the planner and dumps 1–2 cited recs (not
+scored). Each case prints
+token in/out (extractor + judge, plus `recommend` when that flag is
+on) before the report is written; the
 markdown has a **Tokens** table. `--model 30B` runs
 extractor+judge on the 30B; `--judge-concurrency N` overrides the
 default of 5 parallel live judge calls; `--no-judge-compact` quotes
@@ -985,4 +997,62 @@ still three listings (caravan-bay water+power, PITCH tent power, site-wide
 `caravan_bay_electric_hookup` / `caravan_bay_water_hookup` instead
 (experiments.md 2026-09-08 §1); PITCH and site-wide keep the generic
 names.
+
+## Recommender
+
+`recommender_node` (`source/agent/recommender.py`) is a Nemotron
+Super JSON picker, temperature 0, thinking off
+(`nvidia/nemotron-3-super-120b-a12b`, `TRIPPY_RECOMMENDER_MODEL`).
+It does not search. The planner payload is already the candidate
+list. Extractor, light, and judge stay 235B.
+
+The node does not dump raw LangGraph messages. It packs the original
+query, the extractor JSON (`constraints`), and compact `fits`: stay
+identity, `why`, `review_claims` (the judge’s relevant set, including
+nos), retrieved official rules as they are, and `claim_judge`. `score`
+and `rejected` stay out of the model input. The prompt tells it to
+cite a listing row only when that row is about the ask — retrieved
+rules are still unsifted nearest neighbors (tent-as-desert,
+stove-as-electricity). `relevant_rules` is not a judge field.
+
+Output is JSON: 1 stay, or 2 when they are distinct useful options,
+each with a `why` in one language — Hebrew only if the query is
+mostly Hebrew, English only if it is mostly English. The first
+language prompt still leaked Latin/CJK (`ゲuests`, `.pitch`,
+`בungalו`) because packed evidence is English (`text_en` claims,
+`tent_pitch` keys) and the prompt said “say guests report”
+(experiments.md 2026-09-10 §8). The prompt now says to paraphrase
+those fields and, in Hebrew, write אורחים מספרים. Nemotron Super
+replaced 235B because on the five longest recs it wrote Hebrew
+with **0** Latin leaks (`שקע חשמל` not `איןoutlets`); 235B still
+leaked `pitch`/`outlets`. Super is not faster (16.9s vs 19.8s)
+and is 1.5× the 235B rate. Lightning wrote English on all five
+and is out. Thinking stays off: Super rejects
+`reasoning_effort=none`, so the call uses `/no_think` plus
+`chat_template_kwargs.enable_thinking=false` (experiments.md
+2026-09-11 §9–§10). `TRIPPY_RECOMMENDER_MODEL=235B` opts back.
+Picks whose
+`(campsite_id, accommodation_type, start, end)` is not in `fits` are
+dropped. Empty `fits` become an honest follow-up.
+
+After vacancies and the judge, each surviving fit gets a
+`booking_url`: `BE_Results.aspx` with `campsites.booking_hotel_id`
+(the parent’s id when the row is a subcamp), the stay dates, and
+`ad1` from extractor party size (`source/agent/booking.py`). That is
+the public search GET the availability scraper already uses — not
+the parks.org.il iframe session. The recommender is told to copy
+`booking_url` from the fit; render looks up the chosen stay and
+prints the fit’s URL, ignoring a hallucinated one. The spoken reply
+is rendered in code (day.month dates, campsite, type, price, then
+the booking URL). Streamlit's turn summary also records `collect_stages()`
+buckets and `judge_calls` (claim_judge HTTP count) so a planner blob
+is not silent 235B. The 235B
+call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
+match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
+paints the rendered reply as soon as `parse_partial_json` can read a
+stay identity or `empty` — not the raw JSON. Telegram still sends one
+message when the node finishes. Usage is `role="recommend"`.
+`just run-eval -- --recommender` dumps those recs into
+`reports/evals/` without scoring them
+(experiments.md 2026-09-10 §7).
 
