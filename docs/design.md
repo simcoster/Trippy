@@ -882,7 +882,9 @@ hits per site. That is recall: campfires match `"desert"`, “pets not
 allowed” matches `"pet friendly"`. Precision is a 235B call per
 (query, campsite) in `planner_node` (`source/agent/claim_judge.py`).
 
-The planner retrieve (one query embedding) loads the top-5 claims
+The planner retrieve embeds each distinct semantic query statement
+(up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search.py`)
+and loads the top-5 claims
 **and** the nearest official `campsite_rules` (all categories,
 including polarity false) onto each fit. The 235B judge in
 `planner_node` (`source/agent/claim_judge.py`) only scores that
@@ -973,8 +975,13 @@ move who is vacant, and `יום חמישי הבא` stays 17 Sep.
 writes `reports/evals/` (per-query seconds in the table, then a
 **Cases** section with the extractor JSON, the planner RAG queries,
 retrieved claims/rules, and the judge verdict). `--recommender` also
-runs the Super picker after the planner and dumps 1–2 cited recs (not
-scored). Each case prints
+runs the Kimi-K3 picker after the planner and dumps 1–2 cited recs (not
+scored). Every dump stores a compact recommender `pack` per case.
+`--recommender --from-planner reports/evals/<stamp>.json` replays only
+the picker from those packs (no extract, judge, copy, or DB).
+`--limit N` keeps the first N easy and first N hard (`--limit 2` is
+E01, E02, H01, H02 on planner_v1). `--ids` still picks named cases.
+Each case prints
 token in/out (extractor + judge, plus `recommend` when that flag is
 on) before the report is written; the
 markdown has a **Tokens** table. `--model 30B` runs
@@ -1000,9 +1007,9 @@ names.
 
 ## Recommender
 
-`recommender_node` (`source/agent/recommender.py`) is a Nemotron
-Super JSON picker, temperature 0, thinking off
-(`nvidia/nemotron-3-super-120b-a12b`, `TRIPPY_RECOMMENDER_MODEL`).
+`recommender_node` (`source/agent/recommender.py`) is a Kimi-K3
+JSON picker, temperature 0, thinking off (`moonshotai/Kimi-K3`,
+`TRIPPY_RECOMMENDER_MODEL`; extra_body `reasoning_effort=none`).
 It does not search. The planner payload is already the candidate
 list. Extractor, light, and judge stay 235B.
 
@@ -1015,22 +1022,40 @@ cite a listing row only when that row is about the ask — retrieved
 rules are still unsifted nearest neighbors (tent-as-desert,
 stove-as-electricity). `relevant_rules` is not a judge field.
 
-Output is JSON: 1 stay, or 2 when they are distinct useful options,
-each with a `why` in one language — Hebrew only if the query is
-mostly Hebrew, English only if it is mostly English. The first
-language prompt still leaked Latin/CJK (`ゲuests`, `.pitch`,
-`בungalו`) because packed evidence is English (`text_en` claims,
-`tent_pitch` keys) and the prompt said “say guests report”
-(experiments.md 2026-09-10 §8). The prompt now says to paraphrase
-those fields and, in Hebrew, write אורחים מספרים. Nemotron Super
-replaced 235B because on the five longest recs it wrote Hebrew
-with **0** Latin leaks (`שקע חשמל` not `איןoutlets`); 235B still
-leaked `pitch`/`outlets`. Super is not faster (16.9s vs 19.8s)
-and is 1.5× the 235B rate. Lightning wrote English on all five
-and is out. Thinking stays off: Super rejects
-`reasoning_effort=none`, so the call uses `/no_think` plus
-`chat_template_kwargs.enable_thinking=false` (experiments.md
-2026-09-11 §9–§10). `TRIPPY_RECOMMENDER_MODEL=235B` opts back.
+Output is JSON: 1 stay, or 2 when they are distinct useful options
+(prefer two campsites over two types at the same site), each with a
+`why` in one language — Hebrew only if the query is mostly Hebrew,
+English only if it is mostly English. Two picks also set `intro`:
+note that there is more than one option, name them, and compare them
+somewhat. Phrasing is free; render puts that above the numbered list.
+`intro` is null for a single stay.
+`why` leads with the matching facts, not a recap of the query,
+dates, or party (those are on the stay line). If listing and reviews
+agree the asked thing exists, say it once — reviews add quality or
+a contradiction, not a second copy of the same yes. Listing-vs-review
+clashes are named with recency (site says hot showers, reviews from
+N months ago say only cold water). A concrete amenity the listing
+omits but a review mentions is flagged as listing-silent; a vibe can
+be review-only with no such hedge. Quality notes about the same asked
+things (dirty vs clean showers) come after the match; unrelated
+complaints (shade on a shower query) stay out. Super’s first
+why-shape pass echoed “הבקשה הייתה…” and calqued English claims
+(`מרחביים`, `שמדליות`); the prompt now forbids restating the ask
+and coined words. The first language prompt still leaked Latin/CJK
+(`ゲuests`, `.pitch`, `בungalו`) because packed evidence is English
+(`text_en` claims, `tent_pitch` keys) and the prompt said “say guests
+report” (experiments.md 2026-09-10 §8). The prompt now says to
+paraphrase those fields and, in Hebrew, write אורחים מספרים.
+Nemotron Super replaced 235B as a Latin-leak fix (0 leaks on the
+five longest recs vs 235B `pitch`/`outlets`; experiments.md
+2026-09-11 §9–§10) but Super’s Hebrew stayed robotic. A 2026-09-12
+from-planner bake ranked **Kimi-K3 then GLM-5.2** above 397B and
+235B on spoken `why` (experiments.md 2026-09-12 §1–§2): 235B and
+397B coin or garble Hebrew; GLM is close (`משוערפים`, `מקררון`);
+Kimi is the default. `TRIPPY_RECOMMENDER_MODEL=super` or `235B`
+opts back. Thinking stays off on Kimi (`reasoning_effort=none`);
+Super still uses `/no_think` plus
+`chat_template_kwargs.enable_thinking=false`.
 Picks whose
 `(campsite_id, accommodation_type, start, end)` is not in `fits` are
 dropped. Empty `fits` become an honest follow-up.
@@ -1046,13 +1071,19 @@ prints the fit’s URL, ignoring a hallucinated one. The spoken reply
 is rendered in code (day.month dates, campsite, type, price, then
 the booking URL). Streamlit's turn summary also records `collect_stages()`
 buckets and `judge_calls` (claim_judge HTTP count) so a planner blob
-is not silent 235B. The 235B
+is not silent 235B. The recommend
 call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
 match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
-stay identity or `empty` — not the raw JSON. Telegram still sends one
-message when the node finishes. Usage is `role="recommend"`.
+stay identity or `empty` — not the raw JSON. On first load it also
+sends a one-token `hi` to the recommender (Kimi) in a background
+thread so the first real rec is not a cold replica. Telegram still
+sends one message when the node finishes. Usage is `role="recommend"`.
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
-(experiments.md 2026-09-10 §7).
+(experiments.md 2026-09-10 §7). Each recommend dump stores
+`ttft_chunk_ms` (first SSE token) and `ttft_spoken_ms` (first
+paintable stay); the CLI prints them next to `recommend=`. The
+dump’s `pack` is the picker
+input; `--from-planner` re-runs recommend only.
 

@@ -6,6 +6,77 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-12, Streamlit Kimi warmup)
+
+**Streamlit pings Kimi with a one-token `hi` on first load**
+(background thread, once per process) so the first recommend is
+not a cold replica.
+
+### Done (2026-09-12, eval --limit)
+
+**`--limit N` keeps the first N cases per difficulty.** `--limit 2`
+is 2 easy + 2 hard (E01, E02, H01, H02 on planner_v1). Works with
+`--from-planner` and `--ids`.
+
+### Done (2026-09-12, recommend TTFT in eval)
+
+**Eval prints recommend TTFT** (first SSE chunk, first paintable
+stay) next to `recommend=`. Dump fields `ttft_chunk_ms` /
+`ttft_spoken_ms`. Streamlit already had these.
+
+### Done (2026-09-12, intro is a comparison)
+
+**Two-pick `intro` notes there are multiple stays, names them,
+and compares them.** Phrasing is free — “there are X options
+here” was an example, not a template. Prompt only.
+
+### Done (2026-09-12, Kimi default + intro)
+
+**Recommender default is Kimi-K3.** Prompt: listing and reviews
+that agree on existence are said once (no “there are tents and
+guests say there are tents”). Two picks set `intro` (“יש כאן שתי
+אפשרויות…”) above the numbered list. Super and 235B stay aliases
+(experiments.md 2026-09-12 §2).
+
+### Done (2026-09-12, Kimi recommender pick)
+
+**Kimi-K3 wins the why bake** on phrasing, not Latin.
+235B/397B invent or garble Hebrew; GLM is close but coins
+`משוערפים`. Listing+review doubles are a prompt fix. Super
+still the running default until the test/alias flip
+(experiments.md 2026-09-12 §2).
+
+### Done (2026-09-12, recommender phrasing bake)
+
+**Same packs, four models.** Kimi-K3 then GLM-5.2 write natural
+Hebrew why (0 Latin, 0 query-echo). 397B glues English. 235B
+leaks `outlets` and garbles H12. Super stays default
+(experiments.md 2026-09-12 §1).
+
+### Done (2026-09-12, recommender pack cache)
+
+**Eval dumps a compact recommender `pack` per case** (query,
+extract, compact fits). `--recommender --from-planner
+reports/evals/<stamp>.json` replays only the picker. Old dumps
+have no pack; this pass writes one. Prompt also stops echoing
+the query and coining Hebrew (`מרחביים` / `שמדליות`).
+
+### Done (2026-09-12, recommender why shape)
+
+**Recommender `why` leads with the match, then related
+listing-vs-review notes.** Contradictions and listing-silent
+concrete amenities cite review recency; vibes can be review-only.
+Quality caveats about the asked thing come after; unrelated
+complaints stay out. Prompt only (`RECOMMENDER_SYSTEM_PROMPT`).
+
+### Done (2026-09-12)
+
+**Planner query embeddings run 5 at a time.** Distinct semantic
+query statements in one retrieve (`_query_vec_literals`) hit Nebius
+in parallel, capped at `QUERY_EMBED_CONCURRENCY = 5`. One query
+stays a single call. Supersedes “one query embedding” in the
+planner retrieve description: a stay can have several statements.
+
 ### Done (2026-09-11, Super recommender)
 
 **Recommender is Nemotron Super 120B-A12B, thinking off.** Hebrew

@@ -41,6 +41,12 @@ GLM_INSTRUCT_OUTPUT_USD_PER_MTOK = 4.40
 NEMOTRON_SUPER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 NEMOTRON_SUPER_INPUT_USD_PER_MTOK = 0.30
 NEMOTRON_SUPER_OUTPUT_USD_PER_MTOK = 0.90
+QWEN_397B_MODEL = "Qwen/Qwen3.5-397B-A17B"
+QWEN_397B_INPUT_USD_PER_MTOK = 0.60
+QWEN_397B_OUTPUT_USD_PER_MTOK = 3.60
+KIMI_K3_MODEL = "moonshotai/Kimi-K3"
+KIMI_K3_INPUT_USD_PER_MTOK = 3.00
+KIMI_K3_OUTPUT_USD_PER_MTOK = 15.00
 
 
 def instruct_chat_model(default: str | None = None) -> str:
@@ -68,6 +74,16 @@ def chat_usd_per_mtok(model: str | None) -> tuple[float, float]:
         return (
             GLM_INSTRUCT_INPUT_USD_PER_MTOK,
             GLM_INSTRUCT_OUTPUT_USD_PER_MTOK,
+        )
+    if "397B" in name or name == QWEN_397B_MODEL:
+        return (
+            QWEN_397B_INPUT_USD_PER_MTOK,
+            QWEN_397B_OUTPUT_USD_PER_MTOK,
+        )
+    if "kimi-k3" in name.casefold() or name == KIMI_K3_MODEL:
+        return (
+            KIMI_K3_INPUT_USD_PER_MTOK,
+            KIMI_K3_OUTPUT_USD_PER_MTOK,
         )
     if "nemotron-3-super" in name.casefold():
         return (
