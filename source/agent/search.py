@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -27,6 +29,7 @@ load_dotenv()
 _claims_embedder = ClaimsEmbeddingLLMClient()
 _query_vec_cache: dict[str, str] = {}
 _query_vec_lock = threading.Lock()
+QUERY_EMBED_CONCURRENCY = 5
 
 # Site-wide rules for a candidate: this campsite and its parent. Sister
 # subcamps (Akhziv north vs south) do not share each other's rows.
@@ -433,6 +436,20 @@ def _query_vec_literal(query: str) -> str:
     with _query_vec_lock:
         _query_vec_cache[key] = literal
     return literal
+
+
+def _query_vec_literals(queries: Iterable[str]) -> dict[str, str]:
+    """Embed distinct query statements, up to QUERY_EMBED_CONCURRENCY at a time."""
+    unique = list(dict.fromkeys(queries))
+    if not unique:
+        return {}
+    workers = min(QUERY_EMBED_CONCURRENCY, len(unique))
+    if workers == 1:
+        query = unique[0]
+        return {query: _query_vec_literal(query)}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        literals = list(pool.map(_query_vec_literal, unique))
+    return dict(zip(unique, literals, strict=True))
 
 
 def search_stated_amenities(

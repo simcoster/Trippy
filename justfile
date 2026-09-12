@@ -61,6 +61,9 @@ setup-experiments *args:
 # Extractor + planner on evals/planner_v1.json (LLM; frozen occupancy).
 # Copies public → experiments first, except availability.
 # `just run-eval -- --recommender` also dumps 1–2 cited recs (not scored).
+# Planner dumps always include a `pack` per case. Replay recommend only:
+# `just run-eval -- --recommender --from-planner reports/evals/<stamp>.json`
+# `just run-eval -- --limit 2` is the first 2 easy + first 2 hard.
 run-eval *args:
     uv run python -m source.eval.run {{ trim_start_match(args, "-- ") }}
 

@@ -68,8 +68,9 @@ def _semantic_evidence_payload(queries: list[str], *, limit: int = 5) -> dict:
     review_claims: list[dict] = []
     seen_amenities: set[str] = set()
     seen_claims: set[tuple] = set()
+    vecs = search._query_vec_literals(queries)
     for query in queries:
-        vec = search._query_vec_literal(query)
+        vec = vecs[query]
         for hit in search.search_stated_amenities(query, limit=limit, embedding=vec):
             if hit.get("error"):
                 continue
@@ -220,6 +221,9 @@ def _semantic_why_by_slot(
     missing: dict[_SlotKey, _WhyRows] = {key: [] for key in keys}
     matching = set(keys)
     seen_claims: set[tuple] = set()
+    vecs = search._query_vec_literals(
+        [query for group in groups for query in group["queries"]]
+    )
 
     for group in groups:
         is_room = group["locus"] == ROOM_LOCUS
@@ -227,7 +231,7 @@ def _semantic_why_by_slot(
         by_site: dict[str, dict[str, Any]] = {}
         by_claim: dict[str, dict[str, Any]] = {}
         for query in group["queries"]:
-            vec = search._query_vec_literal(query)
+            vec = vecs[query]
             if query not in rules_by_query:
                 rules_by_query[query] = _rules_hits_by_site(
                     query, vec, site_ids

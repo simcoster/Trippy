@@ -2,12 +2,14 @@
 
     just run-eval
     just run-eval -- --ids E01,H02
+    just run-eval -- --limit 2
     just run-eval -- --no-copy
     just run-eval -- --model 30B
     just run-eval -- --judge-concurrency 1
     just run-eval -- --no-judge-compact
     just run-eval -- --recommender
     just run-eval -- --judge-batch --judge-model glm
+    just run-eval -- --recommender --from-planner reports/evals/2026-09-12_093437.json
     uv run python -m source.eval.run --from-json reports/evals/2026-09-10_185136.json
 """
 
@@ -18,7 +20,7 @@ import json
 import os
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +37,7 @@ from source.agent.claim_judge import (
 )
 from source.agent.graph import extractor_node, planner_node
 from source.agent.recommender import (
+    pack_recommender_input,
     recommend_from_payload,
     recommendation_row,
     recommender_model,
@@ -131,6 +134,28 @@ def format_usage_line(usage: dict | None) -> str:
         elif n > 0 or bi or bo:
             bits.append(f"{role} in={bi} out={bo}")
     return " ".join(bits)
+
+
+def format_recommend_ttft(rec: dict | None) -> str:
+    """First LLM chunk and first paintable stay, inside the recommend call."""
+    if not rec:
+        return ""
+    parts: list[str] = []
+    chunk = rec.get("ttft_chunk_ms")
+    spoken = rec.get("ttft_spoken_ms")
+    if chunk is not None:
+        parts.append(f"ttft_chunk={float(chunk) / 1000:.1f}s")
+    if spoken is not None:
+        parts.append(f"ttft_spoken={float(spoken) / 1000:.1f}s")
+    return " ".join(parts)
+
+
+def format_case_stage_line(stages: dict | None, rec: dict | None = None) -> str:
+    return " ".join(
+        part
+        for part in (format_stages(stages), format_recommend_ttft(rec))
+        if part
+    )
 
 
 def _usage_totals(rows: list[dict]) -> dict:
@@ -260,19 +285,88 @@ def run_one(
         recommend = None
         if recommender and planner is not None:
             result = recommend_from_payload(query, planner)
-            recommend = {
-                "recommendations": [
-                    recommendation_row(row) for row in result.recommendations
-                ],
-                "empty": result.empty,
-                "text": result.text,
-            }
+            recommend = _recommend_dump(result)
         usage_d = (
             usage.report("eval")
             if usage.chat_calls or usage.embed_calls
             else {}
         )
         return extract, planner, recommend, clock.snapshot(), usage_d
+
+
+def _recommend_dump(result) -> dict:
+    dump = {
+        "recommendations": [
+            recommendation_row(row) for row in result.recommendations
+        ],
+        "empty": result.empty,
+        "text": result.text,
+    }
+    intro = getattr(result, "intro", None)
+    if intro:
+        dump["intro"] = intro
+    for key in ("ttft_chunk_ms", "ttft_spoken_ms"):
+        val = getattr(result, key, None)
+        if val is not None:
+            dump[key] = round(float(val), 1)
+    return dump
+
+
+def planner_pack(
+    query: str, extract: dict | None, planner: dict | None
+) -> dict:
+    """Compact recommender input for one case. Replay with payload_from_pack."""
+    payload = dict(planner or {})
+    if isinstance(extract, dict):
+        payload["constraints"] = extract
+    elif not isinstance(payload.get("constraints"), dict):
+        payload["constraints"] = {}
+    return pack_recommender_input(query, payload)
+
+
+def payload_from_pack(pack: dict) -> dict:
+    """Planner-shaped payload so recommend_from_payload can re-pack a dump."""
+    extract = pack.get("extract")
+    payload: dict = {
+        "constraints": extract if isinstance(extract, dict) else {},
+        "fits": [
+            row for row in (pack.get("fits") or []) if isinstance(row, dict)
+        ],
+    }
+    for key in ("skipped", "date_notice", "error"):
+        if pack.get(key) is not None:
+            payload[key] = pack[key]
+    return payload
+
+
+def replay_recommend_rows(
+    rows: list[dict],
+    *,
+    recommend_fn: Callable[[str, dict], object] | None = None,
+) -> list[dict]:
+    """Re-run only the recommender. extract / planner / score stay as dumped."""
+    fn = recommend_fn or recommend_from_payload
+    out: list[dict] = []
+    for row in rows:
+        pack = row.get("pack")
+        if not isinstance(pack, dict):
+            raise SystemExit(f"{row.get('id')}: dump has no recommender pack")
+        query = str(row.get("query") or pack.get("query") or "")
+        t0 = time.monotonic()
+        with collect_stages() as clock, collect_llm_usage() as usage:
+            result = fn(query, payload_from_pack(pack))
+            usage_d = (
+                usage.report("eval")
+                if usage.chat_calls or usage.embed_calls
+                else {}
+            )
+        new = dict(row)
+        new["seconds"] = round(time.monotonic() - t0, 1)
+        new["stages"] = clock.snapshot()
+        new["usage"] = usage_d
+        new["recommend"] = _recommend_dump(result)
+        out.append(new)
+    return out
 
 
 def _summarize_planner(planner: dict | None) -> dict:
@@ -526,6 +620,11 @@ def _case_trace_lines(row: dict) -> list[str]:
         lines.append("- recommendations:")
         if rec.get("empty"):
             lines.append(f"  - empty: {rec['empty']}")
+        if rec.get("intro"):
+            lines.append(f"  - intro: {rec['intro']}")
+        ttft_s = format_recommend_ttft(rec)
+        if ttft_s:
+            lines.append(f"  - {ttft_s}")
         for item in recs:
             if not isinstance(item, dict):
                 continue
@@ -596,6 +695,8 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
         f"`TRIPPY_RECOMMENDER_MODEL={recommender_model()}`",
         "",
     ]
+    if spec.get("from_planner"):
+        lines.insert(-1, f"- from_planner: `{spec['from_planner']}`")
     totals = merge_snapshots([r.get("stages") or {} for r in rows])
     totals_s = format_stages(totals)
     if totals_s:
@@ -658,7 +759,10 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
                 f"| {row['id']} | {query} | {n_s} | {pick} | {why} |"
             )
     if any(r.get("stages") for r in rows):
+        show_ttft = any(format_recommend_ttft(r.get("recommend")) for r in rows)
         timing_cols = ["id", "s", *STAGE_ORDER]
+        if show_ttft:
+            timing_cols.extend(["ttft_chunk", "ttft_spoken"])
         lines.extend(
             [
                 "",
@@ -673,8 +777,20 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
             secs = row.get("seconds")
             secs_s = "" if secs is None else f"{secs:.1f}"
             cells = [_stage_cell(snap.get(name)) for name in STAGE_ORDER]
+            rec = row.get("recommend") or {}
+            if show_ttft:
+                chunk = rec.get("ttft_chunk_ms")
+                spoken = rec.get("ttft_spoken_ms")
+                cells.append(
+                    "" if chunk is None else f"{float(chunk) / 1000:.1f}"
+                )
+                cells.append(
+                    "" if spoken is None else f"{float(spoken) / 1000:.1f}"
+                )
             lines.append(f"| {row['id']} | {secs_s} | {' | '.join(cells)} |")
         total_cells = [_stage_cell(totals.get(name)) for name in STAGE_ORDER]
+        if show_ttft:
+            total_cells.extend(["", ""])
         lines.append(f"| **total** | {wall:.1f} | {' | '.join(total_cells)} |")
     if any(r.get("usage") for r in rows):
         show_recommend = any(
@@ -769,10 +885,149 @@ def write_report(path: Path, spec: dict, rows: list[dict], wall: float) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _filter_ids(rows: list[dict], ids: str, *, key: str = "id") -> list[dict]:
+    if not ids:
+        return rows
+    want = {part.strip() for part in ids.split(",") if part.strip()}
+    kept = [row for row in rows if row.get(key) in want]
+    missing = want - {row.get(key) for row in kept}
+    if missing:
+        raise SystemExit(f"unknown ids: {sorted(missing)}")
+    return kept
+
+
+def _limit_by_difficulty(rows: list[dict], n: int) -> list[dict]:
+    """Keep the first n rows of each difficulty, in spec order."""
+    if n <= 0:
+        return rows
+    taken: dict[str, int] = {}
+    kept: list[dict] = []
+    for row in rows:
+        diff = str(row.get("difficulty") or "")
+        if taken.get(diff, 0) >= n:
+            continue
+        taken[diff] = taken.get(diff, 0) + 1
+        kept.append(row)
+    return kept
+
+
+def select_eval_rows(
+    rows: list[dict],
+    *,
+    ids: str = "",
+    limit: int = 0,
+    key: str = "id",
+) -> list[dict]:
+    if limit < 0:
+        raise SystemExit("--limit must be >= 0")
+    kept = _filter_ids(rows, ids, key=key)
+    return _limit_by_difficulty(kept, limit)
+
+
+def _eval_out_paths(args) -> tuple[Path, Path]:
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    out_dir = Path(args.out_dir) if args.out_dir else _ROOT / "reports" / "evals"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir / f"{stamp}.md", out_dir / f"{stamp}.json"
+
+
+def _write_eval_files(
+    report_md: Path,
+    report_json: Path,
+    spec: dict,
+    dump: dict,
+    rows: list[dict],
+    wall: float,
+) -> None:
+    report_json.write_text(
+        json.dumps(dump, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+    write_report(report_md, spec, rows, wall)
+    passed = dump["pass"]
+    print(f"\n{passed}/{len(rows)} pass in {wall:.1f}s", flush=True)
+    totals_usage_s = format_usage_line(_usage_totals(rows))
+    if totals_usage_s:
+        print(totals_usage_s, flush=True)
+    print(f"report {report_md}", flush=True)
+    print(f"dump   {report_json}", flush=True)
+
+
+def _replay_from_planner(args, spec: dict) -> int:
+    if not args.recommender:
+        raise SystemExit("--from-planner needs --recommender")
+    dump_path = Path(args.from_planner)
+    dump = json.loads(dump_path.read_text(encoding="utf-8"))
+    apply_run_env(spec)
+    if args.recommender_model:
+        os.environ["TRIPPY_RECOMMENDER_MODEL"] = args.recommender_model
+    rows_in = select_eval_rows(
+        list(dump.get("cases") or []), ids=args.ids, limit=args.limit
+    )
+    if not rows_in:
+        raise SystemExit("no cases")
+    print(f"from-planner {dump_path}", flush=True)
+    print(f"TRIPPY_RECOMMENDER_MODEL={recommender_model()}", flush=True)
+    print("recommender=1", flush=True)
+    if args.limit:
+        print(
+            f"limit={args.limit} cases="
+            + ",".join(str(row.get("id") or "") for row in rows_in),
+            flush=True,
+        )
+    report_md, report_json = _eval_out_paths(args)
+    started = time.monotonic()
+    rows: list[dict] = []
+    for src in rows_in:
+        cid = str(src.get("id"))
+        print(f"\n=== {cid} {src.get('difficulty')} ===", flush=True)
+        print(src.get("query") or "", flush=True)
+        replayed = replay_recommend_rows([src])[0]
+        score = replayed.get("score") or {}
+        mark = "PASS" if score.get("ok") else "FAIL"
+        print(
+            f"{mark} {replayed.get('seconds')}s "
+            f"date={score.get('extract_date')} "
+            f"fits={score.get('fit_sites')} {score.get('failures')}",
+            flush=True,
+        )
+        rec = replayed.get("recommend") or {}
+        stages_s = format_case_stage_line(replayed.get("stages") or {}, rec)
+        if stages_s:
+            print(stages_s, flush=True)
+        usage_s = format_usage_line(replayed.get("usage") or {})
+        if usage_s:
+            print(usage_s, flush=True)
+        if rec.get("text"):
+            print(rec["text"], flush=True)
+        rows.append(replayed)
+    wall = time.monotonic() - started
+    spec = dict(spec)
+    spec["from_planner"] = str(dump_path)
+    out = {
+        "eval": spec.get("id"),
+        "at": datetime.now().isoformat(timespec="seconds"),
+        "seconds": round(wall, 1),
+        "pass": sum(1 for r in rows if r["score"]["ok"]),
+        "n": len(rows),
+        "recommender": True,
+        "from_planner": str(dump_path),
+        "cases": rows,
+    }
+    _write_eval_files(report_md, report_json, spec, out, rows, wall)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--eval", default=str(DEFAULT_EVAL), help="eval JSON")
     parser.add_argument("--ids", default="", help="comma-separated case ids")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="First N cases per difficulty (2 → 2 easy + 2 hard)",
+    )
     parser.add_argument("--out-dir", default="", help="report directory")
     parser.add_argument(
         "--no-copy",
@@ -818,16 +1073,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--recommender-model",
         default="",
-        help="Recommender model: super, 235B, or a full Nebius id",
+        help="Recommender model: kimi, super, 235B, or a full Nebius id",
     )
     parser.add_argument(
         "--from-json",
         default="",
         help="Rebuild markdown from a dump; do not run cases",
     )
+    parser.add_argument(
+        "--from-planner",
+        default="",
+        help="Replay --recommender from a dump's packs; skip extract/planner/judge",
+    )
     args = parser.parse_args(argv)
     spec_path = Path(args.eval)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    if args.from_json and args.from_planner:
+        raise SystemExit("use --from-json or --from-planner, not both")
     if args.from_json:
         dump_path = Path(args.from_json)
         dump = json.loads(dump_path.read_text(encoding="utf-8"))
@@ -840,6 +1102,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"report {md}", flush=True)
         return 0
+    if args.from_planner:
+        return _replay_from_planner(args, spec)
     if not args.no_copy:
         refresh_experiments_from_public()
     apply_run_env(spec)
@@ -887,21 +1151,19 @@ def main(argv: list[str] | None = None) -> int:
     print(f"recommender={int(args.recommender)}", flush=True)
     _require_frozen(table)
 
-    cases = list(spec.get("queries") or [])
-    if args.ids:
-        want = {part.strip() for part in args.ids.split(",") if part.strip()}
-        cases = [c for c in cases if c.get("id") in want]
-        missing = want - {c.get("id") for c in cases}
-        if missing:
-            raise SystemExit(f"unknown ids: {sorted(missing)}")
+    cases = select_eval_rows(
+        list(spec.get("queries") or []), ids=args.ids, limit=args.limit
+    )
     if not cases:
         raise SystemExit("no cases")
+    if args.limit:
+        print(
+            f"limit={args.limit} cases="
+            + ",".join(str(row.get("id") or "") for row in cases),
+            flush=True,
+        )
 
-    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    out_dir = Path(args.out_dir) if args.out_dir else _ROOT / "reports" / "evals"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    report_md = out_dir / f"{stamp}.md"
-    report_json = out_dir / f"{stamp}.json"
+    report_md, report_json = _eval_out_paths(args)
 
     rows: list[dict] = []
     started = time.monotonic()
@@ -917,7 +1179,7 @@ def main(argv: list[str] | None = None) -> int:
         elapsed = time.monotonic() - t0
         score = score_case(case.get("expect") or {}, extract, planner)
         mark = "PASS" if score["ok"] else "FAIL"
-        stages_s = format_stages(stages)
+        stages_s = format_case_stage_line(stages, recommend)
         print(
             f"{mark} {elapsed:.1f}s date={score.get('extract_date')} "
             f"fits={score.get('fit_sites')} {score.get('failures')}",
@@ -940,6 +1202,7 @@ def main(argv: list[str] | None = None) -> int:
             "score": score,
             "extract": extract,
             "planner": _summarize_planner(planner),
+            "pack": planner_pack(query, extract, planner),
         }
         if recommend is not None:
             row["recommend"] = recommend
@@ -954,18 +1217,7 @@ def main(argv: list[str] | None = None) -> int:
         "recommender": bool(args.recommender),
         "cases": rows,
     }
-    report_json.write_text(
-        json.dumps(dump, ensure_ascii=False, indent=2, default=str),
-        encoding="utf-8",
-    )
-    write_report(report_md, spec, rows, wall)
-    passed = dump["pass"]
-    print(f"\n{passed}/{len(rows)} pass in {wall:.1f}s", flush=True)
-    totals_usage_s = format_usage_line(_usage_totals(rows))
-    if totals_usage_s:
-        print(totals_usage_s, flush=True)
-    print(f"report {report_md}", flush=True)
-    print(f"dump   {report_json}", flush=True)
+    _write_eval_files(report_md, report_json, spec, dump, rows, wall)
     return 0
 
 

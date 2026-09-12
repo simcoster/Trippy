@@ -57,7 +57,11 @@ if not hasattr(_recommender_mod, "last_recommend_timing"):
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.recommender import last_recommend_timing, listen_recommend_text
+from source.agent.recommender import (
+    last_recommend_timing,
+    listen_recommend_text,
+    warmup_recommender,
+)
 from source.agent.timing import collect_stages, format_stages
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
@@ -77,6 +81,7 @@ st.set_page_config(
     page_icon="⛺",
     layout="wide",
 )
+warmup_recommender()
 
 # Active turn trace (set while invoke_agent runs)
 _current_trace: list[dict[str, Any]] | None = None

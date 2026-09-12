@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -25,6 +26,7 @@ from source.agent.messages import latest_user_text, message_text
 from source.agent.prompts import EMPTY_REPLY_FALLBACK
 from source.agent.timing import stage
 from source.scraper.amenity_enrichment.llm import (
+    KIMI_K3_MODEL,
     NEMOTRON_SUPER_MODEL,
     QWEN_INSTRUCT_MODEL,
     _parse_json_payload,
@@ -45,22 +47,65 @@ type, date, price, amenity, or rule.
 
 Pick 1 stay, or 2 when they are genuinely different useful options
 (prefer two campsites over two types at the same site). Never more than 2.
+When you pick 2, set intro to a short spoken note: there is more than
+one option, what they are, and how they differ (tent vs staff room,
+north vs south, cheaper vs closer). Phrase it however sounds natural;
+do not use a fixed template. Each why is only about that stay; do not
+repeat the intro there. intro is null when you pick 1.
 Keep planner order as a hint (fits is best-first) but you may skip a
 worse later row. Copy campsite_id, accommodation_type, start, end, and
 booking_url exactly from the fit you pick. Do not invent or rewrite a
 booking_url.
+
+Write why in this order. Lead with the matching facts — not a restatement
+of the query. Then, only about those same things, add listing-vs-review
+notes and quality caveats the user did not ask for (dirty vs clean,
+working vs broken). Do not mention an amenity or complaint the user did
+not ask about and that is not about the ask — no shade note on a
+hot-shower query, and never "no info on showers" when they did not ask.
+
+Do not quote or recap the query ("the request was for X", "הבקשה הייתה").
+Do not recap dates, party size, or price; the stay line already has them.
+Do not write form-language: "the option offers", "האפשרות מציעה",
+"הליסטינג", "fits the request at the specified dates". Sound like a
+person who looked this up, not a translated checklist.
+
+Paraphrase English claims into ordinary words in the user's language.
+Never paste claim text. Never coin a word or calque English
+(מרווחים not מרחביים; מדורות/מנגל not שמדליות). If you are unsure of a
+word, omit it.
+
+Cite listing vs reviews (use date / days_ago when you name a review):
+- Listing and reviews agree the thing exists: say it once. "There are
+  hot showers." Do not also write "and guests say there are hot
+  showers" / "יש אוהלים וגם אורחים מספרים שיש אוהלים". Reviews add
+  quality, condition, or a contradiction — not a second copy of the
+  same yes.
+- Listing yes, reviews no: name the contradiction. "The site says hot
+  showers exist but reviews from 3 months ago say the showers only
+  have cold water."
+- Concrete amenity the user asked for (disabled parking, hot showers,
+  fridge) is missing from the listing but a review mentions it:
+  "Although the site doesn't specify, a review from 2 months ago
+  does."
+- Vibe / atmosphere (quiet, desert feel): reviews alone are enough.
+  "Reviews say it is quiet." Do not add "the site doesn't specify."
+- Related quality after the match: "People also say they are very
+  clean." Or a caveat: "Some recent reviews say they are not working.
+  Also, many reviews say the showers are dirty."
 
 Evidence, in this order of trust:
 - why: how each request was met. stated_amenity is the unit listing,
   site_amenity is the campsite listing, locus room means the guest wanted
   it inside the unit. A why entry with claim is a guest review only —
   never present it as listed.
-- review_claims: every guest claim a judge kept as about the request,
-  positive and negative (is_positive), with date and days_ago. Use all of
-  them, not only the granting why hit. Mention relevant nos as caveats.
-  One complaint does not disqualify a site that lists the amenity.
-  Weigh recent reviews more. claim text is English (text_en) — paraphrase
-  it in the user's language; never paste it.
+- review_claims: guest claims a judge kept as about the request,
+  positive and negative (is_positive), with date and days_ago. Use them
+  for match, contradiction, review-only facts, and related caveats —
+  not a dump of every claim. One complaint does not disqualify a site
+  that lists the amenity. Weigh recent reviews more. claim text is
+  English (text_en) — paraphrase it in the user's language; never paste
+  it.
 - rules: official listing rows retrieved for the request. MOST are
   unrelated nearest neighbors. Cite a rule only when it is actually about
   the ask, including polarity-false forbids (dogs_allowed false for pet
@@ -79,21 +124,21 @@ null when you recommend.
 
 Language: pick one from query and stay in it. Packed JSON is English
 (field names, snake_case subjects, review claims). None of that English
-belongs in why or empty.
+belongs in why, intro, or empty.
 
-If query is mostly Hebrew, why and empty are Hebrew only — no Latin,
-CJK, or mixed-script tokens. For reviews write אורחים מספרים, never
-Guests / guests / ゲuests / ospites. Do not write pitch, tent_pitch,
-outlets, bungalow, camping, accommodation, Stay, stations, dank, or
-glue Latin inside a Hebrew word (not בungalו, איןoutlets, יש.pitch).
-If query is mostly English, why and empty are English only — no Hebrew
-prose; write "guests report" for reviews. Copy campsite and
-accommodation_type names from the fit as stored.
+If query is mostly Hebrew, why, intro, and empty are Hebrew only — no
+Latin, CJK, or mixed-script tokens. For reviews write אורחים מספרים,
+never Guests / guests / ゲuests / ospites. Do not write pitch,
+tent_pitch, outlets, bungalow, camping, accommodation, Stay, stations,
+dank, or glue Latin inside a Hebrew word (not בungalו, איןoutlets,
+יש.pitch). If query is mostly English, why, intro, and empty are
+English only — no Hebrew prose; write "guests report" for reviews.
+Copy campsite and accommodation_type names from the fit as stored.
 
 Output JSON only:
 {"recommendations": [{"campsite_id": int, "accommodation_type": str,
  "start": str, "end": str, "booking_url": str, "why": str}],
- "empty": str | null}
+ "intro": str | null, "empty": str | null}
 """.strip()
 
 RECOMMENDER_NO_THINK_SUFFIX = "/no_think"
@@ -132,17 +177,18 @@ class RecommendResult:
     recommendations: tuple[Recommendation, ...]
     empty: str | None
     text: str
+    intro: str | None = None
     ttft_chunk_ms: float | None = None
     ttft_spoken_ms: float | None = None
     elapsed_ms: float | None = None
 
 
 def recommender_model() -> str:
-    """Nemotron Super unless `TRIPPY_RECOMMENDER_MODEL` is 235B / super / a full id."""
+    """Kimi-K3 unless `TRIPPY_RECOMMENDER_MODEL` is super / 235B / a full id."""
     raw = (os.environ.get("TRIPPY_RECOMMENDER_MODEL") or "").strip()
     key = raw.casefold()
-    if not raw:
-        return NEMOTRON_SUPER_MODEL
+    if not raw or key in {"kimi", "kimi-k3", "k3"}:
+        return KIMI_K3_MODEL
     if key in {"super", "nemotron", "nemotron-super"}:
         return NEMOTRON_SUPER_MODEL
     if key in {"235b", "big", "qwen"}:
@@ -158,13 +204,23 @@ def _recommender_system() -> str:
 
 
 def _recommender_extra_body() -> dict[str, Any] | None:
-    if "nemotron" in recommender_model().casefold():
+    model = recommender_model().casefold()
+    if "nemotron" in model:
         return {"chat_template_kwargs": {"enable_thinking": False}}
-    return None
+    if "instruct-2507" in model or model in {"235b", "big", "qwen"}:
+        return None
+    extra: dict[str, Any] = {
+        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "thinking": {"type": "disabled"},
+    }
+    if "kimi" in model:
+        extra["reasoning_effort"] = "none"
+    return extra
 
 
 def _recommender_chat():
-    """Default Super recommender; `TRIPPY_RECOMMENDER_MODEL` rebuilds for probes."""
+    """Default Kimi recommender; `TRIPPY_RECOMMENDER_MODEL` rebuilds for probes."""
     global _override_recommender, _override_recommender_key
     model = recommender_model()
     extra = _recommender_extra_body()
@@ -176,6 +232,35 @@ def _recommender_chat():
         _override_recommender.stream_usage = True
         _override_recommender_key = key
     return _override_recommender
+
+
+_warmup_lock = threading.Lock()
+_warmup_started = False
+
+
+def warmup_recommender(*, chat: Any | None = None, blocking: bool = False) -> None:
+    """One-token `hi` so the first real recommend is not a cold replica."""
+    global _warmup_started
+    with _warmup_lock:
+        if _warmup_started:
+            return
+        _warmup_started = True
+
+    def _ping() -> None:
+        try:
+            client = chat or _recommender_chat()
+            if hasattr(client, "bind"):
+                client = client.bind(max_tokens=1)
+            client.invoke([HumanMessage(content="hi")])
+        except Exception:
+            logger.warning("recommender warmup failed", exc_info=True)
+
+    if blocking:
+        _ping()
+        return
+    threading.Thread(
+        target=_ping, daemon=True, name="recommender-warmup"
+    ).start()
 
 
 def last_recommend_timing() -> dict[str, float | None] | None:
@@ -374,7 +459,7 @@ def parse_recommender_payload(raw: str) -> dict[str, Any]:
             parsed = _parse_json_payload(_drop_invalid_json_escapes(text))
         except (json.JSONDecodeError, ValueError):
             logger.warning("recommender unparseable: %s", text[:200])
-            return {"recommendations": [], "empty": None}
+            return {"recommendations": [], "empty": None, "intro": None}
     recs = parsed.get("recommendations")
     if not isinstance(recs, list):
         recs = []
@@ -383,6 +468,7 @@ def parse_recommender_payload(raw: str) -> dict[str, Any]:
     return {
         "recommendations": [row for row in recs if isinstance(row, dict)],
         "empty": empty_text or None,
+        "intro": _as_text(parsed.get("intro")) or None,
     }
 
 
@@ -468,6 +554,7 @@ def render_recommendations(
     *,
     empty: str | None = None,
     date_notice: str | None = None,
+    intro: str | None = None,
 ) -> str:
     if not recs:
         text = _as_text(empty) or EMPTY_REPLY_FALLBACK
@@ -479,6 +566,10 @@ def render_recommendations(
     notice = _as_text(date_notice)
     if notice:
         lines.append(notice)
+    intro_text = _as_text(intro) if len(recs) >= 2 else ""
+    if intro_text:
+        lines.append("")
+        lines.append(intro_text)
     lines.append("")
     for i, rec in enumerate(recs, start=1):
         title = rec.campsite or str(rec.campsite_id)
@@ -594,9 +685,14 @@ def _draft_spoken_text(
         {"recommendations": [row for row in rec_rows if isinstance(row, dict)]},
         fits,
     )
+    intro_val = parsed.get("intro")
+    intro_text = intro_val.strip() if isinstance(intro_val, str) else None
     if recs:
         return render_recommendations(
-            recs, empty=None, date_notice=date_notice
+            recs,
+            empty=None,
+            date_notice=date_notice,
+            intro=intro_text,
         )
     if empty_text:
         return render_recommendations(
@@ -670,13 +766,17 @@ def recommend_from_payload(
     parsed = parse_recommender_payload(raw)
     recs = validate_recommendations(parsed, fits)
     empty = parsed.get("empty") if not recs else None
-    text = render_recommendations(recs, empty=empty, date_notice=notice)
+    intro = parsed.get("intro") if len(recs) >= 2 else None
+    text = render_recommendations(
+        recs, empty=empty, date_notice=notice, intro=intro
+    )
     if on_text is not None and text != last_draft:
         on_text(text)
     return RecommendResult(
         recommendations=tuple(recs),
         empty=empty,
         text=text,
+        intro=intro,
         ttft_chunk_ms=chunk_ms,
         ttft_spoken_ms=spoken_ms,
         elapsed_ms=elapsed_ms,

@@ -24,11 +24,13 @@ not drop this table.
 ```text
 just run-eval
 just run-eval -- --ids E01,H02
+just run-eval -- --limit 2
 just run-eval -- --no-copy
 just run-eval -- --model 30B
 just run-eval -- --judge-concurrency 1
 just run-eval -- --no-judge-compact
 just run-eval -- --recommender
+just run-eval -- --recommender --from-planner reports/evals/<stamp>.json
 uv run python -m source.eval.run --ids E01,H02
 ```
 
@@ -44,8 +46,14 @@ and `TRIPPY_TODAY=2026-09-08` from the JSON. Each case goes through
 `reports/evals/<timestamp>.md` plus a JSON dump. The markdown table
 has per-query seconds; **Cases** lists extractor constraints, planner
 queries, RAG claims/rules, and judge verdicts. `--recommender` also runs
-the Super picker after the planner and dumps 1–2 cited recs (not scored).
-`--from-json reports/evals/<stamp>.json` rebuilds the markdown (recommendation
+the Kimi-K3 picker after the planner and dumps 1–2 cited recs (not scored).
+Each rec also records first-chunk and first-spoken TTFT (`ttft_chunk` /
+`ttft_spoken`), printed next to `recommend=` on the CLI.
+Every dump also stores a compact recommender `pack` per case (query,
+extractor JSON, compact fits with why / review_claims / rules /
+claim_judge). `--recommender --from-planner reports/evals/<stamp>.json`
+replays only the picker from those packs — no extract, judge, copy, or
+DB. `--from-json reports/evals/<stamp>.json` rebuilds the markdown (recommendation
 and cost tables) without re-running. A mixed score is still
 exit 0; only a setup or runtime error fails the recipe.
 
@@ -55,8 +63,8 @@ every dated case. Six cases also substring-match fit type names:
 H07, H08. Every query states a party. E03 `לאדם` is per-person
 price, not party (`אדם אחד` is).
 
-The full 27 is tens of 235B judge calls (tens of minutes). `--ids` is the
-smoke path.
+The full 27 is tens of 235B judge calls (tens of minutes). `--ids` picks
+named cases; `--limit 2` is the first 2 easy and first 2 hard.
 
 Requires `just setup-experiments freeze-availability` once so the frozen
 table exists. `copy` does not drop it.

@@ -7,7 +7,70 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-12
+
+### 1. Which model writes the least robotic Hebrew why?
+
+**Question.** Super’s why echoed the query and calqued English
+(`מרחביים`, `שמדליות`). On the same planner packs, do
+Qwen3.5-397B-A17B, Qwen3-235B, Kimi-K3, or GLM-5.2 sound like a
+person?
+
+**Setup.** Replay only. Packs from eval `2026-09-12_104117`
+(extractor 235B, GLM batch judge, frozen occupancy, `experiments`,
+no `public` writes). Same prompt (match-first, no query recap).
+Thinking off on 397B/GLM/Kimi. 27 cases × 4 = 108 recommend calls.
+Dumps `reports/evals/2026-09-12_110039.json` (397B),
+`_110326.json` (235B), `_110609.json` (Kimi), `_111634.json`
+(GLM). ~$0.89. No DB writes.
+
+**Result.**
+
+| | 397B | 235B | Kimi-K3 | GLM-5.2 |
+|---|---|---|---|---|
+| wall | 113s | 124s | 574s | **76s** |
+| $ | 0.113 | **0.030** | 0.506 | 0.241 |
+| Latin in why | 4 (`specifically`, `comfortably`) | 2 (`איןoutlets`, `mentioned`) | **0** | **0** |
+| query-echo template | 1 | 2 | **0** | **0** |
+| coined `מרחביים`/`שמדליות` | 0 | 0 | 0 | 0 |
+| extra empty (fits existed) | 0 | **E09, H08** | 0 | 0 |
+| n=2 | 11 | 1 | 17 | 17 |
+
+Kimi is the only one that reads like spoken Hebrew (H02 fridge
+caveat with recency; H03 room mini-fridge vs communal). GLM is
+close, faster, and cheaper; still says `ליסטינג` once. 397B
+glues English into Hebrew. 235B H12 is broken (`נמטר במחוז
+המערבי… השקל של הסערה`).
+
+**Decision.** Phrasing: Kimi > GLM >> 397B > 235B. Super stays
+the default until we pick; speed is secondary because the reply
+streams. design.md "Recommender".
+
+### 2. Re-read §1 with phrasing over Latin
+
+**Question.** Same four dumps. Weight invented/weird Hebrew
+over an occasional Latin token. Listing+review repeats
+(“site says showers, guests say showers”) are a prompt fix,
+not a model knockout.
+
+**Setup.** No new calls. Same dumps as §1.
+
+**Result.** 235B is out on Hebrew itself: `תאוצה` for occupancy,
+`האתר מציעה`, `אווני שינה`, `גורשת טל`, H12 garbage, plus
+empty E09/H08. 397B coins `מלונאית`, `לצנוע`, `אינם מקרים`
+(for מקררים), `התארים`, and invents Mitzpe HaYamim on E10.
+GLM is close but coins `משוערפים`, uses `מקררון`, and on E10
+claims Masada is not a campsite. Kimi is ordinary spoken
+Hebrew; one E10 mix-up (מצפה הימים); listing+review doubles
+on E06/E08 like the others.
+
+**Decision.** Recommender → Kimi-K3
+(`moonshotai/Kimi-K3`, thinking off). GLM is the runner-up.
+Repeat “listed and guests confirm the same yes” is a prompt
+change, not a model change. design.md "Recommender".
+
 ## 2026-09-11
+
 
 ### 1. Is Streamlit slower than eval on the same occupancy?
 
