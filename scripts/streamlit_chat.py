@@ -10,6 +10,8 @@ tool calls (params + returns), token cost, and latency.
 Run from repo root:
   uv run streamlit run scripts/streamlit_chat.py
 
+`TRIPPY_PUBLIC_UI=1` hides traces, MCP, and the heavy-path selector (cloud).
+
 streamlit-mcp cannot drive st.chat_input. The sidebar "MCP prompt" form is
 driveable (text_area + submit).
 """
@@ -47,6 +49,12 @@ from langchain_core.outputs import LLMResult
 
 load_dotenv(_ROOT / ".env")
 
+_PUBLIC_UI = os.environ.get("TRIPPY_PUBLIC_UI", "").strip().casefold() in {
+    "1",
+    "true",
+    "yes",
+}
+
 import importlib
 
 import source.agent.recommender as _recommender_mod
@@ -77,7 +85,7 @@ HEAVY_PATH_LABELS: dict[HeavyThrough, str] = {
 }
 
 st.set_page_config(
-    page_title="Trippy Agent (local)",
+    page_title="Trippy" if _PUBLIC_UI else "Trippy Agent (local)",
     page_icon="⛺",
     layout="wide",
 )
@@ -1008,106 +1016,116 @@ def invoke_agent(
 _init_session()
 
 st.title("Trippy agent")
-st.caption(
-    f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
-    f"`{(os.environ.get('TRIPPY_SCHEMA') or 'public')}`."
-    f"`{(os.environ.get('TRIPPY_AVAILABILITY_TABLE') or 'availability')}` · "
-    "production remains Telegram"
-)
+if _PUBLIC_UI:
+    st.caption("Ask for a campsite stay. Hebrew is fine.")
+else:
+    st.caption(
+        f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
+        f"`{(os.environ.get('TRIPPY_SCHEMA') or 'public')}`."
+        f"`{(os.environ.get('TRIPPY_AVAILABILITY_TABLE') or 'availability')}`"
+    )
 
+mcp_prompt = ""
+stop_after: HeavyThrough = "recommender"
 with st.sidebar:
     st.header("Session")
-    stop_after: HeavyThrough = (
-        st.radio(
-            "Heavy path",
-            options=list(HEAVY_PATH_LABELS.keys()),
-            format_func=lambda key: HEAVY_PATH_LABELS[key],
-            captions=[
-                "Constraints JSON",
-                "Plus search / RAG tools",
-                "Plus recommendation reply",
-            ],
-            key="heavy_path",
-            on_change=_reset_conversation,
-            help=(
-                "Light router always runs first. "
-                "Changing this clears the conversation so node outputs do not mix."
-            ),
-            width="stretch",
+    if not _PUBLIC_UI:
+        stop_after = (
+            st.radio(
+                "Heavy path",
+                options=list(HEAVY_PATH_LABELS.keys()),
+                format_func=lambda key: HEAVY_PATH_LABELS[key],
+                captions=[
+                    "Constraints JSON",
+                    "Plus search / RAG tools",
+                    "Plus recommendation reply",
+                ],
+                key="heavy_path",
+                on_change=_reset_conversation,
+                help=(
+                    "Light router always runs first. "
+                    "Changing this clears the conversation so node outputs do not mix."
+                ),
+                width="stretch",
+            )
+            or "extractor"
         )
-        or "extractor"
-    )
-    st.caption("Telegram still uses the full path.")
+        st.caption("Local harness: traces stay in this sidebar.")
     if st.button("Reset conversation", width="stretch"):
         _reset_conversation()
         st.rerun()
 
-    st.divider()
-    st.subheader("MCP prompt")
-    st.caption("streamlit-mcp cannot drive chat_input. Send from here.")
-    with st.form("agent_prompt_form", clear_on_submit=True, border=False):
-        mcp_text = st.text_area(
-            "Prompt",
-            key="agent_prompt",
-            placeholder="Ask about campsites…",
-            height=80,
-        )
-        agent_send = st.form_submit_button(
-            "Send prompt",
-            key="agent_send",
-            icon=":material/send:",
-            width="stretch",
-        )
-    mcp_prompt = (mcp_text or "").strip() if agent_send else ""
+    if not _PUBLIC_UI:
+        st.divider()
+        st.subheader("MCP prompt")
+        st.caption("streamlit-mcp cannot drive chat_input. Send from here.")
+        with st.form("agent_prompt_form", clear_on_submit=True, border=False):
+            mcp_text = st.text_area(
+                "Prompt",
+                key="agent_prompt",
+                placeholder="Ask about campsites…",
+                height=80,
+            )
+            agent_send = st.form_submit_button(
+                "Send prompt",
+                key="agent_send",
+                icon=":material/send:",
+                width="stretch",
+            )
+        mcp_prompt = (mcp_text or "").strip() if agent_send else ""
 
-    st.divider()
-    st.subheader("Last turn trace")
-    last_trace = None
-    for turn in reversed(st.session_state.display):
-        if turn.get("role") == "assistant" and turn.get("trace"):
-            last_trace = turn["trace"]
-            break
-    if last_trace:
-        _render_trace(last_trace)
-        st.download_button(
-            "Download last trace (JSON)",
-            data=json.dumps(last_trace, ensure_ascii=False, indent=2, default=str),
-            file_name="trippy_langgraph_trace.json",
-            mime="application/json",
-            width="stretch",
-        )
-    else:
-        st.info("Send a message to see nodes, prompts, and tools.")
+        st.divider()
+        st.subheader("Last turn trace")
+        last_trace = None
+        for turn in reversed(st.session_state.display):
+            if turn.get("role") == "assistant" and turn.get("trace"):
+                last_trace = turn["trace"]
+                break
+        if last_trace:
+            _render_trace(last_trace)
+            st.download_button(
+                "Download last trace (JSON)",
+                data=json.dumps(last_trace, ensure_ascii=False, indent=2, default=str),
+                file_name="trippy_langgraph_trace.json",
+                mime="application/json",
+                width="stretch",
+            )
+        else:
+            st.info("Send a message to see nodes, prompts, and tools.")
 
-    st.divider()
-    st.subheader("Graph messages")
-    st.caption(f"{len(st.session_state.graph_messages)} messages in LangGraph state")
-    if st.session_state.graph_messages:
-        for i, msg in enumerate(st.session_state.graph_messages):
-            label = type(msg).__name__
-            if isinstance(msg, ChatMessage):
-                label = f"ChatMessage({getattr(msg, 'role', '?')})"
-            with st.expander(f"{i}. {label}", expanded=False):
-                st.code(_message_preview(msg, max_len=2000), language=None)
-        st.download_button(
-            "Download full state (JSON)",
-            data=json.dumps(
-                _serialize_messages(st.session_state.graph_messages),
-                ensure_ascii=False,
-                indent=2,
-                default=str,
-            ),
-            file_name="trippy_graph_messages.json",
-            mime="application/json",
-            width="stretch",
-        )
-    else:
-        st.info("Send a message to start a conversation.")
+        st.divider()
+        st.subheader("Graph messages")
+        st.caption(f"{len(st.session_state.graph_messages)} messages in LangGraph state")
+        if st.session_state.graph_messages:
+            for i, msg in enumerate(st.session_state.graph_messages):
+                label = type(msg).__name__
+                if isinstance(msg, ChatMessage):
+                    label = f"ChatMessage({getattr(msg, 'role', '?')})"
+                with st.expander(f"{i}. {label}", expanded=False):
+                    st.code(_message_preview(msg, max_len=2000), language=None)
+            st.download_button(
+                "Download full state (JSON)",
+                data=json.dumps(
+                    _serialize_messages(st.session_state.graph_messages),
+                    ensure_ascii=False,
+                    indent=2,
+                    default=str,
+                ),
+                file_name="trippy_graph_messages.json",
+                mime="application/json",
+                width="stretch",
+            )
+        else:
+            st.info("Send a message to start a conversation.")
 
 for turn in st.session_state.display:
     with st.chat_message(turn["role"]):
         st.markdown(turn["content"])
-        if turn.get("role") == "assistant" and turn.get("trace"):
+        if (
+            not _PUBLIC_UI
+            and turn.get("role") == "assistant"
+            and turn.get("trace")
+        ):
             with st.expander("LangGraph trace", expanded=False):
                 _render_trace(turn["trace"])
 
@@ -1127,7 +1145,7 @@ if prompt:
                 reply = f"Sorry, I encountered an error: {e}"
                 trace = []
         reply_box.markdown(reply)
-        if trace:
+        if trace and not _PUBLIC_UI:
             with st.expander("LangGraph trace", expanded=True):
                 _render_trace(trace)
     st.session_state.display.append(

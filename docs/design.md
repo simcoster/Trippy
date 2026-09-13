@@ -1087,3 +1087,13 @@ paintable stay); the CLI prints them next to `recommend=`. The
 dump’s `pack` is the picker
 input; `--from-planner` re-runs recommend only.
 
+## Where it runs (2026-09-12)
+
+Phase 1 lives on one Nebius CPU VM: Compose Postgres (not managed),
+Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
+Cloudflare Tunnel for HTTPS. Ingest is the same image with
+`scripts/cloud/job.sh`, triggered from GitHub Actions over SSH
+(`TRIPPY_VM_HOST` / `TRIPPY_SSH_KEY`). Telegram is unwired; `TELEGRAM_TOKEN` is optional. Runbook:
+`docs/cloud.md`.
+
+

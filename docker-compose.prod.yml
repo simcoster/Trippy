@@ -1,0 +1,92 @@
+# Always-on Nebius VM. Laptop compose stays in docker-compose.yml.
+# Postgres is not published; Streamlit is reached via Cloudflare Tunnel.
+#
+# DATABASE_URL uses the container_name `trippy-postgres`, not the service name
+# `db`. Several scrapers rewrite `@db:` → `@localhost:` for laptop host runs;
+# that rewrite must not fire inside these containers.
+
+name: trippy-prod
+
+x-app: &app
+  image: trippy:prod
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - .env
+  environment:
+    DATABASE_URL: postgresql://trippy:${POSTGRES_PASSWORD}@trippy-postgres:5432/trippy
+    PYTHONPATH: /app:/app/source/scraper
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: trippy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trippy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: trippy
+    volumes:
+      - trippy_pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trippy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  streamlit:
+    <<: *app
+    container_name: trippy-streamlit
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://trippy:${POSTGRES_PASSWORD}@trippy-postgres:5432/trippy
+      PYTHONPATH: /app:/app/source/scraper
+      TRIPPY_PUBLIC_UI: "1"
+    ports:
+      - "127.0.0.1:8501:8501"
+    command:
+      - /app/.venv/bin/streamlit
+      - run
+      - scripts/streamlit_chat.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: trippy-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      streamlit:
+        condition: service_healthy
+
+  # One-shot. Not started by `compose up`.
+  #   docker compose -f docker-compose.prod.yml --profile scrape run --rm scrape availability
+  scrape:
+    <<: *app
+    profiles: ["scrape"]
+    restart: "no"
+    entrypoint: ["/app/scripts/cloud/job.sh"]
+
+volumes:
+  trippy_pgdata:

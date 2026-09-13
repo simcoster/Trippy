@@ -144,6 +144,17 @@ update-tables:
 # sites, then everything the info page gives, then availability
 scrape-all: scrape-sites scrape-info scrape-availability
 
-# Local Streamlit agent (Telegram remains production)
+# Local Streamlit agent
 streamlit:
     uv run streamlit run scripts/streamlit_chat.py
+
+# VM: long-running db + streamlit + tunnel
+[unix]
+prod-up:
+    docker compose -f docker-compose.prod.yml --env-file .env up -d
+
+# VM: one-shot ingest. just prod-scrape availability
+#      just prod-scrape availability -- --site 2
+[unix]
+prod-scrape job *args:
+    docker compose -f docker-compose.prod.yml --env-file .env --profile scrape run --rm scrape {{job}} {{trim_start_match(args, "-- ")}}
