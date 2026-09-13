@@ -6,6 +6,82 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Later (2026-09-13, executable numeric rules)
+
+**Today the recommender is doing the arithmetic, and it should not.**
+Query path for amenities/rules is: retrieve nearest `campsite_rules` →
+the claim/rule judge decides amenity yes/no (`satisfies` / relevant
+claims) → Kimi picks and *explains*, including numeric and compound
+rules it was never meant to compute. A sentence like “100 per person
+on a weekday unless Matmon, plus a 12 surcharge, unless active reserve
+duty, depending on leaving time” is one rule with branches. Flat
+`<topic>_<scope>_<predicate>` statements plus a `qualifier` cannot
+carry that, and asking an LLM to apply it at recommend time is the
+wrong tool. Amenities stay a judge yes/no; this is for the numeric /
+conditional shelf (price, times, capacity: “4 children or 2 adults”).
+
+**Ingest idea — compile related statements into one Python function,
+store that on the row.** Not started. Stages:
+
+1. Gather official rules by subject (price, check-out, occupancy, …).
+2. Formulate a single Python function for that subject at that site
+   (or unit), e.g.
+   `def payment(people_count, is_matmon, is_active_reserve_duty, leaving_time)`.
+3. DB row still has the subject (or subjects) embedded like today, so
+   retrieve stays vector search.
+4. Judge still only says whether the subject is relevant to the ask.
+5. Agent asks the user for the function’s parameters, or assumes
+   documented defaults (`is_matmon=False`).
+6. Compute deterministically in code.
+7. Recommend from the numbers, not from the model doing the sum.
+
+Scope is open: maybe only the few subjects people actually ask
+(times, payments, capacity), not every numeric rule.
+
+**Can Postgres compute this at query time?** Store the source, yes;
+`exec` it inside SQL, no. Postgres has no safe “run this Python from
+a TEXT column in a `SELECT`”. `plpythonu` is untrusted (OS user of
+the server) and is the wrong place for LLM-written code. So:
+
+- **Recommend path (after retrieve):** the DB holds the blob
+  (source + signature + defaults). The agent loads the relevant rows,
+  the judge filters, Python evals in-process (sandboxed / restricted
+  builtins). Matches the flow above. Ranking among already-fetched
+  fits does not need SQL eval.
+- **Planner / SQL filter path** (“under 400 ₪ for 4 people with
+  Matmon”, “can this tent take 2 adults + 4 children”) needs the
+  formula to be *data*, not Python. Options: (a) a JSON AST /
+  jsonlogic the SQL walks, (b) denormalize the common cases into
+  columns the planner already has (`list_prices`, occupancy), (c)
+  hybrid — Python function for the exact quote the recommender
+  cites, columns or AST for the SQL gate. (a) is “can the DB do
+  this”; (b) is what we already do for list rates; full Python in
+  SQL is not.
+
+Open vs the 2026-09-04 compound-rule note (atomic statements vs a
+semantic tree): a function is a third shape. The tree/AST is the
+one a `SELECT` can evaluate; Python is the one an LLM can write
+from a messy parks.org.il paragraph. Decide which subjects need
+query-time SQL before picking.
+
+### Done (2026-09-12, scrape via SSH)
+
+**GitHub-hosted Actions SSHs into the VM** and `docker compose run`
+the scrape container there. No self-hosted runner. Secrets:
+`TRIPPY_VM_HOST`, `TRIPPY_SSH_USER`, `TRIPPY_SSH_KEY`. Supersedes the
+self-hosted runner in the Nebius VM entry below.
+
+### Done (2026-09-12, Nebius VM)
+
+**Phase-1 cloud is one always-on Nebius CPU VM**, self-hosted
+Postgres, Streamlit behind a Cloudflare Tunnel, ingest as one-shot
+`trippy:prod` containers (`scripts/cloud/job.sh`), dumps to disk plus
+Object Storage. `TELEGRAM_TOKEN` is optional; `main.py` no longer
+raises at import. No VM start/stop Actions yet. Runbook:
+`docs/cloud.md`. Supersedes “keep Streamlit off the internet” in
+`scaling.md` for this phase, and the dummy `TELEGRAM_TOKEN` note in
+the 2026-09 CI entry.
+
 ### Done (2026-09-12, Streamlit Kimi warmup)
 
 **Streamlit pings Kimi with a one-token `hi` on first load**

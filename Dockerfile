@@ -22,7 +22,7 @@ COPY . .
 
 # Copy startup script
 COPY scripts/startup.sh /start.sh
-RUN chmod +x /start.sh
+RUN chmod +x /start.sh /app/scripts/cloud/job.sh
 
 # Expose port
 EXPOSE 8000

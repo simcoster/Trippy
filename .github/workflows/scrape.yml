@@ -1,0 +1,61 @@
+name: Scrape
+
+# GitHub-hosted runner SSHs into the Nebius VM and runs the scrape
+# container there (INPA + Postgres stay on the VM). Daily availability
+# at 01:00 UTC; anything else is workflow_dispatch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Ingest job (see scripts/cloud/job.sh)
+        type: choice
+        options:
+          - availability
+          - reviews
+          - claims
+          - info
+          - sites
+          - place-ids
+        default: availability
+      extra_args:
+        description: Extra args, e.g. --site 2
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 1 * * *"
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Run scrape on the VM
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          JOB: ${{ github.event.inputs.job || 'availability' }}
+          EXTRA: ${{ github.event.inputs.extra_args }}
+          TRIPPY_ROOT: ${{ vars.TRIPPY_ROOT || '/opt/trippy' }}
+        with:
+          host: ${{ secrets.TRIPPY_VM_HOST }}
+          username: ${{ secrets.TRIPPY_SSH_USER }}
+          key: ${{ secrets.TRIPPY_SSH_KEY }}
+          command_timeout: 180m
+          envs: JOB,EXTRA,TRIPPY_ROOT
+          script: |
+            set -eu
+            cd "${TRIPPY_ROOT}"
+            if [ -n "${EXTRA}" ]; then
+              docker compose -f docker-compose.prod.yml --env-file .env \
+                --profile scrape run --rm scrape "${JOB}" ${EXTRA}
+            else
+              docker compose -f docker-compose.prod.yml --env-file .env \
+                --profile scrape run --rm scrape "${JOB}"
+            fi

@@ -22,11 +22,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load secrets from environment variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN environment variable is not set. Please check your .env file.")
-TELEGRAM_API_BASE = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+# Optional until Telegram is the live channel again. Streamlit does not need it.
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or ""
+TELEGRAM_API_BASE = (
+    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else ""
+)
 
 app = FastAPI()
 
@@ -120,7 +120,7 @@ async def telegram_webhook(request: Request):
             pass
 
     # Send reply back to Telegram
-    if chat_id:
+    if chat_id and TELEGRAM_TOKEN:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -130,6 +130,8 @@ async def telegram_webhook(request: Request):
                 logger.info(f"Sent reply to Telegram, status: {response.status_code}")
         except Exception as e:
             logger.error(f"Error sending message to Telegram: {str(e)}", exc_info=True)
+    elif chat_id:
+        logger.warning("TELEGRAM_TOKEN unset; skipping Telegram send")
 
     # Telegram expects a 200 OK quickly
     return {"ok": True}
