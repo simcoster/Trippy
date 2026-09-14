@@ -26,7 +26,7 @@ import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 # Repo root on sys.path so `source.*` imports work under `streamlit run`
 _ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +71,12 @@ from source.agent.recommender import (
     warmup_recommender,
 )
 from source.agent.timing import collect_stages, format_stages
+from source.agent.tracing import (
+    agent_run_config,
+    configure_agent_tracing,
+    project_name,
+    tracing_configured,
+)
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
@@ -89,6 +95,8 @@ st.set_page_config(
     page_icon="⛺",
     layout="wide",
 )
+if configure_agent_tracing():
+    print(f"langsmith tracing project={project_name()}", flush=True)
 warmup_recommender()
 
 # Active turn trace (set while invoke_agent runs)
@@ -521,11 +529,14 @@ def _init_session() -> None:
         st.session_state.display = []
     if "heavy_path" not in st.session_state:
         st.session_state.heavy_path = "extractor"
+    if "langsmith_thread_id" not in st.session_state:
+        st.session_state.langsmith_thread_id = str(uuid4())
 
 
 def _reset_conversation() -> None:
     st.session_state.graph_messages = []
     st.session_state.display = []
+    st.session_state.langsmith_thread_id = str(uuid4())
 
 
 def _message_preview(msg: BaseMessage, max_len: int = 400) -> str:
@@ -910,7 +921,16 @@ def invoke_agent(
     trace: list[dict[str, Any]] = []
     _current_trace = trace
     handler = TraceCallbackHandler()
-    config = {"callbacks": [handler]}
+    config = agent_run_config(
+        thread_id=st.session_state.langsmith_thread_id,
+        channel="streamlit",
+        user_text=user_text,
+        extra_metadata={
+            "public_ui": _PUBLIC_UI,
+            "stop_after": stop_after,
+        },
+    )
+    config["callbacks"] = [handler]
 
     final_messages: list[BaseMessage] | None = None
     turn_started = time.perf_counter()
@@ -1082,6 +1102,10 @@ with st.sidebar:
             or "extractor"
         )
         st.caption("Local harness: traces stay in this sidebar.")
+        if tracing_configured():
+            st.caption(f"LangSmith project `{project_name()}`.")
+        else:
+            st.caption("LangSmith off — set `LANGSMITH_API_KEY` to record turns.")
     if st.button("Reset conversation", width="stretch"):
         _reset_conversation()
         st.rerun()

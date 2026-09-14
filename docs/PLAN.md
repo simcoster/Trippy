@@ -6,6 +6,15 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, LangSmith on LangGraph)
+
+**Tester turns go to LangSmith.** Streamlit (and Telegram, if wired)
+enable tracing when `LANGSMITH_API_KEY` is set and stamp each graph
+run with `thread_id` + `channel`. Public UI still hides the sidebar
+trace; smith.langchain.com is how we see what the agent did.
+Ingest `job.sh` forces tracing off so scrapes do not share the
+project. design.md "LangSmith".
+
 ### Done (2026-09-14, warmup prints Kimi's hi)
 
 **Warmup prints the ping and Kimi's reply.** On Streamlit load:

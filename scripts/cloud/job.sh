@@ -4,6 +4,10 @@
 set -eu
 cd /app
 export PYTHONPATH="/app:/app/source/scraper"
+# Agent tracing is Streamlit/Telegram only. This file is sourced from .env
+# too; keep ingest ChatOpenAI calls off LangSmith even if TRACING was set.
+export LANGSMITH_TRACING=false
+export LANGCHAIN_TRACING_V2=false
 PY=/app/.venv/bin/python
 
 job="${1:-}"

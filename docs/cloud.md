@@ -91,7 +91,7 @@ cd /opt/trippy
 sudo cp .env.example .env
 sudo chmod 600 .env
 # edit .env: POSTGRES_PASSWORD, NEBIUS_API_KEY, GOOGLE_API_KEY,
-#            CLOUDFLARE_TUNNEL_TOKEN, optional AWS_* 
+#            CLOUDFLARE_TUNNEL_TOKEN, LANGSMITH_API_KEY, optional AWS_* 
 sudo sh ./scripts/cloud/bootstrap.sh
 ```
 

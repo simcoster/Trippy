@@ -1101,4 +1101,18 @@ Cloudflare Tunnel for HTTPS. Ingest is the same image with
 (`TRIPPY_VM_HOST` / `TRIPPY_SSH_KEY`). Telegram is unwired; `TELEGRAM_TOKEN` is optional. Runbook:
 `docs/cloud.md`.
 
+## LangSmith
+
+Tester Streamlit turns (and Telegram, when wired) send LangGraph traces
+to LangSmith so a hidden public UI is still inspectable: nodes, model
+calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
+`scripts/streamlit_chat.py` and `main.py` call
+`configure_agent_tracing()` and pass `thread_id` / `tags` /
+`metadata.channel` on each `invoke` / `stream`
+(`source/agent/tracing.py`). One browser tab is one thread until Reset.
+Project defaults to `trippy` (`LANGSMITH_PROJECT`). Traces include the
+full query. Scrape containers force `LANGSMITH_TRACING=false` in
+`job.sh` so ingest does not share the project. CI has no key, so tests
+do not send runs.
+
 
