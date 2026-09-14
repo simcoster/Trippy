@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
@@ -10,9 +11,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, Field
+
 from source.agent.planner import CLAIM_EVIDENCE_LIMIT
 from source.agent.timing import record_stage, stage
-from source.agent.tracing import bind_to_current_trace, emit_child_span
 from source.scraper.amenity_enrichment.llm import (
     GLM_INSTRUCT_MODEL,
     QWEN_INSTRUCT_30B_MODEL,
@@ -235,6 +238,15 @@ def _compact_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 _USAGE_LOCK = threading.Lock()
+_JUDGE_USAGE: contextvars.ContextVar[LlmUsage | None] = contextvars.ContextVar(
+    "claim_judge_usage", default=None
+)
+_JUDGE_CLIENT: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "claim_judge_client", default=None
+)
+_JUDGE_TIME_STAGE: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "claim_judge_time_stage", default=True
+)
 
 
 def judge_concurrency() -> int:
@@ -385,6 +397,23 @@ def _relevant_claim_texts(
     return texts
 
 
+def _compact_rules_for_tool(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for rule in rules:
+        if rule.get("error"):
+            continue
+        row = {
+            "subject": rule.get("subject"),
+            "category": rule.get("category"),
+            "polarity": rule.get("polarity"),
+            "evidence_span": rule.get("evidence_span"),
+        }
+        if rule.get("qualifier") is not None:
+            row["qualifier"] = rule.get("qualifier")
+        out.append(row)
+    return out
+
+
 def _judge_trace_name(campsite: str, query: str) -> str:
     label = f"claim_judge · {campsite} · {query}"
     return label if len(label) <= 80 else label[:79] + "…"
@@ -420,30 +449,6 @@ def _judge_trace_payload(
     return inputs, outputs
 
 
-def _emit_judge_trace(
-    *,
-    query: str,
-    campsite: str,
-    claims: list[dict[str, Any]],
-    rules: list[dict[str, Any]],
-    verdict: dict[str, Any],
-) -> None:
-    """LangSmith child: claims/rules received and the per-claim / site verdict."""
-    inputs, outputs = _judge_trace_payload(
-        query=query,
-        campsite=campsite,
-        claims=claims,
-        rules=rules,
-        verdict=verdict,
-    )
-    emit_child_span(
-        name=_judge_trace_name(campsite, query),
-        tags=["claim_judge"],
-        inputs=inputs,
-        outputs=outputs,
-    )
-
-
 def judge_site_request(
     *,
     query: str,
@@ -456,11 +461,7 @@ def judge_site_request(
 ) -> dict[str, Any]:
     """One instruct-model call: which claims are relevant, and whether the site satisfies."""
     if not claims and not rules:
-        verdict = _empty_verdict()
-        _emit_judge_trace(
-            query=query, campsite=campsite, claims=claims, rules=rules, verdict=verdict
-        )
-        return verdict
+        return _empty_verdict()
     compact = judge_compact()
     claim_rows = [
         {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
@@ -530,14 +531,61 @@ def judge_site_request(
         verdict = _unparseable_verdict(raw)
     else:
         verdict = _verdict_from_parsed(parsed, claim_rows, compact=compact)
-    _emit_judge_trace(
-        query=query, campsite=campsite, claims=claims, rules=rules, verdict=verdict
-    )
     return verdict
 
 
 # Bound at import so a test patch of `judge_site_request` does not look like live Nebius.
 _LIVE_JUDGE = judge_site_request
+
+
+class _ClaimJudgeToolArgs(BaseModel):
+    query: str
+    campsite: str
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+    rules: list[dict[str, Any]] = Field(default_factory=list)
+
+
+def _run_claim_judge_tool(
+    query: str,
+    campsite: str,
+    claims: list[dict[str, Any]] | None = None,
+    rules: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Judge retrieved claims and official rules for one request at one campsite."""
+    return judge_site_request(
+        query=query,
+        campsite=campsite,
+        claims=list(claims or []),
+        rules=list(rules or []),
+        usage=_JUDGE_USAGE.get(),
+        client=_JUDGE_CLIENT.get(),
+        time_stage=_JUDGE_TIME_STAGE.get(),
+    )
+
+
+claim_judge_tool = StructuredTool.from_function(
+    func=_run_claim_judge_tool,
+    name="claim_judge",
+    description=(
+        "Judge retrieved review claims and official campsite rules for one "
+        "guest request at one campsite. Returns relevant_claims, satisfies, "
+        "satisfy_by, and reason."
+    ),
+    args_schema=_ClaimJudgeToolArgs,
+)
+
+
+def _job_tool_args(job: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "query": job["query"],
+        "campsite": job["campsite"],
+        "claims": _compact_claims(list(job.get("claims") or [])),
+        "rules": _compact_rules_for_tool(list(job.get("rules") or [])),
+    }
+
+
+def _invoke_claim_judge_tool(job: dict[str, Any]) -> dict[str, Any]:
+    return claim_judge_tool.invoke(_job_tool_args(job))
 
 
 def _queries_for_fit(fit: dict[str, Any]) -> list[str]:
@@ -633,13 +681,6 @@ def _run_judge_jobs_batch(
         rules = [r for r in (job.get("rules") or []) if not r.get("error")]
         if not claims and not rules:
             cache[key] = _empty_verdict()
-            _emit_judge_trace(
-                query=job["query"],
-                campsite=job["campsite"],
-                claims=claims,
-                rules=rules,
-                verdict=cache[key],
-            )
             continue
         rows = _claim_rows_for_job(claims, compact=compact)
         live_keys.append(key)
@@ -693,16 +734,8 @@ def _run_judge_jobs_batch(
         row = parsed_rows[i]
         if row is None:
             cache[key] = _unparseable_verdict(raw)
-        else:
-            cache[key] = _verdict_from_parsed(row, claim_rows_by_i[i], compact=compact)
-        job = pending[key]
-        _emit_judge_trace(
-            query=job["query"],
-            campsite=job["campsite"],
-            claims=list(job.get("claims") or []),
-            rules=list(job.get("rules") or []),
-            verdict=cache[key],
-        )
+            continue
+        cache[key] = _verdict_from_parsed(row, claim_rows_by_i[i], compact=compact)
     return cache
 
 
@@ -719,39 +752,60 @@ def _run_judge_jobs(
     if live and judge_batch() and judge_fn is _LIVE_JUDGE:
         return _run_judge_jobs_batch(pending, usage=usage)
     workers = judge_concurrency() if live else 1
-    extra: dict[str, Any] = {}
-    if live and workers > 1 and judge_fn is _LIVE_JUDGE:
-        extra["client"] = make_nebius_openai_client()
-        extra["time_stage"] = False
-    if workers <= 1:
-        for key, job in pending.items():
-            cache[key] = judge_fn(
-                query=job["query"],
-                campsite=job["campsite"],
-                claims=job["claims"],
-                rules=job["rules"],
-                usage=usage,
-            )
+    use_tool = live and judge_fn is _LIVE_JUDGE
+    extra_client: Any = None
+    extra_time_stage = True
+    if use_tool and workers > 1:
+        extra_client = make_nebius_openai_client()
+        extra_time_stage = False
+    usage_tok = _JUDGE_USAGE.set(usage)
+    client_tok = _JUDGE_CLIENT.set(extra_client)
+    stage_tok = _JUDGE_TIME_STAGE.set(extra_time_stage)
+    try:
+        if workers <= 1:
+            for key, job in pending.items():
+                if use_tool:
+                    cache[key] = _invoke_claim_judge_tool(job)
+                else:
+                    cache[key] = judge_fn(
+                        query=job["query"],
+                        campsite=job["campsite"],
+                        claims=job["claims"],
+                        rules=job["rules"],
+                        usage=usage,
+                    )
+            return cache
+        started = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            if use_tool:
+                futs = {
+                    pool.submit(
+                        contextvars.copy_context().run,
+                        _invoke_claim_judge_tool,
+                        job,
+                    ): key
+                    for key, job in pending.items()
+                }
+            else:
+                futs = {
+                    pool.submit(
+                        judge_fn,
+                        query=job["query"],
+                        campsite=job["campsite"],
+                        claims=job["claims"],
+                        rules=job["rules"],
+                        usage=usage,
+                    ): key
+                    for key, job in pending.items()
+                }
+            for fut in as_completed(futs):
+                cache[futs[fut]] = fut.result()
+        record_stage("judge", time.perf_counter() - started, calls=len(pending))
         return cache
-    started = time.perf_counter()
-    traced_fn = bind_to_current_trace(judge_fn)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futs = {
-            pool.submit(
-                traced_fn,
-                query=job["query"],
-                campsite=job["campsite"],
-                claims=job["claims"],
-                rules=job["rules"],
-                usage=usage,
-                **extra,
-            ): key
-            for key, job in pending.items()
-        }
-        for fut in as_completed(futs):
-            cache[futs[fut]] = fut.result()
-    record_stage("judge", time.perf_counter() - started, calls=len(pending))
-    return cache
+    finally:
+        _JUDGE_USAGE.reset(usage_tok)
+        _JUDGE_CLIENT.reset(client_tok)
+        _JUDGE_TIME_STAGE.reset(stage_tok)
 
 
 def apply_claim_rule_judgements(

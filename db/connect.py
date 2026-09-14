@@ -23,6 +23,13 @@ load_dotenv()
 SCHEMA_ENV = "TRIPPY_SCHEMA"
 EXPERIMENTS_SCHEMA = "experiments"
 EXPERIMENTS_OPTIONS = "-csearch_path=experiments,extensions"
+# libpq default is wait until the OS gives up (minutes when Docker is off).
+DEFAULT_CONNECT_TIMEOUT = 3
+
+
+class DatabaseUnavailable(psycopg.OperationalError):
+    """Postgres did not accept a connection within DEFAULT_CONNECT_TIMEOUT."""
+
 
 _announced = False
 
@@ -60,6 +67,21 @@ def _announce() -> None:
     )
 
 
+def unavailable_message(detail: str) -> str:
+    """Human-readable failure when Postgres is down (Docker Desktop off)."""
+    return (
+        "Postgres is not reachable. If you are on a laptop, start Docker "
+        "Desktop and run `docker compose up -d`. "
+        f"({detail})"
+    )
+
+
+def ping(*, conninfo: str | None = None, config: dict | None = None) -> None:
+    """Raise DatabaseUnavailable unless `SELECT 1` succeeds."""
+    with connect(conninfo, config=config) as conn:
+        conn.execute("SELECT 1")
+
+
 def connect(
     conninfo: str | None = None,
     *,
@@ -74,4 +96,8 @@ def connect(
     if extras and "options" not in kwargs:
         kwargs["options"] = extras
         _announce()
-    return psycopg.connect(url, **kwargs)
+    kwargs.setdefault("connect_timeout", DEFAULT_CONNECT_TIMEOUT)
+    try:
+        return psycopg.connect(url, **kwargs)
+    except psycopg.OperationalError as exc:
+        raise DatabaseUnavailable(unavailable_message(str(exc))) from exc

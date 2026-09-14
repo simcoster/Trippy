@@ -144,9 +144,9 @@ update-tables:
 # sites, then everything the info page gives, then availability
 scrape-all: scrape-sites scrape-info scrape-availability
 
-# Local Streamlit agent
+# Local Streamlit agent. 8502 so an SSH -L 8501 to the VM does not steal the tab.
 streamlit:
-    uv run streamlit run scripts/streamlit_chat.py
+    uv run streamlit run scripts/streamlit_chat.py --server.port 8502
 
 # VM: long-running db + streamlit + tunnel
 [unix]
