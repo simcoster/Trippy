@@ -6,6 +6,17 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, pin production search_path)
+
+**Production `connect()` sends `search_path=public,extensions`.** Migration
+033 moved pgvector into `extensions` and `ALTER DATABASE SET search_path`,
+but a `pg_restore` of a data dump does not replay that setting. Streamlit
+on the VM then failed every amenity/rules/claims retrieve with pgvector's
+`vector type not found in the database` (`register_vector` looks up
+`vector` on the session path). Experiments already pinned the path;
+production now does too. design.md "Experiments live in the `experiments`
+schema".
+
 ### Open (2026-09-14, hosted ReAct + search MCP)
 
 **Move the chat loop to a hosted ReAct agent (Claude Code, GPT
