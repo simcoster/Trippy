@@ -10,7 +10,10 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from source.scraper.amenity_enrichment.llm import LlmUsage
 
 REPORT_PATH_ENV = "REVIEWS_REPORT_PATH"
 _PREVIEW_MAX = 80
@@ -47,6 +50,9 @@ class ReviewsRun:
     reviews_fetched: int = 0
     reviews_inserted: int = 0
     reviews_seen: int = 0
+    classified: int = 0
+    claims_skipped: int = 0
+    claims_written: int = 0
     new_reviews: list[NewReview] = field(default_factory=list)
     skipped: list[SkippedSite] = field(default_factory=list)
     http_errors: list[FetchError] = field(default_factory=list)
@@ -74,8 +80,15 @@ def _new_review_line(item: NewReview) -> str:
     )
 
 
-def render_run_report(run: ReviewsRun) -> str:
+def render_run_report(
+    run: ReviewsRun, usage: LlmUsage | None = None
+) -> str:
     started = run.started_at.strftime("%Y-%m-%d %H:%M UTC")
+    if usage is not None and (usage.chat_calls or usage.embed_calls):
+        cost = usage.report("scrape-reviews")
+        cost_line = f"${cost['cost_usd']:.6f} · {cost['calls']} call(s)"
+    else:
+        cost_line = "$0.000000 · 0 call(s)"
     lines = [
         "# scrape-reviews",
         "",
@@ -88,9 +101,7 @@ def render_run_report(run: ReviewsRun) -> str:
         "",
         "## Cost",
         "",
-        "$0.000000 · 0 call(s)",
-        "",
-        "Google Place Details only; no LLM.",
+        cost_line,
         "",
         "## New reviews",
         "",
@@ -111,6 +122,11 @@ def render_run_report(run: ReviewsRun) -> str:
             lines.append(f"- **{err.site_name}**: {err.message}")
     else:
         lines.append("None.")
+    lines.extend(["", "## Claims", ""])
+    lines.append(
+        f"classified: {run.classified} · not personal: {run.claims_skipped} · "
+        f"claims written: {run.claims_written}"
+    )
     lines.append("")
     return "\n".join(lines)
 

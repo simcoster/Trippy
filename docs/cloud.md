@@ -53,7 +53,8 @@ Two scrapes cannot overlap (`concurrency: scrape` on each caller).
 
 The report is the run’s **Summary** tab (Actions → **Scrape availability**
 or **Scrape reviews** → that run), not a file and not Streamlit.
-Availability lists vacancy changes; reviews lists new Google rows. The
+Availability lists vacancy changes; reviews lists new Google rows then
+claims written (visit gate / split / embed). The
 log still has the per-site scroll. GitHub emails you if the job fails.
 
 ## Manual steps

@@ -4,8 +4,10 @@
 skip_reason and is_relevant=false and are not split. One 235B splitter
 call per kept review. Drops claims with confidence < 0.5.
 
-`just scrape-reviews` only fetches Place Details (newest + most_relevant)
-into `reviews`. `just populate-claims` classifies those rows. Tests may
+`just scrape-reviews` fetches Place Details (newest + most_relevant)
+into `reviews`, then classifies unclassified rows (visit gate, split,
+embed). `--embed-only` skips Google. `just populate-claims` is the
+same classify step on its own. Tests may
 still pass a reviews dict into populate_reviews_and_claims.
 """
 
@@ -33,6 +35,7 @@ from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
+    record_scrape_cost,
 )
 from source.scraper.reviews_report import (
     FetchError,
@@ -1087,12 +1090,31 @@ def lookup_campsite_id(conn, name: str) -> tuple[int, str]:
     return int(rows[0][0]), str(rows[0][1])
 
 
+def _apply_claims_result(run: ReviewsRun, result: dict[str, int]) -> None:
+    run.classified = int(result.get("reviews") or 0)
+    run.claims_skipped = int(result.get("skipped") or 0)
+    run.claims_written = int(result.get("claims") or 0)
+
+
+def classify_unclassified_reviews(
+    conn,
+    *,
+    campsite_id: int | None = None,
+    usage: LlmUsage | None = None,
+) -> dict[str, int]:
+    """Visit-gate, split, and embed rows with `is_relevant IS NULL`."""
+    from source.scraper.populate_claims import populate_claims
+
+    return populate_claims(conn=conn, campsite_id=campsite_id, usage=usage)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Fetch Google reviews from legacy Place Details into the reviews "
-            "table. Two calls per site (newest, then most_relevant), "
-            "concatenated. Does not classify or split claims."
+            "Fetch Google reviews from Place Details into the reviews "
+            "table, then visit-gate / split / embed rows that are not "
+            "yet classified. Two Place Details calls per site (newest, "
+            "then most_relevant), concatenated."
         )
     )
     parser.add_argument("--campsite-id", type=int, default=None)
@@ -1107,26 +1129,44 @@ def main() -> None:
         help="Ignored: both newest and most_relevant are always fetched.",
     )
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--embed-only",
+        action="store_true",
+        help=(
+            "Skip Google fetch. Classify unclassified reviews only "
+            "(same as `just populate-claims`)."
+        ),
+    )
     args = parser.parse_args()
 
     config = load_config() if CONFIG_PATH.exists() else {}
     started_at = datetime.now(timezone.utc)
     started_mono = time.monotonic()
     run = ReviewsRun(started_at=started_at)
+    usage = LlmUsage()
     with connect(database_url(config)) as conn:
         campsite_id = args.campsite_id
         if campsite_id is None and args.name:
             campsite_id, db_name = lookup_campsite_id(conn, args.name)
             log(f"Campsite {campsite_id}: {db_name}")
-        populate_google_reviews(
-            conn=conn,
-            campsite_id=campsite_id,
-            most_relevant=args.most_relevant,
-            limit=args.limit,
-            run=run,
+        if not args.embed_only:
+            populate_google_reviews(
+                conn=conn,
+                campsite_id=campsite_id,
+                most_relevant=args.most_relevant,
+                limit=args.limit,
+                run=run,
+            )
+        claims = classify_unclassified_reviews(
+            conn, campsite_id=campsite_id, usage=usage
         )
+        _apply_claims_result(run, claims)
     run.seconds = time.monotonic() - started_mono
-    report_text = render_run_report(run)
+    written = record_scrape_cost("scrape-reviews", usage)
+    if written:
+        print(usage.summary(prefix="Scrape total: "))
+        print(f"cost report appended to {written}")
+    report_text = render_run_report(run, usage)
     print(report_text)
     report_path = write_run_report(report_text)
     if report_path:

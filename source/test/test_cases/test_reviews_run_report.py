@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import httpx
 
+from source.scraper.amenity_enrichment.llm import QWEN_INSTRUCT_MODEL, LlmUsage
 from source.scraper.populate_reviews_and_claims import (
     UPSERT_REVIEW_SQL,
     populate_google_reviews,
@@ -70,11 +71,31 @@ def test_render_run_report_lists_new_reviews_skips_and_errors(tmp_path: Path):
     assert "Masada" in text
     assert "no_reviews" in text
     assert "OVER_QUERY_LIMIT" in text
-    assert "Google Place Details only" in text
+    assert "classified: 0 · not personal: 0 · claims written: 0" in text
+    assert "Google Place Details only" not in text
     dest = tmp_path / "reviews.md"
     written = write_run_report(text, path=dest)
     assert written == dest
     assert dest.read_text(encoding="utf-8") == text
+
+
+def test_render_run_report_includes_llm_cost_and_claims():
+    run = ReviewsRun(
+        started_at=datetime(2026, 9, 14, 6, 0, tzinfo=timezone.utc),
+        classified=3,
+        claims_skipped=1,
+        claims_written=8,
+    )
+    usage = LlmUsage()
+    usage.add_chat(
+        SimpleNamespace(prompt_tokens=100, completion_tokens=50),
+        role="claim_split",
+        model=QWEN_INSTRUCT_MODEL,
+    )
+    text = render_run_report(run, usage)
+    assert "classified: 3 · not personal: 1 · claims written: 8" in text
+    assert "call(s)" in text
+    assert "$0.000000" not in text
 
 
 def test_store_fetched_reviews_records_inserts_on_run():

@@ -20,7 +20,11 @@ The webhook holds the HTTP request until the whole LangGraph turn finishes (ligh
 
 Scrapers are `just` CLIs a human runs. Availability is still capped (`limit_campsites: 2` plus a leftover `and id = 2` filter). Every search opens a fresh `psycopg.connect()`. No CI, no real health check, no job runner, no backups.
 
-Reviews fetch (`just scrape-reviews`) is Google Place Details only. Claim extract (`just populate-claims`): for each unclassified review (`is_relevant IS NULL`): 30B visit gate → 235B split (one review per call, locked in `docs/claims.md`) → one embed batch for the site. The site is one transaction; an exception rolls all of it back.
+Reviews fetch (`just scrape-reviews`) is Google Place Details, then the
+same classify path as `just populate-claims` for `is_relevant IS NULL`.
+Claim extract: for each unclassified review: 30B visit gate → 235B split
+(one review per call, locked in `docs/claims.md`) → one embed batch for
+the site. The site is one transaction; an exception rolls all of it back.
 
 Availability scrape: for each site, for each of 14 nights: HTTP to INPA, 0.5s pause, sometimes 30B name-match and 235B amenity enrich. Sequential.
 
