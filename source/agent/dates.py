@@ -17,6 +17,9 @@ MAX_DATE_WINDOWS = 4
 DATE_TRUNCATED_NOTICE = (
     "יש יותר מ-4 טווחי תאריכים מתאימים; חיפשתי רק את ארבעת הראשונים."
 )
+WEEK_TRUNCATED_NOTICE = (
+    "השבוע ארוך מ-4 לילות; חיפשתי אמצע שבוע ואת שישי-שבת."
+)
 
 _WEEKDAY_INDEX = {
     "monday": 0,
@@ -206,6 +209,73 @@ def _enumerate_weekdays(
     return windows
 
 
+def _enumerate_consecutive(
+    start: date,
+    *,
+    horizon_days: int,
+    nights: int,
+    today: date,
+) -> list[dict[str, str]]:
+    last = start + timedelta(days=horizon_days)
+    windows: list[dict[str, str]] = []
+    cursor = start
+    while cursor < last:
+        if cursor >= today:
+            windows.append(_stay(cursor, nights))
+        cursor += timedelta(days=1)
+    return windows
+
+
+def _iso_week_check_ins(
+    today: date,
+    *,
+    when: str | None,
+    weeks_from_now: int | None,
+) -> list[date]:
+    """Monday–Sunday of the intended ISO week, dropping days before today."""
+    if weeks_from_now is not None:
+        monday = iso_monday(today) + timedelta(days=7 * weeks_from_now)
+    elif str(when or "").strip().lower() == "next":
+        monday = iso_monday(today) + timedelta(days=7)
+    else:
+        monday = iso_monday(today)
+    return [
+        monday + timedelta(days=i)
+        for i in range(7)
+        if monday + timedelta(days=i) >= today
+    ]
+
+
+def _prefer_weekend_windows(windows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Keep Friday and Saturday of the week, then fill from the start."""
+    if len(windows) <= MAX_DATE_WINDOWS:
+        return windows
+
+    def weekday_of(window: dict[str, str]) -> int | None:
+        day = _parse_iso_day(window.get("start"))
+        return None if day is None else day.weekday()
+
+    picked: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for want in (4, 5):
+        for window in windows:
+            start = str(window.get("start") or "")
+            if weekday_of(window) == want and start not in seen:
+                picked.append(window)
+                seen.add(start)
+                break
+    for window in windows:
+        start = str(window.get("start") or "")
+        if start in seen:
+            continue
+        picked.append(window)
+        seen.add(start)
+        if len(picked) >= MAX_DATE_WINDOWS:
+            break
+    picked.sort(key=lambda window: str(window.get("start") or ""))
+    return picked[:MAX_DATE_WINDOWS]
+
+
 def resolve_dates(
     nights: int | None = None,
     kind: str | None = None,
@@ -238,11 +308,20 @@ def resolve_dates(
 
     stay_nights = _nights_for(kind_n, nights_n)
     windows: list[dict[str, str]] = []
+    week_notice: str | None = None
 
     start_d = _parse_iso_day(start)
     end_d = _parse_iso_day(end)
     if start_d is not None:
         windows.append(_as_stay_range(start_d, end_d))
+    elif kind_n == "week":
+        days = _iso_week_check_ins(
+            today_d, when=when_n, weeks_from_now=weeks_n
+        )
+        windows.extend(_stay(day, stay_nights) for day in days)
+        if len(windows) > MAX_DATE_WINDOWS:
+            windows = _prefer_weekend_windows(windows)
+            week_notice = WEEK_TRUNCATED_NOTICE
     elif on:
         on_d = (
             today_d
@@ -253,7 +332,17 @@ def resolve_dates(
             on_d = today_d
         if weeks_n is not None:
             on_d = on_d + timedelta(weeks=weeks_n)
-        windows.append(_stay(on_d, stay_nights))
+        if horizon_n:
+            windows.extend(
+                _enumerate_consecutive(
+                    on_d,
+                    horizon_days=horizon_n,
+                    nights=stay_nights,
+                    today=today_d,
+                )
+            )
+        else:
+            windows.append(_stay(on_d, stay_nights))
     elif kind_n == "weekend":
         if horizon_n:
             windows.extend(
@@ -285,11 +374,14 @@ def resolve_dates(
         windows.append(_stay(today_d + timedelta(weeks=weeks_n), stay_nights))
 
     truncated = len(windows) > MAX_DATE_WINDOWS
-    windows = windows[:MAX_DATE_WINDOWS]
+    if truncated:
+        windows = windows[:MAX_DATE_WINDOWS]
     out = {
         "windows": windows,
-        "truncated": truncated,
-        "notice": DATE_TRUNCATED_NOTICE if truncated else None,
+        "truncated": truncated or week_notice is not None,
+        "notice": week_notice
+        if week_notice
+        else (DATE_TRUNCATED_NOTICE if truncated else None),
     }
     logger.info(
         "resolve_dates kind=%s weekday=%s when=%s nights=%s "
@@ -335,13 +427,16 @@ resolve_dates_tool = StructuredTool.from_function(
     name="resolve_dates",
     description=(
         "Resolve a date intent into ISO check-in/check-out windows. "
-        "kind=weekday|weekend|on; when=this|next (omit when for the "
+        "kind=weekday|weekend|on|week; when=this|next (omit when for the "
         "upcoming weekday). weekend is Friday night only (nights=1, "
-        "checkout Saturday) unless nights is set. weeks_from_now for "
-        "'in N weeks'; horizon_days enumerates kind's weekday "
-        "(weekend=Friday) over a span, capped at 4. Do not set "
-        "kind=weekend unless the user said weekend. next weekday is "
-        "next ISO week, not this week's upcoming day."
+        "checkout Saturday) unless nights is set. week is Mon–Sun of "
+        "this or next ISO week, one stay per night (capped at 4, keeps "
+        "Friday and Saturday). 'next week' / לשבוע הבא is kind=week, "
+        "when=next — not on=today. weeks_from_now for 'in N weeks'; "
+        "horizon_days enumerates kind's weekday (weekend=Friday) or, "
+        "with kind=on, consecutive nights from `on`, capped at 4. Do "
+        "not set kind=weekend unless the user said weekend. next "
+        "weekday is next ISO week, not this week's upcoming day."
     ),
 )
 
