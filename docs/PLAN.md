@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, scraped_at vs updated_at on skip)
+
+**Hash skip bumps `scraped_at` only.** `updated_at` is the last vacancy
+(or offers-hash) change. Rewrite still sets both. Same split on
+`booking_page_hashes` (`html_sha256` may still refresh on skip).
+
 ### Done (2026-09-14, drop availability.adults_no)
 
 **`availability.adults_no` is gone** (and the same column on

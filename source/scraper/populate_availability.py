@@ -126,8 +126,17 @@ SET html_sha256 = EXCLUDED.html_sha256,
 
 TOUCH_AVAILABILITY_SQL = """
 UPDATE availability
-SET scraped_at = now(), updated_at = now()
+SET scraped_at = now()
 WHERE site_id = ANY(%(site_ids)s)
+  AND start_date = %(start_date)s
+  AND end_date = %(end_date)s
+"""
+
+TOUCH_PAGE_HASH_SQL = """
+UPDATE booking_page_hashes
+SET html_sha256 = %(html_sha256)s,
+    scraped_at = now()
+WHERE site_id = %(site_id)s
   AND start_date = %(start_date)s
   AND end_date = %(end_date)s
 """
@@ -510,6 +519,7 @@ def touch_availability_scraped_at(
     start: date,
     end: date,
 ) -> None:
+    """Mark this night as checked without claiming vacancy changed."""
     with conn.cursor() as cur:
         cur.execute(
             TOUCH_AVAILABILITY_SQL,
@@ -517,6 +527,27 @@ def touch_availability_scraped_at(
                 "site_ids": list(site_ids),
                 "start_date": start,
                 "end_date": end,
+            },
+        )
+
+
+def touch_page_hash(
+    conn,
+    *,
+    site_id: int,
+    start: date,
+    end: date,
+    html_digest: str,
+) -> None:
+    """Chrome may move; offers did not. Leave updated_at alone."""
+    with conn.cursor() as cur:
+        cur.execute(
+            TOUCH_PAGE_HASH_SQL,
+            {
+                "site_id": site_id,
+                "start_date": start,
+                "end_date": end,
+                "html_sha256": html_digest,
             },
         )
 
@@ -756,13 +787,12 @@ def main(argv: list[str] | None = None) -> None:
                     print("    LAYOUT SUSPICION: empty vs previous offers mismatch")
 
                 if should_skip_write(previous_offers, offers_digest):
-                    upsert_page_hash(
+                    touch_page_hash(
                         conn,
                         site_id=int(site["id"]),
                         start=check_in,
                         end=check_out,
                         html_digest=html_digest,
-                        offers_digest=offers_digest,
                     )
                     touch_availability_scraped_at(
                         conn,
