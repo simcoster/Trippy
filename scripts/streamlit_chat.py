@@ -748,6 +748,22 @@ def _render_trace_metrics(trace: list[dict[str, Any]]) -> None:
     stages_line = format_stages(summary.get("stages"))
     if stages_line:
         st.caption(stages_line)
+    rec_chunk = summary.get("recommend_ttft_chunk_ms")
+    rec_spoken = summary.get("recommend_ttft_spoken_ms")
+    if rec_chunk is not None or rec_spoken is not None:
+        bits = []
+        if rec_chunk is not None:
+            bits.append(f"chunk {_format_latency(rec_chunk)}")
+        if rec_spoken is not None:
+            bits.append(f"spoken {_format_latency(rec_spoken)}")
+        st.caption("Recommend TTFT: " + " · ".join(bits))
+    reasoning_n = int(summary.get("recommend_reasoning_tokens") or 0)
+    if reasoning_n or summary.get("recommend_thinking_stream"):
+        st.warning(
+            "Recommender thinking may be on "
+            f"(reasoning_tokens={reasoning_n}, "
+            f"thinking_stream={summary.get('recommend_thinking_stream')})."
+        )
 
     rows = summary.get("by_node") or []
     if rows:
@@ -989,6 +1005,19 @@ def invoke_agent(
         summary["recommend_ttft_chunk_ms"] = timing.get("chunk_ms")
         summary["recommend_ttft_spoken_ms"] = timing.get("spoken_ms")
         summary["recommend_elapsed_ms"] = timing.get("total_ms")
+        summary["recommend_reasoning_tokens"] = timing.get("reasoning_tokens")
+        summary["recommend_thinking_stream"] = timing.get("thinking_stream")
+        chunk_s = timing.get("chunk_ms")
+        spoken_s = timing.get("spoken_ms")
+        print(
+            "recommend "
+            f"ttft_chunk={None if chunk_s is None else f'{float(chunk_s) / 1000:.1f}s'} "
+            f"ttft_spoken={None if spoken_s is None else f'{float(spoken_s) / 1000:.1f}s'} "
+            f"reasoning={timing.get('reasoning_tokens')} "
+            f"thinking_stream={timing.get('thinking_stream')} "
+            f"empty_prefix={timing.get('empty_prefix')}",
+            flush=True,
+        )
         before_ms = 0.0
         for event in trace:
             if event.get("kind") != "node" or event.get("phase") != "update":
@@ -1003,6 +1032,8 @@ def invoke_agent(
         chunk = timing.get("chunk_ms")
         if chunk is not None:
             summary["turn_ttft_chunk_ms"] = before_ms + float(chunk)
+    else:
+        print("recommend timing missing", flush=True)
     trace.append({"kind": "summary", **summary})
 
     st.session_state.graph_messages = final_messages

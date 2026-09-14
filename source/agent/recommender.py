@@ -148,9 +148,10 @@ _override_recommender_key = None
 _recommend_text_sink: ContextVar[Callable[[str], None] | None] = ContextVar(
     "trippy_recommend_text", default=None
 )
-_recommend_timing: ContextVar[dict[str, float | None] | None] = ContextVar(
-    "trippy_recommend_timing", default=None
-)
+# Process snapshot, not a ContextVar: LangGraph copies context into the
+# node, so a ContextVar set there never comes back to Streamlit.
+_last_recommend_timing: dict[str, Any] | None = None
+_last_recommend_timing_lock = threading.Lock()
 
 
 class _StayKey(NamedTuple):
@@ -181,6 +182,8 @@ class RecommendResult:
     ttft_chunk_ms: float | None = None
     ttft_spoken_ms: float | None = None
     elapsed_ms: float | None = None
+    reasoning_tokens: int | None = None
+    thinking_stream: bool = False
 
 
 def recommender_model() -> str:
@@ -231,6 +234,9 @@ def _recommender_chat():
         )
         _override_recommender.stream_usage = True
         _override_recommender_key = key
+        line = f"recommender client model={model} extra_body={extra}"
+        print(line, flush=True)
+        logger.info(line)
     return _override_recommender
 
 
@@ -246,14 +252,35 @@ def warmup_recommender(*, chat: Any | None = None, blocking: bool = False) -> No
             return
         _warmup_started = True
 
+    scheduled = (
+        f"recommender warmup ping=hi model={recommender_model()}"
+    )
+    print(scheduled, flush=True)
+    logger.info(scheduled)
+
     def _ping() -> None:
+        started = time.perf_counter()
         try:
             client = chat or _recommender_chat()
             if hasattr(client, "bind"):
                 client = client.bind(max_tokens=1)
-            client.invoke([HumanMessage(content="hi")])
+            reply = client.invoke([HumanMessage(content="hi")])
         except Exception:
+            print("recommender warmup failed", flush=True)
             logger.warning("recommender warmup failed", exc_info=True)
+            return
+        text = getattr(reply, "content", reply)
+        if not isinstance(text, str):
+            text = str(text)
+        text = " ".join(text.split())
+        if len(text) > 160:
+            text = text[:160] + "…"
+        done = (
+            f"recommender warmup reply={text!r} "
+            f"in {time.perf_counter() - started:.1f}s"
+        )
+        print(done, flush=True)
+        logger.info(done)
 
     if blocking:
         _ping()
@@ -263,9 +290,18 @@ def warmup_recommender(*, chat: Any | None = None, blocking: bool = False) -> No
     ).start()
 
 
-def last_recommend_timing() -> dict[str, float | None] | None:
-    """TTFT inside the recommend call: first LLM chunk, first spoken paint."""
-    return _recommend_timing.get()
+def last_recommend_timing() -> dict[str, Any] | None:
+    """TTFT inside the last recommend call: first LLM chunk, first spoken paint."""
+    with _last_recommend_timing_lock:
+        if _last_recommend_timing is None:
+            return None
+        return dict(_last_recommend_timing)
+
+
+def _store_recommend_timing(row: dict[str, Any]) -> None:
+    global _last_recommend_timing
+    with _last_recommend_timing_lock:
+        _last_recommend_timing = row
 
 
 @contextmanager
@@ -605,6 +641,17 @@ def _chunk_text(chunk: Any) -> str:
     return message_text(getattr(chunk, "content", None))
 
 
+def _chunk_thinking(chunk: Any) -> str:
+    extra = getattr(chunk, "additional_kwargs", None) or {}
+    if not isinstance(extra, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning", "thinking"):
+        text = extra.get(key)
+        if isinstance(text, str) and text.strip():
+            return text
+    return ""
+
+
 def _iter_chat_chunks(chat: Any, messages: list[Any]) -> Iterator[Any]:
     if not hasattr(chat, "stream"):
         yield chat.invoke(messages)
@@ -725,6 +772,9 @@ def recommend_from_payload(
     started = time.perf_counter()
     chunk_at: float | None = None
     spoken_at: float | None = None
+    empty_prefix = 0
+    thinking_stream = False
+    extra = _recommender_extra_body()
     with stage("recommend"):
         for chunk in _iter_chat_chunks(
             chat or _recommender_chat(), [system_msg, user_msg]
@@ -732,8 +782,12 @@ def recommend_from_payload(
             last_chunk = chunk
             if langchain_chat_usage(chunk) is not None:
                 usage_from = chunk
+            if _chunk_thinking(chunk):
+                thinking_stream = True
             delta = _chunk_text(chunk)
             if not delta:
+                if chunk_at is None:
+                    empty_prefix += 1
                 continue
             if chunk_at is None:
                 chunk_at = time.perf_counter()
@@ -751,17 +805,41 @@ def recommend_from_payload(
     elapsed_ms = (time.perf_counter() - started) * 1000
     chunk_ms = (chunk_at - started) * 1000 if chunk_at is not None else None
     spoken_ms = (spoken_at - started) * 1000 if spoken_at is not None else None
-    _recommend_timing.set(
+    sink = collected_llm_usage()
+    raw_usage = langchain_chat_usage(usage_from) if usage_from is not None else None
+    reasoning = int(getattr(raw_usage, "reasoning_tokens", 0) or 0)
+    if sink is not None and raw_usage is not None:
+        sink.add_chat(raw_usage, role="recommend", model=recommender_model())
+    _store_recommend_timing(
         {
             "chunk_ms": chunk_ms,
             "spoken_ms": spoken_ms,
             "total_ms": elapsed_ms,
+            "reasoning_tokens": reasoning,
+            "thinking_stream": thinking_stream,
+            "empty_prefix": empty_prefix,
         }
     )
-    sink = collected_llm_usage()
-    raw_usage = langchain_chat_usage(usage_from) if usage_from is not None else None
-    if sink is not None and raw_usage is not None:
-        sink.add_chat(raw_usage, role="recommend", model=recommender_model())
+    chunk_s = None if chunk_ms is None else f"{chunk_ms / 1000:.1f}s"
+    spoken_s = None if spoken_ms is None else f"{spoken_ms / 1000:.1f}s"
+    line = (
+        f"recommend model={recommender_model()} extra_body={extra} "
+        f"ttft_chunk={chunk_s} ttft_spoken={spoken_s} "
+        f"elapsed={elapsed_ms / 1000:.1f}s "
+        f"in={getattr(raw_usage, 'prompt_tokens', None)} "
+        f"out={getattr(raw_usage, 'completion_tokens', None)} "
+        f"reasoning={reasoning} empty_prefix={empty_prefix} "
+        f"thinking_stream={thinking_stream}"
+    )
+    print(line, flush=True)
+    logger.info(line)
+    if reasoning or thinking_stream:
+        warn = (
+            f"recommender thinking still on reasoning={reasoning} "
+            f"thinking_stream={thinking_stream}"
+        )
+        print(warn, flush=True)
+        logger.warning(warn)
     raw = "".join(parts)
     parsed = parse_recommender_payload(raw)
     recs = validate_recommendations(parsed, fits)
@@ -780,6 +858,8 @@ def recommend_from_payload(
         ttft_chunk_ms=chunk_ms,
         ttft_spoken_ms=spoken_ms,
         elapsed_ms=elapsed_ms,
+        reasoning_tokens=reasoning,
+        thinking_stream=thinking_stream,
     )
 
 

@@ -324,29 +324,56 @@ def collected_llm_usage() -> LlmUsage | None:
     return _usage_sink.get()
 
 
+def _reasoning_tokens(
+    *, meta: dict | None = None, token_usage: dict | None = None
+) -> int:
+    """Hidden chain-of-thought tokens, if the provider reports them."""
+    if isinstance(meta, dict):
+        details = meta.get("output_token_details")
+        if isinstance(details, dict) and details.get("reasoning") is not None:
+            return int(details.get("reasoning") or 0)
+    if isinstance(token_usage, dict):
+        if token_usage.get("reasoning_tokens") is not None:
+            return int(token_usage.get("reasoning_tokens") or 0)
+        details = token_usage.get("completion_tokens_details")
+        if isinstance(details, dict) and details.get("reasoning_tokens") is not None:
+            return int(details.get("reasoning_tokens") or 0)
+    return 0
+
+
 def langchain_chat_usage(response: Any) -> Any | None:
     """Prompt/completion counts from a LangChain chat result, if present."""
     meta = getattr(response, "usage_metadata", None)
+    resp_meta = getattr(response, "response_metadata", None) or {}
+    token_usage = None
+    if isinstance(resp_meta, dict):
+        raw_usage = resp_meta.get("token_usage") or resp_meta.get("usage")
+        token_usage = raw_usage if isinstance(raw_usage, dict) else None
+    reasoning = _reasoning_tokens(
+        meta=meta if isinstance(meta, dict) else None,
+        token_usage=token_usage,
+    )
     if isinstance(meta, dict) and (
-        meta.get("input_tokens") or meta.get("output_tokens")
+        meta.get("input_tokens") or meta.get("output_tokens") or reasoning
     ):
         return SimpleNamespace(
             prompt_tokens=int(meta.get("input_tokens") or 0),
             completion_tokens=int(meta.get("output_tokens") or 0),
+            reasoning_tokens=reasoning,
         )
-    resp_meta = getattr(response, "response_metadata", None) or {}
-    if not isinstance(resp_meta, dict):
-        return None
-    token_usage = resp_meta.get("token_usage") or resp_meta.get("usage")
-    if not isinstance(token_usage, dict):
+    if token_usage is None:
         return None
     prompt = int(token_usage.get("prompt_tokens") or token_usage.get("input_tokens") or 0)
     completion = int(
         token_usage.get("completion_tokens") or token_usage.get("output_tokens") or 0
     )
-    if prompt <= 0 and completion <= 0:
+    if prompt <= 0 and completion <= 0 and reasoning <= 0:
         return None
-    return SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion)
+    return SimpleNamespace(
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        reasoning_tokens=reasoning,
+    )
 
 
 def _short_model(model: str) -> str:

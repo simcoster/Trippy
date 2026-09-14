@@ -147,6 +147,11 @@ def format_recommend_ttft(rec: dict | None) -> str:
         parts.append(f"ttft_chunk={float(chunk) / 1000:.1f}s")
     if spoken is not None:
         parts.append(f"ttft_spoken={float(spoken) / 1000:.1f}s")
+    reasoning = rec.get("reasoning_tokens")
+    if reasoning:
+        parts.append(f"reasoning={int(reasoning)}")
+    if rec.get("thinking_stream"):
+        parts.append("thinking_stream=1")
     return " ".join(parts)
 
 
@@ -309,6 +314,11 @@ def _recommend_dump(result) -> dict:
         val = getattr(result, key, None)
         if val is not None:
             dump[key] = round(float(val), 1)
+    reasoning = getattr(result, "reasoning_tokens", None)
+    if reasoning:
+        dump["reasoning_tokens"] = int(reasoning)
+    if getattr(result, "thinking_stream", False):
+        dump["thinking_stream"] = True
     return dump
 
 
