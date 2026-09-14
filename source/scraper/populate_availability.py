@@ -81,10 +81,10 @@ ORDER BY id
 UPSERT_AVAILABILITY_SQL = """
 INSERT INTO availability (
     site_id, start_date, end_date, accommodation_type_id,
-    adults_no, room_count
+    room_count
 ) VALUES (
     %(site_id)s, %(start_date)s, %(end_date)s,
-    %(accommodation_type_id)s, %(adults_no)s, %(room_count)s
+    %(accommodation_type_id)s, %(room_count)s
 )
 ON CONFLICT ON CONSTRAINT availability_unique_slot DO UPDATE
 SET room_count = EXCLUDED.room_count,
@@ -100,7 +100,6 @@ DELETE FROM availability
 WHERE site_id = ANY(%(site_ids)s)
   AND start_date = %(start_date)s
   AND end_date = %(end_date)s
-  AND adults_no = %(adults_no)s
 """
 
 LOAD_PAGE_HASH_SQL = """
@@ -109,14 +108,13 @@ FROM booking_page_hashes
 WHERE site_id = %(site_id)s
   AND start_date = %(start_date)s
   AND end_date = %(end_date)s
-  AND adults_no = %(adults_no)s
 """
 
 UPSERT_PAGE_HASH_SQL = """
 INSERT INTO booking_page_hashes (
-    site_id, start_date, end_date, adults_no, html_sha256, offers_sha256
+    site_id, start_date, end_date, html_sha256, offers_sha256
 ) VALUES (
-    %(site_id)s, %(start_date)s, %(end_date)s, %(adults_no)s,
+    %(site_id)s, %(start_date)s, %(end_date)s,
     %(html_sha256)s, %(offers_sha256)s
 )
 ON CONFLICT ON CONSTRAINT booking_page_hashes_slot_key DO UPDATE
@@ -132,7 +130,6 @@ SET scraped_at = now(), updated_at = now()
 WHERE site_id = ANY(%(site_ids)s)
   AND start_date = %(start_date)s
   AND end_date = %(end_date)s
-  AND adults_no = %(adults_no)s
 """
 
 DELETE_AVAILABILITY_BEFORE_SQL = """
@@ -152,7 +149,6 @@ JOIN accommodation_types t ON t.id = a.accommodation_type_id
 WHERE a.site_id = ANY(%(site_ids)s)
   AND a.start_date = %(start_date)s
   AND a.end_date = %(end_date)s
-  AND a.adults_no = %(adults_no)s
 ORDER BY a.site_id, t.name
 """
 
@@ -433,9 +429,8 @@ def clear_availability_for_night(
     site_ids: list[int],
     start: date,
     end: date,
-    adults_no: int,
 ) -> int:
-    """Remove existing rows for this site/night/party size before re-scraping."""
+    """Remove existing rows for this site/night before re-scraping."""
     with conn.cursor() as cur:
         cur.execute(
             DELETE_AVAILABILITY_FOR_NIGHT_SQL,
@@ -443,7 +438,6 @@ def clear_availability_for_night(
                 "site_ids": list(site_ids),
                 "start_date": start,
                 "end_date": end,
-                "adults_no": adults_no,
             },
         )
         return cur.rowcount
@@ -471,7 +465,6 @@ def load_page_hash(
     site_id: int,
     start: date,
     end: date,
-    adults_no: int,
 ) -> PageFingerprint | None:
     with conn.cursor() as cur:
         cur.execute(
@@ -480,7 +473,6 @@ def load_page_hash(
                 "site_id": site_id,
                 "start_date": start,
                 "end_date": end,
-                "adults_no": adults_no,
             },
         )
         row = cur.fetchone()
@@ -495,7 +487,6 @@ def upsert_page_hash(
     site_id: int,
     start: date,
     end: date,
-    adults_no: int,
     html_digest: str,
     offers_digest: str,
 ) -> None:
@@ -506,7 +497,6 @@ def upsert_page_hash(
                 "site_id": site_id,
                 "start_date": start,
                 "end_date": end,
-                "adults_no": adults_no,
                 "html_sha256": html_digest,
                 "offers_sha256": offers_digest,
             },
@@ -519,7 +509,6 @@ def touch_availability_scraped_at(
     site_ids: list[int],
     start: date,
     end: date,
-    adults_no: int,
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -528,7 +517,6 @@ def touch_availability_scraped_at(
                 "site_ids": list(site_ids),
                 "start_date": start,
                 "end_date": end,
-                "adults_no": adults_no,
             },
         )
 
@@ -539,7 +527,6 @@ def load_night_counts(
     site_ids: list[int],
     start: date,
     end: date,
-    adults_no: int,
 ) -> dict[NightCountKey, int]:
     with conn.cursor() as cur:
         cur.execute(
@@ -548,7 +535,6 @@ def load_night_counts(
                 "site_ids": list(site_ids),
                 "start_date": start,
                 "end_date": end,
-                "adults_no": adults_no,
             },
         )
         rows = cur.fetchall()
@@ -564,7 +550,6 @@ def upsert_availability_rows(
     site_id: int,
     start: date,
     end: date,
-    adults_no: int,
     offerings: list[dict],
     matcher: InfoWebsiteNameMatcher | None = None,
     usage: LlmUsage | None = None,
@@ -585,7 +570,6 @@ def upsert_availability_rows(
         site_ids=owned_site_ids(site_id, subcamps),
         start=start,
         end=end,
-        adults_no=adults_no,
     )
     aggregated = aggregate_offerings(offerings)
     saved = 0
@@ -616,7 +600,6 @@ def upsert_availability_rows(
                     "start_date": start,
                     "end_date": end,
                     "accommodation_type_id": accom_id,
-                    "adults_no": adults_no,
                     "room_count": int(offer["room_count"]),
                 },
             )
@@ -755,7 +738,6 @@ def main(argv: list[str] | None = None) -> None:
                     site_id=int(site["id"]),
                     start=check_in,
                     end=check_out,
-                    adults_no=adults,
                 )
                 previous_offers = stored.offers_sha256 if stored is not None else None
                 if layout_suspicion(
@@ -779,7 +761,6 @@ def main(argv: list[str] | None = None) -> None:
                         site_id=int(site["id"]),
                         start=check_in,
                         end=check_out,
-                        adults_no=adults,
                         html_digest=html_digest,
                         offers_digest=offers_digest,
                     )
@@ -788,7 +769,6 @@ def main(argv: list[str] | None = None) -> None:
                         site_ids=site_ids,
                         start=check_in,
                         end=check_out,
-                        adults_no=adults,
                     )
                     conn.commit()
                     run.pages_skipped += 1
@@ -805,7 +785,6 @@ def main(argv: list[str] | None = None) -> None:
                     site_ids=site_ids,
                     start=check_in,
                     end=check_out,
-                    adults_no=adults,
                 )
 
                 if not offerings:
@@ -815,7 +794,6 @@ def main(argv: list[str] | None = None) -> None:
                         site_ids=site_ids,
                         start=check_in,
                         end=check_out,
-                        adults_no=adults,
                     )
                     if deleted:
                         print(f"    cleared {deleted} existing row(s)")
@@ -845,7 +823,6 @@ def main(argv: list[str] | None = None) -> None:
                         site_id=site["id"],
                         start=check_in,
                         end=check_out,
-                        adults_no=adults,
                         offerings=offerings,
                         matcher=type_matcher,
                         usage=listing_llm_usage,
@@ -860,7 +837,6 @@ def main(argv: list[str] | None = None) -> None:
                     site_ids=site_ids,
                     start=check_in,
                     end=check_out,
-                    adults_no=adults,
                 )
                 run.changes.extend(
                     diff_night_counts(
@@ -875,7 +851,6 @@ def main(argv: list[str] | None = None) -> None:
                     site_id=int(site["id"]),
                     start=check_in,
                     end=check_out,
-                    adults_no=adults,
                     html_digest=html_digest,
                     offers_digest=offers_digest,
                 )

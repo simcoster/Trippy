@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from source.scraper.availability_report import (
     should_skip_write,
     write_run_report,
 )
-from source.scraper.populate_availability import aggregate_offerings
+from source.scraper.populate_availability import aggregate_offerings, parse_rooms
 
 
 def test_offers_sha256_is_order_independent():
@@ -50,6 +51,43 @@ def test_offers_sha256_stable_after_aggregate_reorder():
 def test_html_sha256_changes_when_html_changes():
     assert html_sha256("<html>a</html>") != html_sha256("<html>b</html>")
     assert html_sha256("<html>a</html>") == html_sha256("<html>a</html>")
+
+
+def _be_results_html(*, viewstate: str, room_types: tuple[str, ...]) -> str:
+    """Minimal INPA results page: roomData buttons plus ASP.NET chrome."""
+    buttons: list[str] = []
+    for index, name in enumerate(room_types):
+        payload = json.dumps(
+            {
+                "RoomType": name,
+                "Price": 100,
+                "Currency": "₪",
+                "RoomCode": str(index),
+                "MatrixCode": "A",
+            },
+            ensure_ascii=False,
+        )
+        encoded = payload.replace('"', "&quot;")
+        buttons.append(f'<button roomData="{encoded}"></button>')
+    chrome = f'<input type="hidden" name="__VIEWSTATE" value="{viewstate}" />'
+    return "<html>" + chrome + "".join(buttons) + "</html>"
+
+
+def test_skip_uses_offers_hash_not_raw_html():
+    """ViewState noise must not force a rewrite; a gone room must."""
+    same_rooms = ("בונגלו עם מזגן", "חושה")
+    yesterday = _be_results_html(viewstate="AAA", room_types=same_rooms)
+    today_chrome = _be_results_html(viewstate="BBB", room_types=same_rooms)
+    today_gone = _be_results_html(viewstate="BBB", room_types=("בונגלו עם מזגן",))
+
+    stored_offers = offers_sha256(aggregate_offerings(parse_rooms(yesterday)))
+    chrome_offers = offers_sha256(aggregate_offerings(parse_rooms(today_chrome)))
+    gone_offers = offers_sha256(aggregate_offerings(parse_rooms(today_gone)))
+
+    assert html_sha256(yesterday) != html_sha256(today_chrome)
+    assert stored_offers == chrome_offers
+    assert should_skip_write(stored_offers, chrome_offers) is True
+    assert should_skip_write(stored_offers, gone_offers) is False
 
 
 def test_should_skip_write_requires_a_stored_digest():

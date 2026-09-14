@@ -139,7 +139,6 @@ def run_upsert(subcamps):
         site_id=PARENT,
         start=date(2026, 9, 10),
         end=date(2026, 9, 11),
-        adults_no=1,
         offerings=[
             {"room_type": NORTH_TENTS},
             {"room_type": SOUTH_TENTS},
@@ -188,7 +187,6 @@ def test_a_booking_unit_matching_no_type_is_skipped_not_invented():
         site_id=PARENT,
         start=date(2026, 9, 10),
         end=date(2026, 9, 11),
-        adults_no=1,
         offerings=[{"room_type": HUT}],
         subcamps=[],
         unmatched_sink=unmatched,
@@ -207,7 +205,6 @@ def test_re_scraping_a_night_clears_the_parent_and_both_subcamps():
         site_ids=owned_site_ids(PARENT, SUBCAMPS),
         start=date(2026, 9, 10),
         end=date(2026, 9, 11),
-        adults_no=1,
     )
 
     params = cursor.execute.call_args.args[1]
