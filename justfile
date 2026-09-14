@@ -105,7 +105,8 @@ scrape-sites:
 scrape-availability *args:
     uv run python source/scraper/populate_availability.py {{ trim_start_match(args, "-- ") }}
 
-# Google Place Details → reviews table only (newest then most_relevant, concat)
+# Google Place Details → reviews, then visit-gate / split / embed
+# unclassified rows. Skip Google: -- --embed-only
 scrape-reviews *args:
     uv run python -m source.scraper.populate_reviews_and_claims {{ trim_start_match(args, "-- ") }}
 

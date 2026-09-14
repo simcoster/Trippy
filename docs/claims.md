@@ -16,18 +16,21 @@ Probe tables (anonymized): `temp/split_reviews.md`, `temp/split_claims_table_235
 | Recency | `reviews.published_at`; search joins reviews |
 | Visit gate | **30B** before split. Ads / brochure / history dumps **and hiking-trail writeups** → `reviews.skip_reason = not_personal`, `reviews.is_relevant = false`, `skip_note`, **no claims**. Guest reports of site conditions (streams dry, crowding, paid entry) **keep** (`is_relevant = true`), even if they rant. Mixed stay+trail still keep. Splitter and `confidence < 0.5` unchanged. Empty text: `is_relevant = false`, no gate. Gold: `visit_gate.json`. |
 
-Google fetch and claim extract are separate:
+Google fetch and claim extract stay separate modules. The daily job
+runs them in order:
 
 1. `just scrape-reviews` (`populate_reviews_and_claims.main`) — two Place Details
    calls per site (`reviews_sort=newest`, then `most_relevant`; cap 5 each),
    concatenated newest-first, duplicates dropped (a most_relevant review can
-   also be newest; same author/time/text). Upserts `reviews` only. Same text
+   also be newest; same author/time/text). Upserts `reviews`. Same text
    keeps `is_relevant`; changed non-empty text sets it `NULL` so claims can be
-   rebuilt; empty text is `is_relevant = false`. Does not call the visit gate
-   or splitter.
+   rebuilt; empty text is `is_relevant = false`. Then it classifies every
+   remaining `is_relevant IS NULL` row (visit gate, split, embed) — the same
+   work as step 2. `--embed-only` skips Google.
 2. `just populate-claims` — rows with `is_relevant IS NULL` and non-empty text:
    visit gate, one 235B split per kept review, one embed batch per site, then
    commit that site. Already-classified rows (`is_relevant` not null) are skipped.
+   Same path as scrape-reviews after the fetch (or with `--embed-only`).
 3. `just scrape-info` (via `scrape-breadcrumbs`) — `#breadcrumbs` area slugs
    (`area:north`, `region:upper-galilee`) embedded as claims with `review_id` NULL
    and `notes='no review, region by breadcrumbs'`. Not run through the

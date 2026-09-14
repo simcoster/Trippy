@@ -1,12 +1,13 @@
 name: Scrape reviews
 
-# Daily Google reviews scrape. SSH and report live in scrape-job.yml.
+# Daily Google reviews scrape, then embed unclassified rows.
+# SSH and report live in scrape-job.yml. --embed-only skips Google.
 
 on:
   workflow_dispatch:
     inputs:
       extra_args:
-        description: Extra args, e.g. --campsite-id 2
+        description: Extra args, e.g. --campsite-id 2 or --embed-only
         required: false
         default: ""
   schedule:

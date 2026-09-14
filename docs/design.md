@@ -1140,7 +1140,8 @@ is `max_occupancy`). The vacancy change
 report is the Actions run **Summary** tab, not Streamlit and not
 LangSmith. Reviews have their own workflow and Summary tab
 (`# scrape-reviews`: new rows, already stored, skipped sites, Google
-errors). The product channel is Streamlit.
+errors, then visit-gate / split / embed of unclassified rows, with
+LLM cost). `--embed-only` skips Google. The product channel is Streamlit.
 Runbook: `docs/cloud.md`.
 
 ## LangSmith

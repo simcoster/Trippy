@@ -6,6 +6,17 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, scrape-reviews then embed)
+
+**Daily reviews fetch then classify.** `just scrape-reviews` still
+upserts Place Details, then immediately visit-gates / splits / embeds
+rows with `is_relevant IS NULL` (already-classified rows stay put).
+`--embed-only` skips Google (`just populate-claims` is the same
+classify step alone). The Actions Summary has LLM cost and claims
+written. Modules stay split. Supersedes “populate-claims stays
+manual” in the daily scrape-reviews entry below. claims.md ingest;
+design.md “Where it runs”.
+
 ### Done (2026-09-14, scrape workflows split)
 
 **Availability and reviews are separate workflows.**
