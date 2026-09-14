@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 from source.agent.planner import CLAIM_EVIDENCE_LIMIT
 from source.agent.timing import record_stage, stage
+from source.agent.tracing import bind_to_current_trace, emit_child_span
 from source.scraper.amenity_enrichment.llm import (
     GLM_INSTRUCT_MODEL,
     QWEN_INSTRUCT_30B_MODEL,
@@ -384,6 +385,65 @@ def _relevant_claim_texts(
     return texts
 
 
+def _judge_trace_name(campsite: str, query: str) -> str:
+    label = f"claim_judge · {campsite} · {query}"
+    return label if len(label) <= 80 else label[:79] + "…"
+
+
+def _judge_trace_payload(
+    *,
+    query: str,
+    campsite: str,
+    claims: list[dict[str, Any]],
+    rules: list[dict[str, Any]],
+    verdict: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    claim_in = _compact_claims(claims)
+    rule_in = _compact_rules(rules)
+    relevant = {_norm(t) for t in verdict.get("relevant_claims") or []}
+    inputs = {
+        "request": query,
+        "campsite": campsite,
+        "claims": claim_in,
+        "rules": rule_in,
+    }
+    outputs = {
+        "claims": [
+            {**row, "relevant": _norm(str(row.get("claim") or "")) in relevant}
+            for row in claim_in
+        ],
+        "rules": rule_in,
+        "satisfies": verdict.get("satisfies"),
+        "satisfy_by": verdict.get("satisfy_by"),
+        "reason": verdict.get("reason"),
+    }
+    return inputs, outputs
+
+
+def _emit_judge_trace(
+    *,
+    query: str,
+    campsite: str,
+    claims: list[dict[str, Any]],
+    rules: list[dict[str, Any]],
+    verdict: dict[str, Any],
+) -> None:
+    """LangSmith child: claims/rules received and the per-claim / site verdict."""
+    inputs, outputs = _judge_trace_payload(
+        query=query,
+        campsite=campsite,
+        claims=claims,
+        rules=rules,
+        verdict=verdict,
+    )
+    emit_child_span(
+        name=_judge_trace_name(campsite, query),
+        tags=["claim_judge"],
+        inputs=inputs,
+        outputs=outputs,
+    )
+
+
 def judge_site_request(
     *,
     query: str,
@@ -396,12 +456,11 @@ def judge_site_request(
 ) -> dict[str, Any]:
     """One instruct-model call: which claims are relevant, and whether the site satisfies."""
     if not claims and not rules:
-        return {
-            "relevant_claims": [],
-            "satisfies": False,
-            "satisfy_by": None,
-            "reason": "no claims or rules",
-        }
+        verdict = _empty_verdict()
+        _emit_judge_trace(
+            query=query, campsite=campsite, claims=claims, rules=rules, verdict=verdict
+        )
+        return verdict
     compact = judge_compact()
     claim_rows = [
         {"claim": c.get("claim"), "is_positive": c.get("is_positive")}
@@ -468,8 +527,13 @@ def judge_site_request(
         parsed = _parse_json_payload(raw)
     except (json.JSONDecodeError, ValueError):
         logger.warning("claim_judge unparseable for %s %r: %s", campsite, query, raw[:200])
-        return _unparseable_verdict(raw)
-    return _verdict_from_parsed(parsed, claim_rows, compact=compact)
+        verdict = _unparseable_verdict(raw)
+    else:
+        verdict = _verdict_from_parsed(parsed, claim_rows, compact=compact)
+    _emit_judge_trace(
+        query=query, campsite=campsite, claims=claims, rules=rules, verdict=verdict
+    )
+    return verdict
 
 
 # Bound at import so a test patch of `judge_site_request` does not look like live Nebius.
@@ -569,6 +633,13 @@ def _run_judge_jobs_batch(
         rules = [r for r in (job.get("rules") or []) if not r.get("error")]
         if not claims and not rules:
             cache[key] = _empty_verdict()
+            _emit_judge_trace(
+                query=job["query"],
+                campsite=job["campsite"],
+                claims=claims,
+                rules=rules,
+                verdict=cache[key],
+            )
             continue
         rows = _claim_rows_for_job(claims, compact=compact)
         live_keys.append(key)
@@ -622,8 +693,16 @@ def _run_judge_jobs_batch(
         row = parsed_rows[i]
         if row is None:
             cache[key] = _unparseable_verdict(raw)
-            continue
-        cache[key] = _verdict_from_parsed(row, claim_rows_by_i[i], compact=compact)
+        else:
+            cache[key] = _verdict_from_parsed(row, claim_rows_by_i[i], compact=compact)
+        job = pending[key]
+        _emit_judge_trace(
+            query=job["query"],
+            campsite=job["campsite"],
+            claims=list(job.get("claims") or []),
+            rules=list(job.get("rules") or []),
+            verdict=cache[key],
+        )
     return cache
 
 
@@ -655,10 +734,11 @@ def _run_judge_jobs(
             )
         return cache
     started = time.perf_counter()
+    traced_fn = bind_to_current_trace(judge_fn)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futs = {
             pool.submit(
-                judge_fn,
+                traced_fn,
                 query=job["query"],
                 campsite=job["campsite"],
                 claims=job["claims"],

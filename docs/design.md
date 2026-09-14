@@ -1110,7 +1110,14 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 `metadata.channel` on each `stream`
 (`source/agent/tracing.py`). One browser tab is one thread until Reset.
 Project defaults to `trippy` (`LANGSMITH_PROJECT`). Traces include the
-full query. Scrape containers force `LANGSMITH_TRACING=false` in
+full query. Under the planner node, each (campsite, request) judge call
+is a child span `claim_judge · <site> · <query>` (`tags: claim_judge`):
+**inputs** are the claims and official rules the 235B received;
+**outputs** mark each claim `relevant` true/false, plus `satisfies` /
+`satisfy_by` / `reason`. The model does not label each rule; rules are
+shown as received and the site verdict is `satisfy_by`. Judge workers
+re-bind the parent run so those spans stay under the Streamlit turn.
+Scrape containers force `LANGSMITH_TRACING=false` in
 `job.sh` so ingest does not share the project. CI has no key, so tests
 do not send runs.
 
