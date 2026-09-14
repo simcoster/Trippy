@@ -6,6 +6,41 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, Streamlit errors are generic)
+
+**UI says `Something went wrong.`; the real exception goes to the
+terminal and the log.** Reloads a stale `db.connect` so
+`DatabaseUnavailable` imports after a hot reload. Postgres-down still
+fails in 3s. design.md "Experiments live in the experiments schema".
+
+### Done (2026-09-14, Postgres down fails in seconds)
+
+**`db.connect` times out in 3s and Streamlit pings before a turn.** Docker
+Desktop off used to hang planner SQL for minutes (`sql=260s`). The chat
+shows `st.error` with `docker compose up -d`; `connect()` raises
+`DatabaseUnavailable`. design.md "Experiments live in the experiments
+schema".
+
+### Done (2026-09-14, live turn stages in local Streamlit)
+
+**Local chat prints each node/LLM/tool as it starts.** The assistant
+caption and the `just streamlit` terminal show `turn +Ns extractor …`
+instead of a silent Thinking spinner. Public UI is unchanged.
+
+### Done (2026-09-14, local Streamlit on 8502)
+
+**Laptop `just streamlit` binds 8502.** An SSH `-L 8501` to the VM
+otherwise wins `localhost:8501` and the tab shows prod (`TRIPPY_PUBLIC_UI=1`)
+instead of Last turn trace. design.md "Where it runs".
+
+### Done (2026-09-14, claim_judge StructuredTool)
+
+**Judge calls show up in LangSmith like `resolve_dates`.** Live
+`apply_claim_rule_judgements` `.invoke`s `claim_judge_tool` per
+(campsite, request); worker threads `copy_context()` so the tool run
+nests under planner. Replaces the `RunTree.create_child` spans that
+never attached. design.md "LangSmith".
+
 ### Done (2026-09-14, LangSmith claim/rule judge)
 
 **Each judge call is a LangSmith child under the planner.** Inputs are

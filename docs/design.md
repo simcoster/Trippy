@@ -308,7 +308,11 @@ setup-experiments copy` rebuilds `experiments` as a copy of `public`
 (tables, rows, views; FKs stay inside the schema). `--empty table,…`
 truncates after the copy. Scrapes, search and the planner then run with
 `TRIPPY_SCHEMA=experiments`, which makes `db.connect.connect` set
-`search_path=experiments,extensions`:
+`search_path=experiments,extensions`. `connect()` uses a 3s
+`connect_timeout` (libpq's default waits until the OS gives up) and
+raises `DatabaseUnavailable` with a `docker compose up -d` hint when
+Postgres is down. Streamlit pings on load; the chat shows
+`Something went wrong.` and prints the detail to the terminal.
 
 ```
 just setup-experiments copy
@@ -1095,7 +1099,8 @@ input; `--from-planner` re-runs recommend only.
 
 Phase 1 lives on one Nebius CPU VM: Compose Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
-Cloudflare Tunnel for HTTPS. Ingest is the same image with
+Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
+an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same image with
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH
 (`TRIPPY_VM_HOST` / `TRIPPY_SSH_KEY`). The product channel is Streamlit.
 Runbook: `docs/cloud.md`.
@@ -1109,14 +1114,16 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 `configure_agent_tracing()` and passes `thread_id` / `tags` /
 `metadata.channel` on each `stream`
 (`source/agent/tracing.py`). One browser tab is one thread until Reset.
+Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
+tool to the terminal and a caption under Thinking while the turn runs.
 Project defaults to `trippy` (`LANGSMITH_PROJECT`). Traces include the
-full query. Under the planner node, each (campsite, request) judge call
-is a child span `claim_judge · <site> · <query>` (`tags: claim_judge`):
-**inputs** are the claims and official rules the 235B received;
-**outputs** mark each claim `relevant` true/false, plus `satisfies` /
-`satisfy_by` / `reason`. The model does not label each rule; rules are
-shown as received and the site verdict is `satisfy_by`. Judge workers
-re-bind the parent run so those spans stay under the Streamlit turn.
+full query. The planner invokes `claim_judge_tool` (`StructuredTool`,
+same pattern as `resolve_dates`) once per (campsite, request). LangSmith
+shows that tool under the planner node: **inputs** are the claims and
+official rules the 235B received; **outputs** are `relevant_claims`,
+`satisfies`, `satisfy_by`, and `reason`. The model does not label each
+rule; `satisfy_by` is the rule-side verdict. Worker threads
+`copy_context()` so those tool runs stay under the Streamlit turn.
 Scrape containers force `LANGSMITH_TRACING=false` in
 `job.sh` so ingest does not share the project. CI has no key, so tests
 do not send runs.

@@ -24,7 +24,7 @@
                 "run",
                 "${workspaceFolder}/scripts/streamlit_chat.py",
                 "--server.port",
-                "8501"
+                "8502"
             ],
             "justMyCode": false,
             "env": {

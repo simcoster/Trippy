@@ -18,9 +18,11 @@ driveable (text_area + submit).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import time
+import traceback
 import warnings
 from collections import defaultdict
 from pathlib import Path
@@ -36,7 +38,7 @@ if str(_ROOT) not in sys.path:
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
 import streamlit as st
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import (
     AIMessage,
@@ -48,13 +50,42 @@ from langchain_core.outputs import LLMResult
 
 load_dotenv(_ROOT / ".env")
 
-_PUBLIC_UI = os.environ.get("TRIPPY_PUBLIC_UI", "").strip().casefold() in {
-    "1",
-    "true",
-    "yes",
-}
+# Read from the file on every Streamlit rerun. load_dotenv() does not
+# override a value already in os.environ, so editing .env used to no-op.
+_PUBLIC_UI = (
+    (
+        dotenv_values(_ROOT / ".env").get("TRIPPY_PUBLIC_UI")
+        or os.environ.get("TRIPPY_PUBLIC_UI")
+        or ""
+    )
+    .strip()
+    .casefold()
+    in {
+        "1",
+        "true",
+        "yes",
+    }
+)
+print(f"trippy public_ui={int(_PUBLIC_UI)}", flush=True)
 
 import importlib
+
+try:
+    import db.connect as _db_connect
+
+    if not hasattr(_db_connect, "DatabaseUnavailable"):
+        _db_connect = importlib.reload(_db_connect)
+    DatabaseUnavailable = _db_connect.DatabaseUnavailable
+    ping = _db_connect.ping
+except Exception:
+    traceback.print_exc()
+    print("error: failed to load db.connect", flush=True)
+
+    class DatabaseUnavailable(Exception):
+        """Fallback if db.connect did not import (stale Streamlit module)."""
+
+    def ping(**_kwargs: Any) -> None:
+        raise DatabaseUnavailable("db.connect failed to load")
 
 import source.agent.recommender as _recommender_mod
 
@@ -96,10 +127,59 @@ st.set_page_config(
 )
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
-warmup_recommender()
+
+_USER_ERROR = "Something went wrong."
+logger = logging.getLogger("trippy.streamlit")
+
+
+def _report_error(exc: BaseException) -> str:
+    """Log + print the real error; UI only gets a generic line."""
+    logger.exception("%s", exc)
+    traceback.print_exc()
+    print(f"error: {type(exc).__name__}: {exc}", flush=True)
+    return _USER_ERROR
+
+
+@st.cache_data(ttl=8, show_spinner=False)
+def _cached_postgres_error() -> str:
+    try:
+        ping()
+        return ""
+    except Exception as exc:
+        _report_error(exc)
+        return _USER_ERROR
+
+
+_db_error = _cached_postgres_error()
+if not _db_error:
+    warmup_recommender()
 
 # Active turn trace (set while invoke_agent runs)
 _current_trace: list[dict[str, Any]] | None = None
+_turn_t0: float | None = None
+_progress_ui: Any = None
+
+
+def _turn_log(msg: str) -> None:
+    """Print live stage lines; update the assistant placeholder when local."""
+    elapsed = (
+        f"+{time.perf_counter() - _turn_t0:.1f}s"
+        if _turn_t0 is not None
+        else ""
+    )
+    line = f"turn {elapsed} {msg}".strip()
+    print(line, flush=True)
+    box = _progress_ui
+    if box is None:
+        return
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        if get_script_run_ctx() is None:
+            return
+        box.caption(line)
+    except Exception:
+        return
 
 
 def _truncate(text: str, max_len: int = 4000) -> str:
@@ -275,6 +355,7 @@ class TraceCallbackHandler(BaseCallbackHandler):
                 "input": _format_node_input(inputs),
             }
         )
+        _turn_log(f"{node} …")
 
     def on_chat_model_start(
         self,
@@ -294,15 +375,17 @@ class TraceCallbackHandler(BaseCallbackHandler):
             or "chat_model"
         )
         self._llm_started_at[str(run_id)] = time.perf_counter()
+        node = metadata.get("langgraph_node")
         _current_trace.append(
             {
                 "kind": "llm_start",
                 "run_id": str(run_id),
-                "node": metadata.get("langgraph_node"),
+                "node": node,
                 "model": model,
                 "prompt": _format_prompt_messages(messages),
             }
         )
+        _turn_log(f"{node or '?'} LLM {model} …")
 
     def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
         if _current_trace is None:
@@ -342,6 +425,25 @@ class TraceCallbackHandler(BaseCallbackHandler):
                 ),
             }
         )
+        if latency_ms is not None:
+            _turn_log(
+                f"{node or '?'} LLM done {latency_ms / 1000:.1f}s"
+            )
+
+    def on_tool_start(
+        self,
+        serialized: dict[str, Any],
+        input_str: Any,
+        *,
+        run_id: UUID,
+        **kwargs: Any,
+    ) -> None:
+        name = (
+            kwargs.get("name")
+            or (serialized or {}).get("name")
+            or "tool"
+        )
+        _turn_log(f"{name} …")
 
 def _install_tool_hooks() -> None:
     """Wrap imperative tool functions so Streamlit can log params/returns."""
@@ -350,9 +452,13 @@ def _install_tool_hooks() -> None:
 
     def _wrap(name: str, fn: Any) -> Any:
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if _current_trace is not None:
+                _turn_log(f"{name} …")
             started = time.perf_counter()
             result = fn(*args, **kwargs)
             latency_ms = (time.perf_counter() - started) * 1000
+            if _current_trace is not None:
+                _turn_log(f"{name} {latency_ms / 1000:.1f}s")
             if _current_trace is not None:
                 if name in (
                     "search_claims",
@@ -910,9 +1016,11 @@ def invoke_agent(
     stop_after: HeavyThrough,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Run one user turn through the compiled graph and return a LangGraph trace."""
-    global _current_trace
+    global _current_trace, _turn_t0
 
     compiled = build_graph(stop_after=stop_after)
+    _turn_t0 = time.perf_counter()
+    _turn_log("start")
     history: list[BaseMessage] = list(st.session_state.graph_messages)
     history.append(HumanMessage(content=user_text))
     state: ChatState = {"messages": history}
@@ -986,6 +1094,10 @@ def invoke_agent(
                             if started is not None
                             else None
                         )
+                        if latency_ms is not None:
+                            _turn_log(
+                                f"{node_name} done {latency_ms / 1000:.1f}s"
+                            )
                         trace.append(
                             {
                                 "kind": "node",
@@ -1065,7 +1177,9 @@ def invoke_agent(
 
 _init_session()
 
-st.title("Trippy agent")
+st.title("Trippy agent" if _PUBLIC_UI else "Trippy agent (local)")
+if _db_error:
+    st.error(_db_error)
 if _PUBLIC_UI:
     st.caption("Ask for a campsite stay. Hebrew is fine.")
 else:
@@ -1191,13 +1305,23 @@ if prompt:
 
     with st.chat_message("assistant"):
         reply_box = st.empty()
-        with st.spinner("Thinking…"):
-            try:
-                with listen_recommend_text(reply_box.markdown):
-                    reply, trace = invoke_agent(prompt, stop_after=stop_after)
-            except Exception as e:
-                reply = f"Sorry, I encountered an error: {e}"
-                trace = []
+        if not _PUBLIC_UI:
+            _progress_ui = st.empty()
+        try:
+            with st.spinner("Thinking…"):
+                try:
+                    if _db_error:
+                        reply, trace = _USER_ERROR, []
+                    else:
+                        with listen_recommend_text(reply_box.markdown):
+                            reply, trace = invoke_agent(
+                                prompt, stop_after=stop_after
+                            )
+                except Exception as e:
+                    reply = _report_error(e)
+                    trace = []
+        finally:
+            _progress_ui = None
         reply_box.markdown(reply)
         if trace and not _PUBLIC_UI:
             with st.expander("LangGraph trace", expanded=True):

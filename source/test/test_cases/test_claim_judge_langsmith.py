@@ -1,7 +1,49 @@
-"""Claim/rule judge LangSmith payload: received rows + per-claim relevant."""
+"""Claim/rule judge is a LangChain tool so LangSmith nests it like resolve_dates."""
 
-from source.agent.claim_judge import _judge_trace_name, _judge_trace_payload
+from source.agent.claim_judge import (
+    _judge_trace_name,
+    _judge_trace_payload,
+    claim_judge_tool,
+)
 from source.agent.tracing import bind_to_current_trace, emit_child_span
+
+
+def test_claim_judge_tool_invoke_returns_verdict(monkeypatch):
+    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    monkeypatch.delenv("LANGCHAIN_TRACING_V2", raising=False)
+
+    def _fake(
+        *,
+        query,
+        campsite,
+        claims,
+        rules,
+        usage=None,
+        client=None,
+        time_stage=True,
+    ):
+        assert query == "pets"
+        assert campsite == "אכזיב"
+        assert claims[0]["claim"] == "x"
+        return {
+            "relevant_claims": ["x"],
+            "satisfies": False,
+            "satisfy_by": None,
+            "reason": "nope",
+        }
+
+    monkeypatch.setattr("source.agent.claim_judge.judge_site_request", _fake)
+    assert claim_judge_tool.name == "claim_judge"
+    out = claim_judge_tool.invoke(
+        {
+            "query": "pets",
+            "campsite": "אכזיב",
+            "claims": [{"claim": "x", "is_positive": False}],
+            "rules": [{"subject": "dogs_allowed", "polarity": False}],
+        }
+    )
+    assert out["reason"] == "nope"
+    assert out["relevant_claims"] == ["x"]
 
 
 def test_judge_trace_marks_each_claim_relevant_or_not():
