@@ -19,7 +19,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import httpx
 from dotenv import load_dotenv
@@ -33,6 +33,15 @@ from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
+)
+from source.scraper.reviews_report import (
+    FetchError,
+    NewReview,
+    ReviewsRun,
+    SkippedSite,
+    render_run_report,
+    review_preview,
+    write_run_report,
 )
 from source.scraper.tls import ssl_context
 
@@ -193,7 +202,7 @@ SET author = EXCLUDED.author,
         WHEN reviews.text IS DISTINCT FROM EXCLUDED.text THEN NULL
         ELSE reviews.is_relevant
     END
-RETURNING id, skip_reason;
+RETURNING id, skip_reason, (xmax = 0) AS inserted;
 """
 
 UPDATE_REVIEW_SKIP_SQL = """
@@ -217,6 +226,12 @@ INSERT INTO claims (
     %(is_positive)s, %(confidence)s, %(embedding)s
 )
 """
+
+
+class _UpsertedReview(NamedTuple):
+    review_id: int
+    skip_reason: str | None
+    inserted: bool
 
 
 def database_url(config: dict | None = None) -> str:
@@ -510,7 +525,7 @@ def split_one_review(
     return filter_claims(claims if isinstance(claims, list) else [])
 
 
-def upsert_review(cur, *, campsite_id: int, review: dict) -> tuple[int, str | None]:
+def _upsert_review_row(cur, *, campsite_id: int, review: dict) -> _UpsertedReview:
     uid = review_uid(
         campsite_id,
         review["source"],
@@ -535,7 +550,15 @@ def upsert_review(cur, *, campsite_id: int, review: dict) -> tuple[int, str | No
     existing_skip = row[1] if len(row) > 1 else None
     if existing_skip is not None:
         existing_skip = str(existing_skip)
-    return review_id, existing_skip
+    inserted = bool(row[2]) if len(row) > 2 else False
+    return _UpsertedReview(
+        review_id=review_id, skip_reason=existing_skip, inserted=inserted
+    )
+
+
+def upsert_review(cur, *, campsite_id: int, review: dict) -> tuple[int, str | None]:
+    row = _upsert_review_row(cur, campsite_id=campsite_id, review=review)
+    return row.review_id, row.skip_reason
 
 
 def store_fetched_reviews(
@@ -546,10 +569,11 @@ def store_fetched_reviews(
     place: str | None = None,
     source: str = DEFAULT_SOURCE,
     usage: LlmUsage | None = None,
+    run: ReviewsRun | None = None,
     **_kwargs: object,
 ) -> dict:
     """Upsert Google reviews. No visit gate, split, or embed."""
-    del place, usage, _kwargs
+    del usage, _kwargs
     items = reviews_from_dict(reviews, source=source)
     own_conn = conn is None
     if own_conn:
@@ -558,7 +582,25 @@ def store_fetched_reviews(
     try:
         with conn.cursor() as cur:
             for review in items:
-                upsert_review(cur, campsite_id=campsite_id, review=review)
+                row = _upsert_review_row(
+                    cur, campsite_id=campsite_id, review=review
+                )
+                if run is None:
+                    continue
+                if row.inserted:
+                    run.reviews_inserted += 1
+                    run.new_reviews.append(
+                        NewReview(
+                            site_id=campsite_id,
+                            site_name=place or "",
+                            author=review.get("author"),
+                            rating=review.get("rating"),
+                            published_at=review.get("published_at"),
+                            preview=review_preview(review.get("text")),
+                        )
+                    )
+                else:
+                    run.reviews_seen += 1
         if own_conn:
             conn.commit()
     except Exception:
@@ -851,6 +893,7 @@ def refresh_google_reviews_for_campsite(
     client: httpx.Client,
     api_key: str,
     populate_fn: Any | None = None,
+    run: ReviewsRun | None = None,
 ) -> dict[str, Any]:
     """Fetch newest + most_relevant, concat, store reviews. No LLM.
 
@@ -862,17 +905,32 @@ def refresh_google_reviews_for_campsite(
     name = str(site.get("name") or "")
     if not place_id:
         log(f"  reviews: skip id={campsite_id} (no google_place_id)")
+        if run is not None:
+            run.skipped.append(
+                SkippedSite(
+                    site_id=campsite_id, site_name=name, reason="no_place_id"
+                )
+            )
         return {"campsite_id": campsite_id, "sorts": [], "skipped": "no_place_id"}
 
     ingest = populate_fn or store_fetched_reviews
     sorts = reviews_sorts_to_fetch()
     parts: list[dict] = []
+    api_failed = False
     for sort in sorts:
         log(f"  reviews: {name}  place_id={place_id}  sort={sort}")
         body = fetch_place_details(
             client, str(place_id), api_key, reviews_sort=sort
         )
         status = body.get("status")
+        if status not in (None, "OK", "ZERO_RESULTS"):
+            log(f"    details status={status}")
+            api_failed = True
+            if run is not None:
+                run.http_errors.append(
+                    FetchError(site_id=campsite_id, site_name=name, message=str(status))
+                )
+            continue
         payload = reviews_payload_from_details(body, reviews_sort=sort)
         if payload is None:
             log(f"    details status={status}  no result")
@@ -881,9 +939,19 @@ def refresh_google_reviews_for_campsite(
         parts.append(payload)
     combined = concat_review_payloads(parts)
     if combined is None:
+        if run is not None and not api_failed:
+            run.skipped.append(
+                SkippedSite(
+                    site_id=campsite_id, site_name=name, reason="no_reviews"
+                )
+            )
         return {"campsite_id": campsite_id, "sorts": [], "skipped": "no_reviews"}
     log(f"    concatenated {len(combined['reviews'])} review(s)")
+    if run is not None:
+        run.reviews_fetched += len(combined["reviews"])
     extra: dict[str, Any] = {}
+    if run is not None:
+        extra["run"] = run
     result = ingest(
         campsite_id,
         combined,
@@ -929,6 +997,7 @@ def populate_google_reviews(
     limit: int | None = None,
     pause_seconds: float = DEFAULT_PAUSE_SECONDS,
     populate_fn: Any | None = None,
+    run: ReviewsRun | None = None,
 ) -> dict[str, Any]:
     """Fetch Place Details for each campsite with google_place_id and store reviews."""
     own_conn = conn is None
@@ -945,6 +1014,8 @@ def populate_google_reviews(
         sites = fetch_sites_for_reviews(
             conn, campsite_id=campsite_id, limit=limit
         )
+        if run is not None:
+            run.sites = len(sites)
         if not sites:
             log("No campsites with google_place_id")
             return {"sites": []}
@@ -955,16 +1026,35 @@ def populate_google_reviews(
         for i, site in enumerate(sites):
             if i and pause_seconds:
                 time.sleep(pause_seconds)
-            results.append(
-                refresh_google_reviews_for_campsite(
-                    conn,
-                    site,
-                    most_relevant=most_relevant,
-                    client=client,
-                    api_key=key,
-                    populate_fn=populate_fn,
+            try:
+                results.append(
+                    refresh_google_reviews_for_campsite(
+                        conn,
+                        site,
+                        most_relevant=most_relevant,
+                        client=client,
+                        api_key=key,
+                        populate_fn=populate_fn,
+                        run=run,
+                    )
                 )
-            )
+            except httpx.HTTPError as exc:
+                site_id = int(site["id"])
+                name = str(site.get("name") or "")
+                log(f"  reviews: HTTP error id={site_id}: {exc}")
+                if run is not None:
+                    run.http_errors.append(
+                        FetchError(
+                            site_id=site_id, site_name=name, message=str(exc)
+                        )
+                    )
+                results.append(
+                    {
+                        "campsite_id": site_id,
+                        "sorts": [],
+                        "skipped": "http_error",
+                    }
+                )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1020,6 +1110,9 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config() if CONFIG_PATH.exists() else {}
+    started_at = datetime.now(timezone.utc)
+    started_mono = time.monotonic()
+    run = ReviewsRun(started_at=started_at)
     with connect(database_url(config)) as conn:
         campsite_id = args.campsite_id
         if campsite_id is None and args.name:
@@ -1030,7 +1123,14 @@ def main() -> None:
             campsite_id=campsite_id,
             most_relevant=args.most_relevant,
             limit=args.limit,
+            run=run,
         )
+    run.seconds = time.monotonic() - started_mono
+    report_text = render_run_report(run)
+    print(report_text)
+    report_path = write_run_report(report_text)
+    if report_path:
+        print(f"run report written to {report_path}")
 
 
 if __name__ == "__main__":

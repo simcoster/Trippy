@@ -1125,7 +1125,9 @@ Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
 an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same image with
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH as
 `gh-actions` (`TRIPPY_VM_HOST` / `TRIPPY_SSH_USER` / `TRIPPY_SSH_KEY`).
-Daily availability at 08:00 IDT. After each fetch the scraper stores
+Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
+reviews at 09:00 IDT (`scrape-reviews.yml`). Both call `scrape-job.yml`.
+After each availability fetch the scraper stores
 `booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
 chrome; almost never repeats) and `offers_sha256` of aggregated
 `(room_type, room_count)`. Matching offers skip the availability rewrite
@@ -1136,7 +1138,9 @@ nights that have already passed do not linger in search. The scrape always
 asks INPA for 1 adult; `availability` has no `adults_no` column (party size
 is `max_occupancy`). The vacancy change
 report is the Actions run **Summary** tab, not Streamlit and not
-LangSmith. The product channel is Streamlit.
+LangSmith. Reviews have their own workflow and Summary tab
+(`# scrape-reviews`: new rows, already stored, skipped sites, Google
+errors). The product channel is Streamlit.
 Runbook: `docs/cloud.md`.
 
 ## LangSmith

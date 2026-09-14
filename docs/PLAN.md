@@ -6,6 +6,24 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, scrape workflows split)
+
+**Availability and reviews are separate workflows.**
+`scrape-availability.yml` (08:00 IDT) and `scrape-reviews.yml` (09:00
+IDT) each call reusable `scrape-job.yml` for the SSH + Summary copy.
+`scrape.yml` is dispatch-only for claims / info / sites / place-ids.
+Supersedes the “same scrape.yml, two crons” bit of the daily
+scrape-reviews entry below. design.md “Where it runs”; cloud.md.
+
+### Done (2026-09-14, daily scrape-reviews)
+
+**Daily reviews at 09:00 IDT** (`0 6 * * *` in
+`.github/workflows/scrape.yml`; 08:00 IST in winter), an hour after
+availability so `concurrency: scrape` does not queue them. Same SSH
+compose-run path; the Actions Summary is `# scrape-reviews` (new rows,
+already stored, skipped sites, Google errors). `populate-claims` stays
+manual. design.md “Where it runs”; cloud.md.
+
 ### Done (2026-09-14, לשבוע הבא is kind=week)
 
 **Bare "next week" is `kind=week`, not tonight.** Live extract of

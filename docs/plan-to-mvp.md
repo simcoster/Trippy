@@ -38,8 +38,9 @@ Cadence (the jobs *are* the product staying true):
 
 | Job | How often |
 |-----|-----------|
-| Vacancy (`scrape-availability`) | once a day |
-| Reviews + claims (`scrape-reviews`, `populate-claims`) | once a week |
+| Vacancy (`scrape-availability`) | once a day (08:00 IDT) |
+| Reviews (`scrape-reviews`) | once a day (09:00 IDT) |
+| Claims (`populate-claims`) | after new reviews, still `workflow_dispatch` |
 | The rest (`scrape-sites`, `scrape-info`, place ids, …) | about once a month |
 
 Done when a URL (Streamlit behind the tunnel) stays up without a
