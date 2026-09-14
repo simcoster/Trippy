@@ -14,7 +14,7 @@ import os
 import re
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
 from urllib.parse import urlencode
@@ -24,6 +24,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 from db.connect import connect
+from source.agent.dates import today_il
 from source.scraper.amenity_enrichment import (
     LlmUsage,
     fill_missing_image_urls,
@@ -32,6 +33,21 @@ from source.scraper.amenity_enrichment import (
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_30B_MODEL,
     record_scrape_cost,
+)
+from source.scraper.availability_report import (
+    AvailabilityRun,
+    HttpError,
+    LayoutSuspicion,
+    NightCountKey,
+    PageFingerprint,
+    PastNightsDeleted,
+    diff_night_counts,
+    html_sha256,
+    layout_suspicion,
+    offers_sha256,
+    render_run_report,
+    should_skip_write,
+    write_run_report,
 )
 
 # aliased: `site_ids` is also a local here, the subcamp id list.
@@ -85,6 +101,59 @@ WHERE site_id = ANY(%(site_ids)s)
   AND start_date = %(start_date)s
   AND end_date = %(end_date)s
   AND adults_no = %(adults_no)s
+"""
+
+LOAD_PAGE_HASH_SQL = """
+SELECT html_sha256, offers_sha256
+FROM booking_page_hashes
+WHERE site_id = %(site_id)s
+  AND start_date = %(start_date)s
+  AND end_date = %(end_date)s
+  AND adults_no = %(adults_no)s
+"""
+
+UPSERT_PAGE_HASH_SQL = """
+INSERT INTO booking_page_hashes (
+    site_id, start_date, end_date, adults_no, html_sha256, offers_sha256
+) VALUES (
+    %(site_id)s, %(start_date)s, %(end_date)s, %(adults_no)s,
+    %(html_sha256)s, %(offers_sha256)s
+)
+ON CONFLICT ON CONSTRAINT booking_page_hashes_slot_key DO UPDATE
+SET html_sha256 = EXCLUDED.html_sha256,
+    offers_sha256 = EXCLUDED.offers_sha256,
+    scraped_at = now(),
+    updated_at = now()
+"""
+
+TOUCH_AVAILABILITY_SQL = """
+UPDATE availability
+SET scraped_at = now(), updated_at = now()
+WHERE site_id = ANY(%(site_ids)s)
+  AND start_date = %(start_date)s
+  AND end_date = %(end_date)s
+  AND adults_no = %(adults_no)s
+"""
+
+DELETE_AVAILABILITY_BEFORE_SQL = """
+DELETE FROM availability
+WHERE start_date < %(before)s
+"""
+
+DELETE_PAGE_HASHES_BEFORE_SQL = """
+DELETE FROM booking_page_hashes
+WHERE start_date < %(before)s
+"""
+
+LOAD_NIGHT_COUNTS_SQL = """
+SELECT a.site_id, t.name, a.room_count
+FROM availability a
+JOIN accommodation_types t ON t.id = a.accommodation_type_id
+WHERE a.site_id = ANY(%(site_ids)s)
+  AND a.start_date = %(start_date)s
+  AND a.end_date = %(end_date)s
+  AND a.adults_no = %(adults_no)s
+ORDER BY a.site_id, t.name
 """
 
 # Strip unit suffixes: "מספר 1", "מספר 1-4", or a trailing unit number ("01", "15").
@@ -380,6 +449,115 @@ def clear_availability_for_night(
         return cur.rowcount
 
 
+def delete_past_nights(conn, *, before: date) -> PastNightsDeleted:
+    """Drop availability (and page hashes) whose check-in is before `before`.
+
+    The rolling window only covers today onward; leftover nights from
+    earlier scrapes would otherwise sit in search forever.
+    """
+    with conn.cursor() as cur:
+        cur.execute(DELETE_AVAILABILITY_BEFORE_SQL, {"before": before})
+        availability_rows = cur.rowcount
+        cur.execute(DELETE_PAGE_HASHES_BEFORE_SQL, {"before": before})
+        hash_rows = cur.rowcount
+    return PastNightsDeleted(
+        availability_rows=availability_rows, hash_rows=hash_rows
+    )
+
+
+def load_page_hash(
+    conn,
+    *,
+    site_id: int,
+    start: date,
+    end: date,
+    adults_no: int,
+) -> PageFingerprint | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            LOAD_PAGE_HASH_SQL,
+            {
+                "site_id": site_id,
+                "start_date": start,
+                "end_date": end,
+                "adults_no": adults_no,
+            },
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    return PageFingerprint(html_sha256=str(row[0]), offers_sha256=str(row[1]))
+
+
+def upsert_page_hash(
+    conn,
+    *,
+    site_id: int,
+    start: date,
+    end: date,
+    adults_no: int,
+    html_digest: str,
+    offers_digest: str,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            UPSERT_PAGE_HASH_SQL,
+            {
+                "site_id": site_id,
+                "start_date": start,
+                "end_date": end,
+                "adults_no": adults_no,
+                "html_sha256": html_digest,
+                "offers_sha256": offers_digest,
+            },
+        )
+
+
+def touch_availability_scraped_at(
+    conn,
+    *,
+    site_ids: list[int],
+    start: date,
+    end: date,
+    adults_no: int,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            TOUCH_AVAILABILITY_SQL,
+            {
+                "site_ids": list(site_ids),
+                "start_date": start,
+                "end_date": end,
+                "adults_no": adults_no,
+            },
+        )
+
+
+def load_night_counts(
+    conn,
+    *,
+    site_ids: list[int],
+    start: date,
+    end: date,
+    adults_no: int,
+) -> dict[NightCountKey, int]:
+    with conn.cursor() as cur:
+        cur.execute(
+            LOAD_NIGHT_COUNTS_SQL,
+            {
+                "site_ids": list(site_ids),
+                "start_date": start,
+                "end_date": end,
+                "adults_no": adults_no,
+            },
+        )
+        rows = cur.fetchall()
+    return {
+        NightCountKey(site_id=int(site_id), type_name=name): int(count)
+        for site_id, name, count in rows
+    }
+
+
 def upsert_availability_rows(
     conn,
     *,
@@ -485,7 +663,8 @@ def main(argv: list[str] | None = None) -> None:
         print("No campsites with booking_hotel_id found")
         return
 
-    windows = night_windows(nights)
+    today = today_il()
+    windows = night_windows(nights, start_from=today)
     print(f"Scanning {len(windows)} nights starting {windows[0][0]} for {adults} adults")
     print(f"Campsites: {len(campsites)}")
 
@@ -500,9 +679,26 @@ def main(argv: list[str] | None = None) -> None:
         model=QWEN_INSTRUCT_30B_MODEL,
     )
     unmatched: list[tuple[int, str]] = []
+    started_at = datetime.now(timezone.utc)
+    started_mono = time.monotonic()
+    run = AvailabilityRun(
+        started_at=started_at,
+        sites=len(campsites),
+        nights=len(windows),
+    )
 
     total_saved = 0
     with connect(database_url(config)) as conn:
+        pruned = delete_past_nights(conn, before=today)
+        conn.commit()
+        run.past_rows_deleted = pruned.availability_rows
+        run.past_hashes_deleted = pruned.hash_rows
+        if pruned.availability_rows or pruned.hash_rows:
+            print(
+                f"Dropped {pruned.availability_rows} availability row(s) "
+                f"and {pruned.hash_rows} page hash(es) before {today}"
+            )
+
         for site in campsites:
             print("=" * 60)
             print(f"{site['id']}. {site['name']}  ({site['booking_hotel_id']})")
@@ -539,11 +735,77 @@ def main(argv: list[str] | None = None) -> None:
                     html = fetch_results_html(url)
                 except httpx.HTTPError as e:
                     print(f"    HTTP error: {e}")
+                    run.http_errors.append(
+                        HttpError(
+                            site_id=int(site["id"]),
+                            site_name=site["name"],
+                            start_date=check_in,
+                            message=str(e),
+                        )
+                    )
                     continue
 
+                run.pages_fetched += 1
                 offerings = parse_rooms(html)
+                aggregated = aggregate_offerings(offerings)
+                html_digest = html_sha256(html)
+                offers_digest = offers_sha256(aggregated)
+                stored = load_page_hash(
+                    conn,
+                    site_id=int(site["id"]),
+                    start=check_in,
+                    end=check_out,
+                    adults_no=adults,
+                )
+                previous_offers = stored.offers_sha256 if stored is not None else None
+                if layout_suspicion(
+                    previous_offers_sha=previous_offers,
+                    new_aggregated=aggregated,
+                ):
+                    run.layout_suspicions.append(
+                        LayoutSuspicion(
+                            site_id=int(site["id"]),
+                            site_name=site["name"],
+                            start_date=check_in,
+                            previous_had_offers=previous_offers != offers_sha256([]),
+                            now_empty=not aggregated,
+                        )
+                    )
+                    print("    LAYOUT SUSPICION: empty vs previous offers mismatch")
+
+                if should_skip_write(previous_offers, offers_digest):
+                    upsert_page_hash(
+                        conn,
+                        site_id=int(site["id"]),
+                        start=check_in,
+                        end=check_out,
+                        adults_no=adults,
+                        html_digest=html_digest,
+                        offers_digest=offers_digest,
+                    )
+                    touch_availability_scraped_at(
+                        conn,
+                        site_ids=site_ids,
+                        start=check_in,
+                        end=check_out,
+                        adults_no=adults,
+                    )
+                    conn.commit()
+                    run.pages_skipped += 1
+                    print("    unchanged (offers hash) — skipped write")
+                    if pause_s > 0:
+                        time.sleep(pause_s)
+                    continue
+
                 room_media = parse_room_categories(
                     html, normalize_accommodation_name
+                )
+                old_counts = load_night_counts(
+                    conn,
+                    site_ids=site_ids,
+                    start=check_in,
+                    end=check_out,
+                    adults_no=adults,
                 )
 
                 if not offerings:
@@ -555,11 +817,9 @@ def main(argv: list[str] | None = None) -> None:
                         end=check_out,
                         adults_no=adults,
                     )
-                    conn.commit()
                     if deleted:
                         print(f"    cleared {deleted} existing row(s)")
                 else:
-                    aggregated = aggregate_offerings(offerings)
                     for offer in aggregated:
                         owner = unit_owner(offer["room_type"], site["id"], subcamps)
                         tail = f"  → {owner}" if owner != site["id"] else ""
@@ -578,7 +838,6 @@ def main(argv: list[str] | None = None) -> None:
                             room_media={name: room_media[name] for name in owned},
                         )
                     if filled:
-                        conn.commit()
                         print(f"    filled image_urls on {filled} type(s)")
 
                     saved = upsert_availability_rows(
@@ -593,12 +852,41 @@ def main(argv: list[str] | None = None) -> None:
                         subcamps=subcamps,
                         unmatched_sink=unmatched,
                     )
-                    conn.commit()
                     total_saved += saved
                     print(f"    upserted {saved} row(s)")
 
+                new_counts = load_night_counts(
+                    conn,
+                    site_ids=site_ids,
+                    start=check_in,
+                    end=check_out,
+                    adults_no=adults,
+                )
+                run.changes.extend(
+                    diff_night_counts(
+                        site_name=site["name"],
+                        start=check_in,
+                        old=old_counts,
+                        new=new_counts,
+                    )
+                )
+                upsert_page_hash(
+                    conn,
+                    site_id=int(site["id"]),
+                    start=check_in,
+                    end=check_out,
+                    adults_no=adults,
+                    html_digest=html_digest,
+                    offers_digest=offers_digest,
+                )
+                conn.commit()
+
                 if pause_s > 0:
                     time.sleep(pause_s)
+
+    run.rows_upserted = total_saved
+    run.unmatched = unmatched
+    run.seconds = time.monotonic() - started_mono
 
     print("-" * 60)
     print(f"Done. Upserted {total_saved} availability row(s).")
@@ -617,6 +905,12 @@ def main(argv: list[str] | None = None) -> None:
     if written:
         print(run_usage.summary(prefix="Scrape total: "))
         print(f"cost report appended to {written}")
+
+    report_text = render_run_report(run, run_usage)
+    print(report_text)
+    report_path = write_run_report(report_text)
+    if report_path:
+        print(f"run report written to {report_path}")
 
 
 if __name__ == "__main__":

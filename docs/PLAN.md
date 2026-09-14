@@ -6,6 +6,25 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, drop availability before today)
+
+**Each `scrape-availability` deletes rows with `start_date` before
+Israel today** (and matching `booking_page_hashes`). The rolling 14-night
+window starts from `today_il()`; leftover nights from earlier runs would
+otherwise stay in search. Count is on the Actions Summary (`dropped past`).
+Supersedes nothing; sits on the scheduled-scrape entry below.
+
+### Done (2026-09-14, scheduled availability scrape + hashes)
+
+**Daily availability at 08:00 IDT** (`0 5 * * *` in
+`.github/workflows/scrape.yml`; 07:00 IST in winter). GitHub-hosted
+Actions SSHs in as `gh-actions` (not the operator’s login key). The
+scraper stores `booking_page_hashes` (`html_sha256` of the raw INPA
+page, `offers_sha256` of aggregated room counts) and skips the
+availability rewrite plus unit-match LLM when offers are unchanged.
+The change report is the Actions run Summary tab. Info/claims stay
+`workflow_dispatch`. design.md “Where it runs”; cloud.md §6.
+
 ### Done (2026-09-14, drop in-memory query-embed cache)
 
 **No `_query_vec_cache`.** Same phrase in one `_query_vec_literals`
