@@ -2,7 +2,7 @@ name: Scrape
 
 # GitHub-hosted runner SSHs into the Nebius VM and runs the scrape
 # container there (INPA + Postgres stay on the VM). Daily availability
-# at 01:00 UTC; anything else is workflow_dispatch.
+# at 08:00 IDT (07:00 IST in winter); anything else is workflow_dispatch.
 
 on:
   workflow_dispatch:
@@ -23,7 +23,8 @@ on:
         required: false
         default: ""
   schedule:
-    - cron: "0 1 * * *"
+    # 08:00 IDT (Israel summer). Winter (IST) this is 07:00.
+    - cron: "0 5 * * *"
 
 concurrency:
   group: scrape
@@ -52,10 +53,28 @@ jobs:
           script: |
             set -eu
             cd "${TRIPPY_ROOT}"
+            rm -f /tmp/trippy-availability-report.md
             if [ -n "${EXTRA}" ]; then
               docker compose -f docker-compose.prod.yml --env-file .env \
-                --profile scrape run --rm scrape "${JOB}" ${EXTRA}
+                --profile scrape run --rm -v /tmp:/tmp scrape "${JOB}" ${EXTRA}
             else
               docker compose -f docker-compose.prod.yml --env-file .env \
-                --profile scrape run --rm scrape "${JOB}"
+                --profile scrape run --rm -v /tmp:/tmp scrape "${JOB}"
             fi
+
+      - name: Job summary
+        env:
+          HOST: ${{ secrets.TRIPPY_VM_HOST }}
+          SSH_USER: ${{ secrets.TRIPPY_SSH_USER }}
+          SSH_KEY: ${{ secrets.TRIPPY_SSH_KEY }}
+        run: |
+          set -eu
+          key="$(mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile=/dev/null \
+            "${SSH_USER}@${HOST}" \
+            'test -f /tmp/trippy-availability-report.md && cat /tmp/trippy-availability-report.md || echo "_No availability report (job was not availability, or the scrape failed before writing one)._"' \
+            >> "$GITHUB_STEP_SUMMARY"

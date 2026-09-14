@@ -116,6 +116,9 @@ class Campsite(Base):
         back_populates="campsite"
     )
     notices: Mapped[list[Notice]] = relationship(back_populates="campsite")
+    booking_page_hashes: Mapped[list[BookingPageHash]] = relationship(
+        back_populates="campsite"
+    )
     list_prices: Mapped[list[ListPrice]] = relationship(back_populates="campsite")
     info_website_names: Mapped[list[InfoWebsiteName]] = relationship(
         back_populates="campsite"
@@ -525,6 +528,52 @@ class Availability(Base):
     accommodation_type: Mapped[AccommodationType] = relationship(
         back_populates="availability"
     )
+
+
+class BookingPageHash(Base):
+    """Fingerprints of one INPA BE_Results page (parent site × night × adults).
+
+    html_sha256 is the raw response (ASP.NET chrome; almost never repeats).
+    offers_sha256 is aggregated (room_type, room_count) and is the skip key.
+    """
+
+    __tablename__ = "booking_page_hashes"
+    __table_args__ = (
+        UniqueConstraint(
+            "site_id",
+            "start_date",
+            "end_date",
+            "adults_no",
+            name="booking_page_hashes_slot_key",
+        ),
+        Index(
+            "booking_page_hashes_site_dates_idx",
+            "site_id",
+            "start_date",
+            "end_date",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("campsites.id", ondelete="CASCADE"), nullable=False
+    )
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    adults_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    html_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    offers_sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    scraped_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    campsite: Mapped[Campsite] = relationship(back_populates="booking_page_hashes")
 
 
 class InfoWebsiteName(Base):

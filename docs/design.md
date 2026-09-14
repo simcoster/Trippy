@@ -1101,8 +1101,17 @@ Phase 1 lives on one Nebius CPU VM: Compose Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
 an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same image with
-`scripts/cloud/job.sh`, triggered from GitHub Actions over SSH
-(`TRIPPY_VM_HOST` / `TRIPPY_SSH_KEY`). The product channel is Streamlit.
+`scripts/cloud/job.sh`, triggered from GitHub Actions over SSH as
+`gh-actions` (`TRIPPY_VM_HOST` / `TRIPPY_SSH_USER` / `TRIPPY_SSH_KEY`).
+Daily availability at 08:00 IDT. After each fetch the scraper stores
+`booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
+chrome; almost never repeats) and `offers_sha256` of aggregated
+`(room_type, room_count)`. Matching offers skip the availability rewrite
+and the 30B `unit_match`; the GET still happens. Each run also deletes
+availability (and page hashes) with `start_date` before Israel today, so
+nights that have already passed do not linger in search. The vacancy change
+report is the Actions run **Summary** tab, not Streamlit and not
+LangSmith. The product channel is Streamlit.
 Runbook: `docs/cloud.md`.
 
 ## LangSmith

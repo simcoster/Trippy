@@ -20,6 +20,7 @@ fi
 
 case "$job" in
   availability)
+    export AVAILABILITY_REPORT_PATH="${AVAILABILITY_REPORT_PATH:-/tmp/trippy-availability-report.md}"
     exec "$PY" source/scraper/populate_availability.py "$@"
     ;;
   reviews)

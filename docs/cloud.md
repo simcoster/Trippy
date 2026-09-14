@@ -39,10 +39,19 @@ docker compose -f docker-compose.prod.yml --env-file .env \
 ```
 
 GitHub Actions [`.github/workflows/scrape.yml`](../.github/workflows/scrape.yml)
-is a GitHub-hosted runner that **SSHs into the VM** and runs that
-`compose run`. The scrape itself (INPA HTTP, LLM, Postgres writes) happens
-on Nebius, not on GitHub. Daily availability at 01:00 UTC; anything else
-is `workflow_dispatch`. Two scrapes cannot overlap (`concurrency: scrape`).
+is a GitHub-hosted runner that **SSHs into the VM** as `gh-actions` and runs
+that `compose run`. The scrape itself (INPA HTTP, LLM, Postgres writes)
+happens on Nebius, not on GitHub. Daily availability at **08:00 IDT**
+(`cron: 0 5 * * *`; 07:00 in winter IST); anything else is
+`workflow_dispatch`. Two scrapes cannot overlap (`concurrency: scrape`).
+
+The report is the run’s **Summary** tab (Actions → Scrape → that run), not
+a file and not Streamlit. The log still has the per-night scroll. GitHub
+emails you if the job fails.
+
+To add info / claims / reviews later: extra `schedule:` crons in the same
+workflow, mapping `github.event.schedule` to the `job.sh` name. Manual
+dispatch already offers those jobs.
 
 ## Manual steps
 
@@ -117,22 +126,50 @@ docker compose -f docker-compose.prod.yml --env-file .env exec -T db \
 
 Do not scrape `public` as a smoke test of the new box.
 
-### 6. GitHub Actions → SSH
+### 6. GitHub Actions → SSH (`gh-actions`)
 
-Generate a **dedicated** ed25519 key (not your laptop key). Put the public
-half in `ubuntu`'s `authorized_keys` on the VM. Repo Settings → Secrets →
-Actions:
+Do **not** put the Actions key on your personal account. A Linux user named
+`gh-actions` holds a dedicated key so `auth.log` names a job, not you.
+Anyone in the `docker` group can take root; this is key isolation, not a
+sandbox. Do not give `gh-actions` sudo.
+
+On the laptop (do **not** overwrite your existing id):
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-trippy" -f ./trippy-gha -N ""
+```
+
+SSH in with **your** key, then on the VM:
+
+```bash
+sudo adduser --disabled-password --gecos "GitHub Actions" gh-actions
+sudo usermod -aG docker gh-actions
+sudo mkdir -p /home/gh-actions/.ssh
+echo '<paste contents of trippy-gha.pub>' | sudo tee /home/gh-actions/.ssh/authorized_keys
+sudo chown -R gh-actions:gh-actions /home/gh-actions/.ssh
+sudo chmod 700 /home/gh-actions/.ssh
+sudo chmod 600 /home/gh-actions/.ssh/authorized_keys
+
+# compose --env-file must be able to read this (600 root/you would fail)
+sudo chmod 640 /opt/trippy/.env
+sudo chgrp docker /opt/trippy/.env
+```
+
+Repo Settings → Secrets and variables → Actions:
 
 | Secret | Value |
 |--------|--------|
 | `TRIPPY_VM_HOST` | static public IP |
-| `TRIPPY_SSH_USER` | `ubuntu` |
-| `TRIPPY_SSH_KEY` | private key PEM (the `-----BEGIN …` file) |
+| `TRIPPY_SSH_USER` | `gh-actions` |
+| `TRIPPY_SSH_KEY` | entire `trippy-gha` private key, including the `BEGIN` / `END` lines |
 
 Optional repo variable `TRIPPY_ROOT` if the clone is not `/opt/trippy`.
 
-Then Actions → **Scrape** → Run workflow. The job logs are the SSH session;
-the container runs on the VM.
+Delete `trippy-gha` from the laptop once the secret is saved. First check:
+`ssh -i trippy-gha gh-actions@<ip>`, then Actions → **Scrape** → Run
+workflow, job `availability`, extra args `--site 2`. The Summary tab is
+the vacancy change report; the log is the SSH session. The container runs
+on the VM.
 
 ### 7. Deploy a new commit (later)
 
