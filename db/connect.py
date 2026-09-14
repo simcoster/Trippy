@@ -1,7 +1,9 @@
 """Postgres connections that can be pointed at the `experiments` schema.
 
-Unqualified table names follow `search_path`. Production is
-`"$user", public, extensions`. Set `TRIPPY_SCHEMA=experiments` and every
+Unqualified table names follow `search_path`. Production `connect()` pins
+`public, extensions` on the session so `vector` (migration 033) resolves
+even when `ALTER DATABASE SET search_path` is missing — a `pg_restore` of
+a data dump does not replay it. Set `TRIPPY_SCHEMA=experiments` and every
 `connect()` here uses `experiments, extensions` instead, so scrapes, search
 and the planner write and read the copy. `public` is not on that path.
 
@@ -23,6 +25,9 @@ load_dotenv()
 SCHEMA_ENV = "TRIPPY_SCHEMA"
 EXPERIMENTS_SCHEMA = "experiments"
 EXPERIMENTS_OPTIONS = "-csearch_path=experiments,extensions"
+# pgvector lives in `extensions`. Session pin, not only ALTER DATABASE:
+# restoring a dump onto a new volume leaves the type off the default path.
+PRODUCTION_OPTIONS = "-csearch_path=public,extensions"
 # libpq default is wait until the OS gives up (minutes when Docker is off).
 DEFAULT_CONNECT_TIMEOUT = 3
 
@@ -88,14 +93,15 @@ def connect(
     config: dict | None = None,
     **kwargs: Any,
 ) -> psycopg.Connection:
-    """`psycopg.connect` with `TRIPPY_SCHEMA` applied unless `options=` is set."""
+    """`psycopg.connect` with schema `search_path` unless `options=` is set."""
     url = database_url(config) if conninfo is None else conninfo.replace(
         "@db:", "@localhost:"
     )
     extras = connect_options()
-    if extras and "options" not in kwargs:
-        kwargs["options"] = extras
-        _announce()
+    if "options" not in kwargs:
+        kwargs["options"] = extras or PRODUCTION_OPTIONS
+        if extras:
+            _announce()
     kwargs.setdefault("connect_timeout", DEFAULT_CONNECT_TIMEOUT)
     try:
         return psycopg.connect(url, **kwargs)

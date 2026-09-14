@@ -308,10 +308,14 @@ setup-experiments copy` rebuilds `experiments` as a copy of `public`
 (tables, rows, views; FKs stay inside the schema). `--empty table,…`
 truncates after the copy. Scrapes, search and the planner then run with
 `TRIPPY_SCHEMA=experiments`, which makes `db.connect.connect` set
-`search_path=experiments,extensions`. `connect()` uses a 3s
-`connect_timeout` (libpq's default waits until the OS gives up) and
-raises `DatabaseUnavailable` with a `docker compose up -d` hint when
-Postgres is down. Streamlit pings on load; the chat shows
+`search_path=experiments,extensions`. Production `connect()` always
+sends `search_path=public,extensions` on the session: pgvector lives
+in `extensions` (migration 033), and `ALTER DATABASE SET search_path`
+is not in a data dump, so a restore otherwise leaves `::vector`
+unresolvable (`vector type not found in the database`). `connect()`
+uses a 3s `connect_timeout` (libpq's default waits until the OS gives
+up) and raises `DatabaseUnavailable` with a `docker compose up -d`
+hint when Postgres is down. Streamlit pings on load; the chat shows
 `Something went wrong.` and prints the detail to the terminal.
 
 ```
