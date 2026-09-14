@@ -85,7 +85,7 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     Schema (all keys required; use empty arrays / null when absent):
     {{
       "date_intent": {{
-        "kind": "weekday" | "weekend" | "on" | null,
+        "kind": "weekday" | "weekend" | "on" | "week" | null,
         "weekday": "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday" | null,
         "when": "this" | "next" | null,
         "weeks_from_now": N | null,
@@ -112,6 +112,11 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        turns intent into stay windows after you reply.
        - "next" / "הבא" → when="next" (next calendar week, not this week's
          upcoming weekday). "הקרוב" is not "הבא".
+       - Bare "שבוע הבא" / "next week" (no named weekday) → kind="week",
+         when="next". Not kind="on", not on="today", not horizon_days.
+         Stay length is still nights (default 1).
+       - "השבוע" / "this week" → kind="week", when="this" (remaining
+         days of this ISO week).
        - "this" / "הזה" / "הקרוב" / "coming" → when="this" (this ISO week,
          if that weekday is still ahead). "בשישי הקרוב" is this Friday.
        - Named weekday with no this/next (e.g. "בשבת", "on Saturday") →
@@ -132,6 +137,8 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
          season or weather ("בקיץ" / "in the summer" is semantic, not a
          date horizon).
        - "today" / "החל מהיום" → kind="on", on="today".
+       - "שומר שבת" is semantic ("shabbat observant"), not kind=weekend
+         and not a Friday — they did not say סופ״ש / weekend.
        - nights: stay length ("לילה אחד" → 1, "ל2 לילות" → 2). Weekend
          defaults to 1 if omitted. Never put stay length in semantic_constraints.
        Do NOT put dates in numeric_constraints or semantic_constraints.
@@ -144,10 +151,14 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     4. campsite: only when the user names a specific park to stay at
        (e.g. "2 rooms in Horshat Tal" → "Horashat Tal" / "חורשת טל").
        Do NOT put that name in semantic_constraints.
-       Region/vibe ("near the sea", "Negev") stays in semantic_constraints;
-       campsite stays null.
+       Region/vibe ("near the sea", "Negev", "desert" / "במדבר") stays in
+       semantic_constraints; campsite stays null.
+       A weekday glued to a region is two constraints: "בחמישי במדבר" is
+       Thursday (date_intent) AND desert (semantic). Desert is not a date
+       and not a campsite. Never drop a location pref because a weekday,
+       party size, or other amenity is also present.
     5. semantic_constraints: features, amenities, location prefs, and vibes
-       (hot showers, running water, near the sea, quiet, good for kids,
+       (hot showers, running water, near the sea, desert, quiet, good for kids,
        nice summer weather, stargazing).
        Top-level list is AND. Use {{"op":"or","values":[...]}} for alternatives
        (e.g. "near the sea or some body of water").
@@ -178,6 +189,18 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
       "numeric_constraints": [],
       "semantic_constraints": [
         {{"op": "or", "values": ["near the sea", "near a body of water"], "locus": "site"}}
+      ]
+    }}
+
+    Example:
+    Input: "לשבוע הבא בחמישי במדבר"
+    Output:
+    {{
+      "date_intent": {{"kind": "weekday", "weekday": "thursday", "when": "next", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": [
+        {{"query": "desert", "locus": "site"}}
       ]
     }}
 
@@ -280,6 +303,32 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
       "campsite": null,
       "numeric_constraints": [],
       "semantic_constraints": []
+    }}
+
+    Example:
+    Input: "לשבוע הבא"
+    Output:
+    {{
+      "date_intent": {{"kind": "week", "when": "next", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": []
+    }}
+
+    Example:
+    Input: "משהו לשבוע הבא במדבר ל3 אנשים, חשוב לנו ניקיון. אחד שומר שבת"
+    Output:
+    {{
+      "date_intent": {{"kind": "week", "when": "next", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [
+        {{"field": "party_size", "operator": ">=", "value": 3}}
+      ],
+      "semantic_constraints": [
+        {{"query": "desert", "locus": "site"}},
+        {{"query": "cleanliness", "locus": "site"}},
+        {{"query": "shabbat observant", "locus": "site"}}
+      ]
     }}
     """
 ).strip()

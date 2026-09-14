@@ -6,6 +6,31 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, לשבוע הבא is kind=week)
+
+**Bare "next week" is `kind=week`, not tonight.** Live extract of
+`משהו לשבוע הבא במדבר… אחד שומר שבת` (no weekday) emitted
+`kind=on, on=today, horizon_days=7`; `resolve_dates` ignored the
+horizon on `on` and returned 14–15 Sep. `kind=week` + `when=next`
+enumerates that ISO week (Mon–Sun); the 4-window cap keeps Friday and
+Saturday. `kind=on` + `horizon_days` now enumerates consecutive nights.
+`שומר שבת` stays semantic. Distinct from `לשבוע הבא בחמישי` (named
+Thursday, still `kind=weekday`). experiments.md 2026-09-14 §2.
+design.md "Query extractor: date_intent".
+
+### Done (2026-09-14, desert glued to weekday)
+
+**Extractor keeps desert when it sits next to a weekday.** Live miss on
+`משהו לשבוע הבא בחמישי במדבר ל3 אנשים, חשוב לנו ניקיון. אחד שומר שבת`:
+party, cleanliness, shomer shabbat, and next Thursday all landed;
+`במדבר` did not. Region/vibe was already in the schema (`Negev` →
+semantic, not `campsite`) but no few-shot showed a weekday glued to a
+landscape. Added `לשבוע הבא בחמישי במדבר` → Thursday + `desert`, and
+the rule that the glue is two constraints. 5/5 at temperature 0
+(experiments.md 2026-09-14 §1). Test:
+`test_extractor_thursday_desert.py`. design.md "Query extractor:
+date_intent".
+
 ### Done (2026-09-14, pin production search_path)
 
 **Production `connect()` sends `search_path=public,extensions`.** Migration

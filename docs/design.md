@@ -854,7 +854,18 @@ Hebrew clocks that used to be mislabelled, and the intents they must emit:
 |---|---|
 | הקרוב / הזה / coming | `when=this` (this ISO week, if that weekday is still ahead) |
 | הבא / next | `when=next` (next ISO week, not this week's upcoming day) |
+| שבוע הבא / next week (no weekday) | `kind=week`, `when=next` — nights of that ISO week, not `on=today` |
+| השבוע / this week | `kind=week`, `when=this` (remaining days) |
 | בעוד N שבועות / in N weeks | `weeks_from_now=N`, and no `when` |
+| שומר שבת | semantic (`shabbat observant`), not `kind=weekend` |
+
+`kind=week` is Monday–Sunday. The planner caps at 4 windows, so a full
+week keeps Friday and Saturday and fills from Monday. `horizon_days`
+with `kind=on` enumerates consecutive nights from `on` (the live miss
+was `on=today, horizon_days=7` collapsing to tonight because `on`
+ignored the horizon). Few-shots of bare `לשבוע הבא` and of the live
+prompt: 10/10 on the 235B, frozen Monday 14 Sep (experiments.md
+2026-09-14 §2).
 
 The 30B mapped `שישי הקרוב` to `when=next` and dropped `weeks_from_now` on
 `סוף השבוע בעוד שבועיים` because the prompt stated those rules and never
@@ -866,6 +877,13 @@ buried `בשישי הקרוב` (`when=next` the other three). A dates-only 30B
 prompt and the 235B full prompt are both 30/30 (experiments.md
 2026-09-08 §2). Extractor moved to 235B: p50 4.0s → 2.4s, ~$0.00025 →
 ~$0.00050 per search (experiments.md 2026-09-08 §3).
+
+A weekday glued to a landscape is two fields. `בחמישי במדבר` is Thursday
+(`date_intent`) **and** desert (`semantic_constraints`); desert is not a
+campsite and not part of the date. The 235B kept the Thursday and dropped
+the desert on a packed Hebrew ask until a few-shot of `לשבוע הבא בחמישי
+במדבר` plus an explicit “never drop a location pref” rule
+(experiments.md 2026-09-14 §1).
 
 ## Named campsite lookup
 

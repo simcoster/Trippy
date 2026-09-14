@@ -7,6 +7,48 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-14
+
+### 1. Does a weekday glued to desert drop the landscape?
+
+**Question.** On `משהו לשבוע הבא בחמישי במדבר ל3 אנשים, חשוב לנו ניקיון.
+אחד שומר שבת` the 235B extractor kept next Thursday, party≥3,
+cleanliness, and shomer shabbat, and dropped `במדבר`. Region/vibe was
+already in the schema (`Negev` → semantic, not `campsite`) but no
+few-shot showed a weekday sitting on a landscape. Does a few-shot of
+`לשבוע הבא בחמישי במדבר` plus “never drop a location pref” keep desert
+without losing the rest?
+
+**Setup.** Extractor only, temperature 0, frozen today Monday 14 Sep
+2026. Five trials of the live miss prompt. No planner, no DB writes.
+
+**Result.** 5/5: `date_intent` Thursday `when=next` nights=1 →
+2026-09-24, `party_size>=3`, semantic `desert` + cleanliness + shomer
+shabbat, `campsite` null. ~10 s, ~$0.0025.
+
+**Decision.** Keep the few-shot and the glue rule. design.md "Query
+extractor: date_intent".
+
+### 2. Is bare לשבוע הבא tonight, or next ISO week?
+
+**Question.** The same camping ask without a weekday (`משהו לשבוע הבא
+במדבר ל3 אנשים, חשוב לנו ניקיון. אחד שומר שבת`) extracted
+`kind=on, on=today, horizon_days=7`. `resolve_dates` ignored the
+horizon and returned 14–15 Sep. Does `kind=week` + `when=next`, with
+few-shots of bare `לשבוע הבא` and of that live prompt, land next ISO
+week (and still not `on=today`)?
+
+**Setup.** Extractor only, temperature 0, frozen today Monday 14 Sep
+2026. Five trials of the bare phrase, five of the live miss. No
+planner, no DB writes. `test_extractor_next_week.py`.
+
+**Result.** 10/10. Bare and full: `kind=week`, `when=next`, windows in
+21–27 Sep (Friday 25 Sep kept under the 4-window cap), not 14 Sep.
+Full prompt also `party_size>=3`. 8 s, ~$0.005.
+
+**Decision.** Ship `kind=week`. `on` + `horizon_days` enumerates as a
+backstop. design.md "Query extractor: date_intent".
+
 ## 2026-09-12
 
 ### 1. Which model writes the least robotic Hebrew why?
