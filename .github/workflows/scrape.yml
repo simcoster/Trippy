@@ -53,13 +53,21 @@ jobs:
           script: |
             set -eu
             cd "${TRIPPY_ROOT}"
-            rm -f /tmp/trippy-availability-report.md
+            REPORT_DIR="${HOME}/.trippy-scrape"
+            mkdir -p "${REPORT_DIR}"
+            rm -f "${REPORT_DIR}/availability.md"
             if [ -n "${EXTRA}" ]; then
               docker compose -f docker-compose.prod.yml --env-file .env \
-                --profile scrape run --rm -v /tmp:/tmp scrape "${JOB}" ${EXTRA}
+                --profile scrape run --rm \
+                -v "${REPORT_DIR}:/reports" \
+                -e AVAILABILITY_REPORT_PATH=/reports/availability.md \
+                scrape "${JOB}" ${EXTRA}
             else
               docker compose -f docker-compose.prod.yml --env-file .env \
-                --profile scrape run --rm -v /tmp:/tmp scrape "${JOB}"
+                --profile scrape run --rm \
+                -v "${REPORT_DIR}:/reports" \
+                -e AVAILABILITY_REPORT_PATH=/reports/availability.md \
+                scrape "${JOB}"
             fi
 
       - name: Job summary
@@ -76,5 +84,5 @@ jobs:
           ssh -i "$key" -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile=/dev/null \
             "${SSH_USER}@${HOST}" \
-            'test -f /tmp/trippy-availability-report.md && cat /tmp/trippy-availability-report.md || echo "_No availability report (job was not availability, or the scrape failed before writing one)._"' \
+            'test -f "$HOME/.trippy-scrape/availability.md" && cat "$HOME/.trippy-scrape/availability.md" || echo "_No availability report (job was not availability, or the scrape failed before writing one)._"' \
             >> "$GITHUB_STEP_SUMMARY"

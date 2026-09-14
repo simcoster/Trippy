@@ -1107,7 +1107,8 @@ Daily availability at 08:00 IDT. After each fetch the scraper stores
 `booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
 chrome; almost never repeats) and `offers_sha256` of aggregated
 `(room_type, room_count)`. Matching offers skip the availability rewrite
-and the 30B `unit_match`; the GET still happens. Each run also deletes
+and the 30B `unit_match`; the GET still happens. A skip bumps `scraped_at`
+only (`updated_at` stays the last vacancy change). Each run also deletes
 availability (and page hashes) with `start_date` before Israel today, so
 nights that have already passed do not linger in search. The scrape always
 asks INPA for 1 adult; `availability` has no `adults_no` column (party size
