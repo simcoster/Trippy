@@ -495,7 +495,6 @@ class Availability(Base):
             "start_date",
             "end_date",
             "accommodation_type_id",
-            "adults_no",
             name="availability_unique_slot",
         ),
         Index("availability_site_dates_idx", "site_id", "start_date", "end_date"),
@@ -512,7 +511,6 @@ class Availability(Base):
         ForeignKey("accommodation_types.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    adults_no: Mapped[int] = mapped_column(Integer, nullable=False)
     room_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     scraped_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -531,7 +529,7 @@ class Availability(Base):
 
 
 class BookingPageHash(Base):
-    """Fingerprints of one INPA BE_Results page (parent site × night × adults).
+    """Fingerprints of one INPA BE_Results page (parent site × night).
 
     html_sha256 is the raw response (ASP.NET chrome; almost never repeats).
     offers_sha256 is aggregated (room_type, room_count) and is the skip key.
@@ -543,7 +541,6 @@ class BookingPageHash(Base):
             "site_id",
             "start_date",
             "end_date",
-            "adults_no",
             name="booking_page_hashes_slot_key",
         ),
         Index(
@@ -560,7 +557,6 @@ class BookingPageHash(Base):
     )
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    adults_no: Mapped[int] = mapped_column(Integer, nullable=False)
     html_sha256: Mapped[str] = mapped_column(Text, nullable=False)
     offers_sha256: Mapped[str] = mapped_column(Text, nullable=False)
     scraped_at: Mapped[datetime] = mapped_column(

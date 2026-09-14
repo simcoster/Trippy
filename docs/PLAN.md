@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, drop availability.adults_no)
+
+**`availability.adults_no` is gone** (and the same column on
+`booking_page_hashes`). The scrape still GETs INPA as 1 adult; party
+size for search is `max_occupancy`. Unique slot is site + dates + type.
+Migration `039_drop_adults_no`.
+
 ### Done (2026-09-14, drop availability before today)
 
 **Each `scrape-availability` deletes rows with `start_date` before
