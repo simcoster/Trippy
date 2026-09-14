@@ -24,11 +24,4 @@ RUN chmod +x /app/scripts/cloud/job.sh
 
 EXPOSE 8501
 
-CMD [
-  "/app/.venv/bin/streamlit",
-  "run",
-  "scripts/streamlit_chat.py",
-  "--server.address=0.0.0.0",
-  "--server.port=8501",
-  "--server.headless=true"
-]
+CMD ["/app/.venv/bin/streamlit", "run", "scripts/streamlit_chat.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]

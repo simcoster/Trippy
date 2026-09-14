@@ -26,6 +26,17 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
 
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Same Dockerfile Compose uses on the VM. JSON CMD must be one line.
+      - name: Build prod image
+        run: docker build -t trippy:ci .
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

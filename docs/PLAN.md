@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, Dockerfile CMD + CI image build)
+
+**Prod image `CMD` is one JSON line.** A multiline exec-form array
+parsed as a new instruction (`"/app/.venv/bin/streamlit"`). CI job
+`image` runs `docker build -t trippy:ci .` on every PR / `main` so
+that class of parse error fails in GitHub, not on the VM.
+
 ### Done (2026-09-14, drop Telegram / FastAPI)
 
 **No Uvicorn in prod or laptop Compose.** Deleted `main.py`, `scripts/startup.sh`,
