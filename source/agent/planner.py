@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, NamedTuple, TypeAlias
 
+from langsmith import traceable
+
 from source.agent import search
 from source.agent.booking import attach_booking_urls
 from source.agent.constraints import (
@@ -182,6 +184,7 @@ def _claim_evidence(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+@traceable(name="retrieve", run_type="tool")
 def _semantic_why_by_slot(
     slots: list[dict],
     semantic_constraints: list,

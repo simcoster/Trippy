@@ -1124,6 +1124,13 @@ official rules the 235B received; **outputs** are `relevant_claims`,
 `satisfies`, `satisfy_by`, and `reason`. The model does not label each
 rule; `satisfy_by` is the rule-side verdict. Worker threads
 `copy_context()` so those tool runs stay under the Streamlit turn.
+Vacancy SQL (`search_open_slots`), query embeddings (`embed_query`
+StructuredTool, one per phrase, nested under `embed_queries`), and
+retrieve (`retrieve`, plus `search_review_claims` /
+`search_campsite_rules` / amenity SQL) are `@traceable` **tools** under
+the planner. Embed worker threads `copy_context()` like the judge.
+`embed_query` Inputs are the phrase; the vector is the output.
+about the longest call, not the sum, and sits inside the planner bar.
 Scrape containers force `LANGSMITH_TRACING=false` in
 `job.sh` so ingest does not share the project. CI has no key, so tests
 do not send runs.

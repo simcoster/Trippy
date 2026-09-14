@@ -10,20 +10,11 @@ import pytest
 from source.agent import search
 
 
-@pytest.fixture
-def empty_vec_cache():
-    with search._query_vec_lock:
-        search._query_vec_cache.clear()
-    yield
-    with search._query_vec_lock:
-        search._query_vec_cache.clear()
-
-
 def _fake_vec(_texts: list[str], **_kwargs):
     return [[0.1, 0.2, 0.3]]
 
 
-def test_query_vec_literals_uses_query_vec_literal(empty_vec_cache, monkeypatch):
+def test_query_vec_literals_uses_query_vec_literal(monkeypatch):
     monkeypatch.setattr(
         "source.agent.search._query_vec_literal", lambda query: f"[{query}]"
     )
@@ -31,7 +22,7 @@ def test_query_vec_literals_uses_query_vec_literal(empty_vec_cache, monkeypatch)
     assert out == {"quiet": "[quiet]", "shade": "[shade]"}
 
 
-def test_multiple_query_statements_embed_in_parallel(empty_vec_cache, monkeypatch):
+def test_multiple_query_statements_embed_in_parallel(monkeypatch):
     in_flight = 0
     peak = 0
     lock = threading.Lock()
@@ -57,7 +48,7 @@ def test_multiple_query_statements_embed_in_parallel(empty_vec_cache, monkeypatc
     assert list(out) == queries
 
 
-def test_query_embed_concurrency_caps_at_five(empty_vec_cache, monkeypatch):
+def test_query_embed_concurrency_caps_at_five(monkeypatch):
     in_flight = 0
     peak = 0
     lock = threading.Lock()

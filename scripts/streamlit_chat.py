@@ -664,31 +664,6 @@ def _serialize_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     return rows
 
 
-def _tool_queries_since_node_start(
-    trace: list[dict[str, Any]], node_name: str
-) -> list[dict[str, Any]]:
-    start_at: int | None = None
-    for i, event in enumerate(trace):
-        if (
-            event.get("kind") == "node"
-            and event.get("name") == node_name
-            and event.get("phase") == "start"
-        ):
-            start_at = i
-    if start_at is None:
-        return []
-    queries: list[dict[str, Any]] = []
-    for event in trace[start_at + 1 :]:
-        if event.get("kind") != "tool":
-            continue
-        row: dict[str, Any] = {"tool": event.get("name")}
-        params = event.get("params")
-        if isinstance(params, dict):
-            row.update(params)
-        queries.append(row)
-    return queries
-
-
 def _planner_queries_reply(trace: list[dict[str, Any]]) -> str | None:
     for event in reversed(trace):
         if (
@@ -697,21 +672,17 @@ def _planner_queries_reply(trace: list[dict[str, Any]]) -> str | None:
             and event.get("phase") == "update"
         ):
             update = event.get("update") or {}
-            if "fits" in update:
-                body = {
-                    "fits": update.get("fits"),
-                    "rejected": update.get("rejected"),
-                    "rejected_count": update.get("rejected_count"),
-                    "queries": update.get("queries"),
-                }
-                for key in ("error", "skipped", "open_slots_query"):
-                    if update.get(key) is not None:
-                        body[key] = update[key]
-                return json.dumps(body, ensure_ascii=False, indent=2, default=str)
-            queries = update.get("queries")
-            if queries is None:
+            if "fits" not in update:
                 return None
-            return json.dumps(queries, ensure_ascii=False, indent=2, default=str)
+            body = {
+                "fits": update.get("fits"),
+                "rejected": update.get("rejected"),
+                "rejected_count": update.get("rejected_count"),
+            }
+            for key in ("error", "skipped", "open_slots_query"):
+                if update.get(key) is not None:
+                    body[key] = update[key]
+            return json.dumps(body, ensure_ascii=False, indent=2, default=str)
     return None
 
 
@@ -943,17 +914,15 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
                     st.markdown(f"**{title}** _(enter)_")
                 continue
             update = event.get("update")
-            is_queries = (
+            is_fits = (
                 event.get("name") == "planner"
                 and isinstance(update, dict)
-                and "queries" in update
+                and "fits" in update
             )
-            label = "queries" if is_queries else "state update"
-            if is_queries and isinstance(update, dict) and "fits" in update:
-                label = "fits"
+            label = "fits" if is_fits else "state update"
             with st.expander(
                 f"{title} · {label} · {latency}",
-                expanded=is_queries,
+                expanded=is_fits,
             ):
                 _json_block(update)
         elif kind == "llm_start":
@@ -1053,7 +1022,6 @@ def invoke_agent(
                 if mode == "updates" and isinstance(chunk, dict):
                     for node_name, update in chunk.items():
                         if node_name == "planner" and isinstance(update, dict):
-                            queries = _tool_queries_since_node_start(trace, "planner")
                             fits_payload: dict[str, Any] | None = None
                             for msg in update.get("messages") or []:
                                 raw = _content_to_str(getattr(msg, "content", ""))
@@ -1064,15 +1032,14 @@ def invoke_agent(
                                 if isinstance(data, dict) and "fits" in data:
                                     fits_payload = data
                                     break
-                            serialized_update = {"queries": queries}
                             if fits_payload is not None:
-                                serialized_update["fits"] = fits_payload.get("fits")
-                                serialized_update["rejected"] = fits_payload.get(
-                                    "rejected"
-                                )
-                                serialized_update["rejected_count"] = (
-                                    fits_payload.get("rejected_count")
-                                )
+                                serialized_update = {
+                                    "fits": fits_payload.get("fits"),
+                                    "rejected": fits_payload.get("rejected"),
+                                    "rejected_count": fits_payload.get(
+                                        "rejected_count"
+                                    ),
+                                }
                                 for key in (
                                     "error",
                                     "skipped",
@@ -1081,6 +1048,14 @@ def invoke_agent(
                                 ):
                                     if fits_payload.get(key) is not None:
                                         serialized_update[key] = fits_payload[key]
+                            elif "messages" in update:
+                                serialized_update = {
+                                    "messages": _serialize_messages(
+                                        update["messages"]
+                                    )
+                                }
+                            else:
+                                serialized_update = update
                         elif isinstance(update, dict) and "messages" in update:
                             serialized_update = {
                                 "messages": _serialize_messages(update["messages"])

@@ -6,6 +6,50 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, drop in-memory query-embed cache)
+
+**No `_query_vec_cache`.** Same phrase in one `_query_vec_literals`
+call is still embedded once (`dict.fromkeys`); a later turn hits
+Nebius again. The in-process dict was premature. A Postgres
+phrase→vector table stays open (entry below). scaling.md §5.
+
+### Open (2026-09-14, persistent query-embed cache)
+
+**Planner query embeddings are only an in-process dict
+(`_query_vec_cache` in `search.py`).** A first `embed_query` is ~4–5s
+on Qwen3-Embedding-8B; repeats in the same Streamlit/agent process are
+free; a restart pays Nebius again. Not avoiding that for now. Later:
+a Postgres phrase→vector table (same 1536-d space as claims) so
+identical amenity strings survive process restart. Catalog claim/amenity
+rows are already stored; this is only the *query* side. scaling.md §5.
+
+### Done (2026-09-14, embed_query tools on the LangSmith timeline)
+
+**Each query embedding is a `embed_query` tool**, same wrench as
+`claim_judge` / `resolve_dates`. Parallel workers copy the LangSmith
+parent. Amenity retrieve SQL is also a tool. Recommender and extractor
+were already ChatOpenAI spans. design.md "LangSmith".
+
+### Done (2026-09-14, claims/rules SQL on LangSmith spans)
+
+**`search_review_claims` and `search_campsite_rules` are traced.** Each
+span's Inputs include the interpolated SQL (`<vector>` in place of the
+embedding). Vacancy SQL is on `search_open_slots` the same way.
+design.md "LangSmith".
+
+### Done (2026-09-14, planner LangSmith splits SQL / embed / retrieve)
+
+**Planner is not 7s of idle then judge.** `claim_judge` children sit
+inside the planner bar and run in parallel (~max of the four, not the
+sum). `@traceable` spans `search_open_slots`, `embed_queries`, and
+`retrieve` so the remaining time is visible. design.md "LangSmith".
+
+### Done (2026-09-14, drop empty planner queries dump)
+
+**Streamlit no longer attaches a `queries: []` list to the planner
+trace.** That array was hooked search-tool calls, not extractor amenity
+strings, and was empty even when `fits` was not.
+
 ### Done (2026-09-14, Streamlit errors are generic)
 
 **UI says `Something went wrong.`; the real exception goes to the
