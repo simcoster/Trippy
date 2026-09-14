@@ -121,7 +121,7 @@ HEAVY_PATH_LABELS: dict[HeavyThrough, str] = {
 }
 
 st.set_page_config(
-    page_title="Trippy" if _PUBLIC_UI else "Trippy Agent (local)",
+    page_title="Trippy camping" if _PUBLIC_UI else "Trippy camping (local)",
     page_icon="⛺",
     layout="wide",
 )
@@ -1152,11 +1152,16 @@ def invoke_agent(
 
 _init_session()
 
-st.title("Trippy agent" if _PUBLIC_UI else "Trippy agent (local)")
+_answered = any(turn.get("role") == "assistant" for turn in st.session_state.display)
+_ASK_PLACEHOLDER = (
+    "Ask me about a camping stay | שאל אותי על שהייה באתרי קמפינג"
+)
+
+st.title("Trippy camping ⛺" if _PUBLIC_UI else "Trippy camping ⛺ (local)")
 if _db_error:
     st.error(_db_error)
 if _PUBLIC_UI:
-    st.caption("Ask for a campsite stay. Hebrew is fine.")
+    st.caption(_ASK_PLACEHOLDER)
 else:
     st.caption(
         f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
@@ -1168,6 +1173,12 @@ mcp_prompt = ""
 stop_after: HeavyThrough = "recommender"
 with st.sidebar:
     st.header("Session")
+    st.link_button(
+        "GitHub README",
+        "https://github.com/simcoster/Trippy",
+        icon=":material/menu_book:",
+        width="stretch",
+    )
     if not _PUBLIC_UI:
         stop_after = (
             st.radio(
@@ -1206,14 +1217,16 @@ with st.sidebar:
             mcp_text = st.text_area(
                 "Prompt",
                 key="agent_prompt",
-                placeholder="Ask about campsites…",
+                placeholder=_ASK_PLACEHOLDER,
                 height=80,
+                disabled=_answered,
             )
             agent_send = st.form_submit_button(
                 "Send prompt",
                 key="agent_send",
                 icon=":material/send:",
                 width="stretch",
+                disabled=_answered,
             )
         mcp_prompt = (mcp_text or "").strip() if agent_send else ""
 
@@ -1272,7 +1285,9 @@ for turn in st.session_state.display:
             with st.expander("LangGraph trace", expanded=False):
                 _render_trace(turn["trace"])
 
-prompt = st.chat_input("Ask about campsites…") or mcp_prompt
+prompt = (
+    st.chat_input(_ASK_PLACEHOLDER, disabled=_answered) or mcp_prompt
+)
 if prompt:
     st.session_state.display.append({"role": "user", "content": prompt})
     with st.chat_message("user"):

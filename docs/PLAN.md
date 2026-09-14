@@ -6,6 +6,20 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Open (2026-09-14, hosted ReAct + search MCP)
+
+**Move the chat loop to a hosted ReAct agent (Claude Code, GPT
+Codex); search / trip become an MCP the agent is instructed to
+use.** Ingest, RAG, availability scrape, and `search.py` stay ours.
+The MCP is those typed tools (`search_open_slots`, date resolve,
+quote, claims/rules), not generic Postgres. The 2026-09-08 note
+rejected hosted Claude Code *plus a SQL MCP* (no embedder, no
+`quote_night`, one session ≠ N chats); this is a different cut.
+`docs/react_vs_graph_agent.md` still applies for calendars: the
+backbone must not own `בשישי הקרוב`. Streamlit / LangGraph remain
+the live path until this is spiked. Supersedes the “closest fit is
+ReAct on Qwen 235B” close of the 2026-09-08 ReAct vs graph entry.
+
 ### Done (2026-09-14, scraped_at vs updated_at on skip)
 
 **Hash skip bumps `scraped_at` only.** `updated_at` is the last vacancy
