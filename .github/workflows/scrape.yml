@@ -1,8 +1,7 @@
 name: Scrape
 
-# GitHub-hosted runner SSHs into the Nebius VM and runs the scrape
-# container there (INPA + Postgres stay on the VM). Daily availability
-# at 08:00 IDT (07:00 IST in winter); anything else is workflow_dispatch.
+# Manual ingest jobs that are not on a schedule. Availability and
+# reviews have their own workflows.
 
 on:
   workflow_dispatch:
@@ -11,20 +10,15 @@ on:
         description: Ingest job (see scripts/cloud/job.sh)
         type: choice
         options:
-          - availability
-          - reviews
           - claims
           - info
           - sites
           - place-ids
-        default: availability
+        default: claims
       extra_args:
         description: Extra args, e.g. --site 2
         required: false
         default: ""
-  schedule:
-    # 08:00 IDT (Israel summer). Winter (IST) this is 07:00.
-    - cron: "0 5 * * *"
 
 concurrency:
   group: scrape
@@ -35,54 +29,8 @@ permissions:
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    steps:
-      - name: Run scrape on the VM
-        uses: appleboy/ssh-action@v1.2.2
-        env:
-          JOB: ${{ github.event.inputs.job || 'availability' }}
-          EXTRA: ${{ github.event.inputs.extra_args }}
-          TRIPPY_ROOT: ${{ vars.TRIPPY_ROOT || '/opt/trippy' }}
-        with:
-          host: ${{ secrets.TRIPPY_VM_HOST }}
-          username: ${{ secrets.TRIPPY_SSH_USER }}
-          key: ${{ secrets.TRIPPY_SSH_KEY }}
-          command_timeout: 180m
-          envs: JOB,EXTRA,TRIPPY_ROOT
-          script: |
-            set -eu
-            cd "${TRIPPY_ROOT}"
-            REPORT_DIR="${HOME}/.trippy-scrape"
-            mkdir -p "${REPORT_DIR}"
-            rm -f "${REPORT_DIR}/availability.md"
-            if [ -n "${EXTRA}" ]; then
-              docker compose -f docker-compose.prod.yml --env-file .env \
-                --profile scrape run --rm \
-                -v "${REPORT_DIR}:/reports" \
-                -e AVAILABILITY_REPORT_PATH=/reports/availability.md \
-                scrape "${JOB}" ${EXTRA}
-            else
-              docker compose -f docker-compose.prod.yml --env-file .env \
-                --profile scrape run --rm \
-                -v "${REPORT_DIR}:/reports" \
-                -e AVAILABILITY_REPORT_PATH=/reports/availability.md \
-                scrape "${JOB}"
-            fi
-
-      - name: Job summary
-        env:
-          HOST: ${{ secrets.TRIPPY_VM_HOST }}
-          SSH_USER: ${{ secrets.TRIPPY_SSH_USER }}
-          SSH_KEY: ${{ secrets.TRIPPY_SSH_KEY }}
-        run: |
-          set -eu
-          key="$(mktemp)"
-          trap 'rm -f "$key"' EXIT
-          printf '%s\n' "$SSH_KEY" > "$key"
-          chmod 600 "$key"
-          ssh -i "$key" -o StrictHostKeyChecking=accept-new \
-            -o UserKnownHostsFile=/dev/null \
-            "${SSH_USER}@${HOST}" \
-            'test -f "$HOME/.trippy-scrape/availability.md" && cat "$HOME/.trippy-scrape/availability.md" || echo "_No availability report (job was not availability, or the scrape failed before writing one)._"' \
-            >> "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/scrape-job.yml
+    with:
+      job: ${{ inputs.job }}
+      extra_args: ${{ inputs.extra_args || '' }}
+    secrets: inherit

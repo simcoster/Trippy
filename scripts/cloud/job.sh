@@ -24,6 +24,7 @@ case "$job" in
     exec "$PY" source/scraper/populate_availability.py "$@"
     ;;
   reviews)
+    export REVIEWS_REPORT_PATH="${REVIEWS_REPORT_PATH:-/tmp/trippy-reviews-report.md}"
     exec "$PY" -m source.scraper.populate_reviews_and_claims "$@"
     ;;
   claims)

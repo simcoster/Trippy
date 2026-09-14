@@ -1,0 +1,30 @@
+name: Scrape availability
+
+# Daily vacancy scrape. SSH and report live in scrape-job.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      extra_args:
+        description: Extra args, e.g. --site 2
+        required: false
+        default: ""
+  schedule:
+    # 08:00 IDT (Israel summer). Winter (IST) this is 07:00.
+    - cron: "0 5 * * *"
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    uses: ./.github/workflows/scrape-job.yml
+    with:
+      job: availability
+      extra_args: ${{ github.event.inputs.extra_args || '' }}
+      report_file: availability.md
+    secrets: inherit

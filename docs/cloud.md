@@ -38,20 +38,23 @@ docker compose -f docker-compose.prod.yml --env-file .env \
   --profile scrape run --rm scrape availability
 ```
 
-GitHub Actions [`.github/workflows/scrape.yml`](../.github/workflows/scrape.yml)
-is a GitHub-hosted runner that **SSHs into the VM** as `gh-actions` and runs
-that `compose run`. The scrape itself (INPA HTTP, LLM, Postgres writes)
+GitHub Actions [`.github/workflows/scrape-availability.yml`](../.github/workflows/scrape-availability.yml)
+and [`.github/workflows/scrape-reviews.yml`](../.github/workflows/scrape-reviews.yml)
+are GitHub-hosted runners that **SSH into the VM** as `gh-actions` and run
+that `compose run`. The SSH steps live in
+[`scrape-job.yml`](../.github/workflows/scrape-job.yml) (`workflow_call`).
+The scrape itself (INPA HTTP, LLM, Postgres writes)
 happens on Nebius, not on GitHub. Daily availability at **08:00 IDT**
-(`cron: 0 5 * * *`; 07:00 in winter IST); anything else is
-`workflow_dispatch`. Two scrapes cannot overlap (`concurrency: scrape`).
+(`cron: 0 5 * * *`; 07:00 in winter IST); daily reviews at **09:00 IDT**
+(`cron: 0 6 * * *`; 08:00 in winter IST). Other ingest
+(claims / info / sites / place-ids) is
+[`scrape.yml`](../.github/workflows/scrape.yml) `workflow_dispatch`.
+Two scrapes cannot overlap (`concurrency: scrape` on each caller).
 
-The report is the run’s **Summary** tab (Actions → Scrape → that run), not
-a file and not Streamlit. The log still has the per-night scroll. GitHub
-emails you if the job fails.
-
-To add info / claims / reviews later: extra `schedule:` crons in the same
-workflow, mapping `github.event.schedule` to the `job.sh` name. Manual
-dispatch already offers those jobs.
+The report is the run’s **Summary** tab (Actions → **Scrape availability**
+or **Scrape reviews** → that run), not a file and not Streamlit.
+Availability lists vacancy changes; reviews lists new Google rows. The
+log still has the per-site scroll. GitHub emails you if the job fails.
 
 ## Manual steps
 
@@ -166,10 +169,9 @@ Repo Settings → Secrets and variables → Actions:
 Optional repo variable `TRIPPY_ROOT` if the clone is not `/opt/trippy`.
 
 Delete `trippy-gha` from the laptop once the secret is saved. First check:
-`ssh -i trippy-gha gh-actions@<ip>`, then Actions → **Scrape** → Run
-workflow, job `availability`, extra args `--site 2`. The Summary tab is
-the vacancy change report; the log is the SSH session. The container runs
-on the VM.
+`ssh -i trippy-gha gh-actions@<ip>`, then Actions → **Scrape availability** →
+Run workflow, extra args `--site 2`. The Summary tab is the vacancy
+change report; the log is the SSH session. The container runs on the VM.
 
 ### 7. Deploy a new commit (later)
 
