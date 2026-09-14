@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from typing import Any
 
 DEFAULT_PROJECT = "trippy"
@@ -81,3 +82,58 @@ def agent_run_config(
         "metadata": metadata,
         "configurable": {"thread_id": thread_id},
     }
+
+
+def tracing_env_on() -> bool:
+    flag = (
+        os.environ.get("LANGSMITH_TRACING") or os.environ.get("LANGCHAIN_TRACING_V2") or ""
+    ).strip().casefold()
+    return flag in {"1", "true", "yes"}
+
+
+def bind_to_current_trace(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Restore the LangSmith parent run inside a ThreadPool worker."""
+    if not tracing_env_on():
+        return fn
+    try:
+        from langsmith import get_current_run_tree, tracing_context
+    except ImportError:
+        return fn
+    parent = get_current_run_tree()
+    if parent is None:
+        return fn
+
+    def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with tracing_context(parent=parent):
+            return fn(*args, **kwargs)
+
+    return _wrapped
+
+
+def emit_child_span(
+    *,
+    name: str,
+    inputs: dict[str, Any],
+    outputs: dict[str, Any],
+    tags: list[str] | None = None,
+) -> None:
+    """Attach a child run to the current LangSmith trace. No-op if none."""
+    if not tracing_env_on():
+        return
+    try:
+        from langsmith import get_current_run_tree
+    except ImportError:
+        return
+    parent = get_current_run_tree()
+    if parent is None:
+        return
+    try:
+        child = parent.create_child(
+            name=name,
+            run_type="chain",
+            inputs=inputs,
+            tags=tags,
+        )
+        child.end(outputs=outputs)
+    except Exception:
+        return

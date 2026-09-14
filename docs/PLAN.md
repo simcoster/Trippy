@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, LangSmith claim/rule judge)
+
+**Each judge call is a LangSmith child under the planner.** Inputs are
+the claims and rules the 235B received; outputs mark each claim
+`relevant` and the site `satisfies` / `satisfy_by` / `reason`. The
+model does not emit a per-rule keep/drop. Thread-pool workers inherit
+the parent run. design.md "LangSmith".
+
 ### Done (2026-09-14, Dockerfile CMD + CI image build)
 
 **Prod image `CMD` is one JSON line.** A multiline exec-form array
