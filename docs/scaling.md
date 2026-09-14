@@ -168,7 +168,7 @@ We cannot HA Nebius. We can fail fast and degrade. **If the bottleneck is a thir
 
 ## 6. Ship / release bar
 
-- **CI:** `pytest -m "not llm"` on every PR. Alembic `upgrade` against a throwaway Postgres. Dummy `NEBIUS_API_KEY` only so import-time constructors do not raise; it is not a real secret. JUnit XML + `dorny/test-reporter` publishes a Check and a job summary (not a native Tests tab). Scraper code requests `OpenAI` only via `make_nebius_openai_client`, which raises `LiveLlmDisabled` unless production or the test is marked `llm`.
+- **CI:** `pytest -m "not llm"` on every PR. Alembic `upgrade` against a throwaway Postgres. Dummy `NEBIUS_API_KEY` only so import-time constructors do not raise; it is not a real secret. JUnit XML + `dorny/test-reporter` publishes a Check and a job summary (not a native Tests tab). Scraper code requests `OpenAI` only via `make_nebius_openai_client`, which raises `LiveLlmDisabled` unless production or the test is marked `llm`. A third job, `image`, `docker build`s the prod Dockerfile (does not run the container).
 - **CD:** build an image **without** ngrok, without `--reload`, without the repo bind-mount, without pytest as a runtime dep (`pytest` is in `[project] dependencies` today). Run migrations, then roll the API.
 - **Secrets:** `NEBIUS_API_KEY`, `GOOGLE_API_KEY`, `DATABASE_URL` only from the platform.
 - **Staging** with a test bot and a copy of prod data (PII-aware: review authors, Telegram chat ids).
