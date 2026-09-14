@@ -17,26 +17,5 @@ services:
       timeout: 5s
       retries: 5
 
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: trippy-api
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://trippy:trippy@db:5432/trippy
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-    env_file:
-      - .env
-    volumes:
-      - .:/app
-      - trippy_venv:/app/.venv
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
   trippy_pgdata:
-  trippy_venv:

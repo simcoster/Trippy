@@ -16,36 +16,6 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python Debugger: replay.py",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/scripts/replay.py",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Python: FastAPI (uvicorn)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uvicorn",
-            "args": [
-                "main:app",
-                "--reload",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                "8000"
-            ],
-            "jinja": true,
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "envFile": "${workspaceFolder}/.env",
-            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}"
-        },
-        {
             "name": "Python: Streamlit agent (local)",
             "type": "debugpy",
             "request": "launch",

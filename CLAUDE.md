@@ -24,11 +24,9 @@ source. Each file is imported here; edit the rule there, not in this file.
   Isolated scrapes: `just setup-experiments copy`, then
   `just on-experiments scrape-info -- --site 2`
   (`TRIPPY_SCHEMA=experiments`).
-- Local Postgres (pgvector) runs via `docker compose up -d`; `.env` holds
-  secrets and is git-ignored. `/app/.venv` in the `api` container is a named
-  volume, so after a dependency change run `docker compose down`,
-  `docker volume rm trippy_trippy_venv`, then `docker compose up -d --build`.
-  Never `docker compose down -v` — it destroys the database volume too.
+- Local Postgres (pgvector) runs via `docker compose up -d`; Streamlit is
+  `just streamlit` on the host. `.env` holds secrets and is git-ignored.
+  Never `docker compose down -v` — it destroys the database volume.
 - `pytest -m "not llm"` is the no-token test run; `llm`-marked tests call
   Nebius. The agent may run `llm` tests locally when the planned call
   count is under 100; CI still uses `not llm`.

@@ -26,7 +26,7 @@ Done when a Hebrew ask gets a non-empty rec that only uses `fits`, cites
 official `why` vs guest claims correctly, and a follow-up can talk about
 the same recs without inventing sites.
 
-Streamlit is the workbench. Telegram is still the intended live channel.
+Streamlit is the workbench and the live channel.
 
 ## 2. Cloudify
 
@@ -42,7 +42,7 @@ Cadence (the jobs *are* the product staying true):
 | Reviews + claims (`scrape-reviews`, `populate-claims`) | once a week |
 | The rest (`scrape-sites`, `scrape-info`, place ids, …) | about once a month |
 
-Done when a URL (Telegram webhook or equivalent) stays up without a
+Done when a URL (Streamlit behind the tunnel) stays up without a
 dev machine, secrets are not in the repo, and those jobs actually run
 on that schedule.
 

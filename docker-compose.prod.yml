@@ -38,6 +38,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    ports:
+      - "127.0.0.1:5432:5432"
 
   streamlit:
     <<: *app

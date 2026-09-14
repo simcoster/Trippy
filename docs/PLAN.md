@@ -1,10 +1,19 @@
 # Trippy — Product & Engineering Plan
 
-Campsite recommendation agent for Israel (parks.org.il + Google reviews), with RAG over claims/site data, availability/price search, and a Telegram-facing agent.
+Campsite recommendation agent for Israel (parks.org.il + Google reviews), with RAG over claims/site data, availability/price search, and a Streamlit-facing agent.
 
 ---
 
 ## Progress log
+
+### Done (2026-09-14, drop Telegram / FastAPI)
+
+**No Uvicorn in prod or laptop Compose.** Deleted `main.py`, `scripts/startup.sh`,
+`scripts/replay.py`, and `test_webhook.py` (the live embedding search moved
+to `test_embedding_search.py`). Laptop compose is Postgres only; Streamlit
+is `just streamlit`. Dropped `fastapi`, `uvicorn`, `pytest-asyncio`, and
+`TELEGRAM_TOKEN`. Supersedes “Telegram is unwired; token optional” in the
+Nebius VM entry and the dummy-token CI note below.
 
 ### Done (2026-09-14, LangSmith on LangGraph)
 

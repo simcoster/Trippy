@@ -1,4 +1,4 @@
-"""LangSmith traces for LangGraph turns (Streamlit / Telegram), not ingest."""
+"""LangSmith traces for LangGraph Streamlit turns, not ingest."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def tracing_configured() -> bool:
 def configure_agent_tracing() -> bool:
     """Turn on LangSmith for this process when an API key is set.
 
-    Call from Streamlit / Telegram entrypoints only. Scrape jobs must not
+    Call from the Streamlit entrypoint only. Scrape jobs must not
     call this — ingest ChatOpenAI calls would otherwise land in the same
     project as tester turns.
     """
@@ -68,7 +68,7 @@ def agent_run_config(
     user_text: str = "",
     extra_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """RunnableConfig so LangSmith groups turns by browser/Telegram thread."""
+    """RunnableConfig so LangSmith groups turns by browser session."""
     metadata: dict[str, Any] = {
         "channel": channel,
         "thread_id": thread_id,

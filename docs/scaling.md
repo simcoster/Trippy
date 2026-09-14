@@ -168,9 +168,9 @@ We cannot HA Nebius. We can fail fast and degrade. **If the bottleneck is a thir
 
 ## 6. Ship / release bar
 
-- **CI:** `pytest -m "not llm"` on every PR. Alembic `upgrade` against a throwaway Postgres. Dummy `NEBIUS_API_KEY` / `TELEGRAM_TOKEN` only so import-time constructors do not raise; they are not real secrets and Telegram is not called. JUnit XML + `dorny/test-reporter` publishes a Check and a job summary (not a native Tests tab). Scraper code requests `OpenAI` only via `make_nebius_openai_client`, which raises `LiveLlmDisabled` unless production or the test is marked `llm`.
+- **CI:** `pytest -m "not llm"` on every PR. Alembic `upgrade` against a throwaway Postgres. Dummy `NEBIUS_API_KEY` only so import-time constructors do not raise; it is not a real secret. JUnit XML + `dorny/test-reporter` publishes a Check and a job summary (not a native Tests tab). Scraper code requests `OpenAI` only via `make_nebius_openai_client`, which raises `LiveLlmDisabled` unless production or the test is marked `llm`.
 - **CD:** build an image **without** ngrok, without `--reload`, without the repo bind-mount, without pytest as a runtime dep (`pytest` is in `[project] dependencies` today). Run migrations, then roll the API.
-- **Secrets:** `TELEGRAM_TOKEN`, `NEBIUS_API_KEY`, `GOOGLE_API_KEY`, `DATABASE_URL` only from the platform. Rotate the bot token once ngrok URLs have been public.
+- **Secrets:** `NEBIUS_API_KEY`, `GOOGLE_API_KEY`, `DATABASE_URL` only from the platform.
 - **Staging** with a test bot and a copy of prod data (PII-aware: review authors, Telegram chat ids).
 - **Observability:** JSON logs with `chat_id` / `update_id` / `job_name` / latency. Metrics: webhook accept vs worker success, graph node latency, scrape freshness, Nebius errors. Alert on job failure, webhook 5xx, error-rate spike, stale availability. Grafana + Prometheus or whatever the host ships; don’t build a metrics platform first.
 - **Security:** secret webhook token; do not log full Telegram updates in prod (we log the whole `update` today); strip PII from traces; keep Streamlit off the internet.
