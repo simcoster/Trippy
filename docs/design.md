@@ -1077,13 +1077,18 @@ match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
 stay identity or `empty` — not the raw JSON. On first load it also
 sends a one-token `hi` to the recommender (Kimi) in a background
-thread so the first real rec is not a cold replica. Telegram still
+thread so the first real rec is not a cold replica, and prints that
+ping plus Kimi's reply. Telegram still
 sends one message when the node finishes. Usage is `role="recommend"`.
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
 (experiments.md 2026-09-10 §7). Each recommend dump stores
 `ttft_chunk_ms` (first SSE token) and `ttft_spoken_ms` (first
-paintable stay); the CLI prints them next to `recommend=`. The
+paintable stay); the CLI prints them next to `recommend=`. A
+recommend call prints (flush) and logs model, no-think `extra_body`,
+TTFT, in/out, `reasoning_tokens`, and whether thinking text streamed.
+That snapshot is process-level so Streamlit still sees it after
+LangGraph; the UI warns if reasoning > 0. The
 dump’s `pack` is the picker
 input; `--from-planner` re-runs recommend only.
 
@@ -1095,5 +1100,19 @@ Cloudflare Tunnel for HTTPS. Ingest is the same image with
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH
 (`TRIPPY_VM_HOST` / `TRIPPY_SSH_KEY`). Telegram is unwired; `TELEGRAM_TOKEN` is optional. Runbook:
 `docs/cloud.md`.
+
+## LangSmith
+
+Tester Streamlit turns (and Telegram, when wired) send LangGraph traces
+to LangSmith so a hidden public UI is still inspectable: nodes, model
+calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
+`scripts/streamlit_chat.py` and `main.py` call
+`configure_agent_tracing()` and pass `thread_id` / `tags` /
+`metadata.channel` on each `invoke` / `stream`
+(`source/agent/tracing.py`). One browser tab is one thread until Reset.
+Project defaults to `trippy` (`LANGSMITH_PROJECT`). Traces include the
+full query. Scrape containers force `LANGSMITH_TRACING=false` in
+`job.sh` so ingest does not share the project. CI has no key, so tests
+do not send runs.
 
 

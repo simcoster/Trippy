@@ -26,7 +26,7 @@ import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 # Repo root on sys.path so `source.*` imports work under `streamlit run`
 _ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +71,12 @@ from source.agent.recommender import (
     warmup_recommender,
 )
 from source.agent.timing import collect_stages, format_stages
+from source.agent.tracing import (
+    agent_run_config,
+    configure_agent_tracing,
+    project_name,
+    tracing_configured,
+)
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
@@ -89,6 +95,8 @@ st.set_page_config(
     page_icon="⛺",
     layout="wide",
 )
+if configure_agent_tracing():
+    print(f"langsmith tracing project={project_name()}", flush=True)
 warmup_recommender()
 
 # Active turn trace (set while invoke_agent runs)
@@ -521,11 +529,14 @@ def _init_session() -> None:
         st.session_state.display = []
     if "heavy_path" not in st.session_state:
         st.session_state.heavy_path = "extractor"
+    if "langsmith_thread_id" not in st.session_state:
+        st.session_state.langsmith_thread_id = str(uuid4())
 
 
 def _reset_conversation() -> None:
     st.session_state.graph_messages = []
     st.session_state.display = []
+    st.session_state.langsmith_thread_id = str(uuid4())
 
 
 def _message_preview(msg: BaseMessage, max_len: int = 400) -> str:
@@ -748,6 +759,22 @@ def _render_trace_metrics(trace: list[dict[str, Any]]) -> None:
     stages_line = format_stages(summary.get("stages"))
     if stages_line:
         st.caption(stages_line)
+    rec_chunk = summary.get("recommend_ttft_chunk_ms")
+    rec_spoken = summary.get("recommend_ttft_spoken_ms")
+    if rec_chunk is not None or rec_spoken is not None:
+        bits = []
+        if rec_chunk is not None:
+            bits.append(f"chunk {_format_latency(rec_chunk)}")
+        if rec_spoken is not None:
+            bits.append(f"spoken {_format_latency(rec_spoken)}")
+        st.caption("Recommend TTFT: " + " · ".join(bits))
+    reasoning_n = int(summary.get("recommend_reasoning_tokens") or 0)
+    if reasoning_n or summary.get("recommend_thinking_stream"):
+        st.warning(
+            "Recommender thinking may be on "
+            f"(reasoning_tokens={reasoning_n}, "
+            f"thinking_stream={summary.get('recommend_thinking_stream')})."
+        )
 
     rows = summary.get("by_node") or []
     if rows:
@@ -894,7 +921,16 @@ def invoke_agent(
     trace: list[dict[str, Any]] = []
     _current_trace = trace
     handler = TraceCallbackHandler()
-    config = {"callbacks": [handler]}
+    config = agent_run_config(
+        thread_id=st.session_state.langsmith_thread_id,
+        channel="streamlit",
+        user_text=user_text,
+        extra_metadata={
+            "public_ui": _PUBLIC_UI,
+            "stop_after": stop_after,
+        },
+    )
+    config["callbacks"] = [handler]
 
     final_messages: list[BaseMessage] | None = None
     turn_started = time.perf_counter()
@@ -989,6 +1025,19 @@ def invoke_agent(
         summary["recommend_ttft_chunk_ms"] = timing.get("chunk_ms")
         summary["recommend_ttft_spoken_ms"] = timing.get("spoken_ms")
         summary["recommend_elapsed_ms"] = timing.get("total_ms")
+        summary["recommend_reasoning_tokens"] = timing.get("reasoning_tokens")
+        summary["recommend_thinking_stream"] = timing.get("thinking_stream")
+        chunk_s = timing.get("chunk_ms")
+        spoken_s = timing.get("spoken_ms")
+        print(
+            "recommend "
+            f"ttft_chunk={None if chunk_s is None else f'{float(chunk_s) / 1000:.1f}s'} "
+            f"ttft_spoken={None if spoken_s is None else f'{float(spoken_s) / 1000:.1f}s'} "
+            f"reasoning={timing.get('reasoning_tokens')} "
+            f"thinking_stream={timing.get('thinking_stream')} "
+            f"empty_prefix={timing.get('empty_prefix')}",
+            flush=True,
+        )
         before_ms = 0.0
         for event in trace:
             if event.get("kind") != "node" or event.get("phase") != "update":
@@ -1003,6 +1052,8 @@ def invoke_agent(
         chunk = timing.get("chunk_ms")
         if chunk is not None:
             summary["turn_ttft_chunk_ms"] = before_ms + float(chunk)
+    else:
+        print("recommend timing missing", flush=True)
     trace.append({"kind": "summary", **summary})
 
     st.session_state.graph_messages = final_messages
@@ -1051,6 +1102,10 @@ with st.sidebar:
             or "extractor"
         )
         st.caption("Local harness: traces stay in this sidebar.")
+        if tracing_configured():
+            st.caption(f"LangSmith project `{project_name()}`.")
+        else:
+            st.caption("LangSmith off — set `LANGSMITH_API_KEY` to record turns.")
     if st.button("Reset conversation", width="stretch"):
         _reset_conversation()
         st.rerun()

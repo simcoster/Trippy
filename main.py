@@ -11,9 +11,11 @@ from fastapi import FastAPI, Request
 from langchain_core.messages import AIMessage, HumanMessage
 
 from source.agent.graph import ChatState, graph
+from source.agent.tracing import agent_run_config, configure_agent_tracing
 
 # Load environment variables from .env file
 load_dotenv()
+configure_agent_tracing()
 
 # Set up logging for debugging
 logging.basicConfig(
@@ -80,7 +82,14 @@ async def telegram_webhook(request: Request):
 
         # Run the graph
         logger.info("Invoking LangGraph...")
-        result = graph.invoke(state)
+        result = graph.invoke(
+            state,
+            config=agent_run_config(
+                thread_id=str(chat_id),
+                channel="telegram",
+                user_text=text,
+            ),
+        )
         logger.info("LangGraph completed successfully")
         
         # Get the last AI message from the result

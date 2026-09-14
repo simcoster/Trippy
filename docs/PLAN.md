@@ -6,6 +6,39 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-14, LangSmith on LangGraph)
+
+**Tester turns go to LangSmith.** Streamlit (and Telegram, if wired)
+enable tracing when `LANGSMITH_API_KEY` is set and stamp each graph
+run with `thread_id` + `channel`. Public UI still hides the sidebar
+trace; smith.langchain.com is how we see what the agent did.
+Ingest `job.sh` forces tracing off so scrapes do not share the
+project. design.md "LangSmith".
+
+### Done (2026-09-14, warmup prints Kimi's hi)
+
+**Warmup prints the ping and Kimi's reply.** On Streamlit load:
+`recommender warmup ping=hi model=…` immediately, then
+`recommender warmup reply='…' in Xs` when the one-token call
+returns (or `warmup failed`).
+
+### Done (2026-09-14, recommend timing reaches Streamlit)
+
+**Last recommend timing is a process snapshot, not a ContextVar.**
+LangGraph copies context into the node, so Streamlit’s
+`last_recommend_timing()` was always empty and the TTFT/thinking
+line never printed. The recommend call also `print`s that line
+(flush) — Streamlit/Uvicorn hide `logger.info`. Restart Streamlit
+to see warmup, extra_body, and `reasoning=` / `thinking_stream=`.
+
+### Done (2026-09-13, recommend thinking logs)
+
+**Recommend logs whether thinking is still on.** One info line
+with model, extra_body, TTFT, in/out, `reasoning_tokens`, empty
+prefix chunks, and `thinking_stream`. Warning if reasoning or
+thinking text appeared. Streamlit caption + warning; eval dump
+stores the flags.
+
 ### Later (2026-09-13, executable numeric rules)
 
 **Today the recommender is doing the arithmetic, and it should not.**
