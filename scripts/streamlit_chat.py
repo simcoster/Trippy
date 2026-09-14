@@ -1,8 +1,7 @@
 """
 Local Streamlit harness for the LangGraph agent.
 
-Mirrors Telegram's invoke path (HumanMessage → graph.invoke → last AIMessage)
-without requiring TELEGRAM_TOKEN or sending replies to Telegram.
+Mirrors a chat turn (HumanMessage → graph.stream → last AIMessage).
 
 Also records a per-turn LangGraph trace: nodes, LLM prompts/responses,
 tool calls (params + returns), token cost, and latency.
@@ -910,7 +909,7 @@ def invoke_agent(
     *,
     stop_after: HeavyThrough,
 ) -> tuple[str, list[dict[str, Any]]]:
-    """Same contract as main.telegram_webhook, plus a LangGraph turn trace."""
+    """Run one user turn through the compiled graph and return a LangGraph trace."""
     global _current_trace
 
     compiled = build_graph(stop_after=stop_after)

@@ -1,7 +1,7 @@
 # Cloud (Nebius VM)
 
 Phase-1 host: one always-on CPU VM, self-hosted Postgres, Streamlit over
-Cloudflare Tunnel, ingest as one-shot containers. Telegram is later.
+Cloudflare Tunnel, ingest as one-shot containers.
 Start/stop of the VM is later.
 
 LLM still goes to Token Factory over HTTPS. The VM does not need a GPU.
@@ -163,4 +163,3 @@ query. That is the backup existing until you have done it.
 | Bind-mount / `--reload` | yes | no |
 | Streamlit | host `just streamlit` | container |
 | Postgres port | `5432:5432` | unpublished |
-| FastAPI / Telegram | `api` service | not started |

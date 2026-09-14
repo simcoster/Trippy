@@ -20,13 +20,15 @@ RUN uv sync --frozen --no-dev
 # Copy application code
 COPY . .
 
-# Copy startup script
-COPY scripts/startup.sh /start.sh
-RUN chmod +x /start.sh /app/scripts/cloud/job.sh
+RUN chmod +x /app/scripts/cloud/job.sh
 
-# Expose port
-EXPOSE 8000
+EXPOSE 8501
 
-# Start the app
-CMD ["sh", "/start.sh"]
-
+CMD [
+  "/app/.venv/bin/streamlit",
+  "run",
+  "scripts/streamlit_chat.py",
+  "--server.address=0.0.0.0",
+  "--server.port=8501",
+  "--server.headless=true"
+]
