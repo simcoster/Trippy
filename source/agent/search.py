@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
-import threading
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -12,7 +12,9 @@ from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.tools import StructuredTool
+from langsmith import traceable
 from pgvector.psycopg import register_vector
+from pydantic import BaseModel, Field
 
 from db.connect import connect
 from db.experiments import table_name
@@ -20,6 +22,7 @@ from db.models import SubjectCategory
 from source.agent.constraints import claim_recency, today_il
 from source.agent.dates import _parse_iso_day, iso_day, stay_night_starts
 from source.agent.timing import stage
+from source.agent.tracing import tracing_env_on
 from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
 from source.scraper.info_site.quote import quote_night
 from source.scraper.info_site.schemas import RatePeriod
@@ -27,8 +30,6 @@ from source.scraper.info_site.schemas import RatePeriod
 load_dotenv()
 
 _claims_embedder = ClaimsEmbeddingLLMClient()
-_query_vec_cache: dict[str, str] = {}
-_query_vec_lock = threading.Lock()
 QUERY_EMBED_CONCURRENCY = 5
 
 # Site-wide rules for a candidate: this campsite and its parent. Sister
@@ -150,6 +151,35 @@ def _render_sql(sql: str, params: list[Any]) -> str:
     return "".join(out)
 
 
+def _trace_sql_param(value: Any) -> Any:
+    """Keep LangSmith SQL readable; pgvector literals are thousands of floats."""
+    if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+        return "<vector>"
+    return value
+
+
+def _drop_embedding_input(inputs: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in inputs.items() if key != "embedding"}
+
+
+def _attach_run_sql(sql: str, params: list[Any]) -> None:
+    """Put interpolated SQL on the current LangSmith span, if any."""
+    try:
+        from langsmith import get_current_run_tree
+    except ImportError:
+        return
+    run = get_current_run_tree()
+    if run is None:
+        return
+    rendered = _render_sql(sql, [_trace_sql_param(p) for p in params])
+    try:
+        inputs = dict(run.inputs or {})
+        inputs["sql"] = rendered
+        run.inputs = inputs
+    except Exception:
+        return
+
+
 def _rate_period_for_stay(date_range: dict | None) -> RatePeriod:
     if not isinstance(date_range, dict):
         return "weekday"
@@ -247,6 +277,7 @@ def _quote_slot_price(
         return None
 
 
+@traceable(name="search_open_slots", run_type="tool")
 def search_open_slots(
     *,
     date_range: dict | None = None,
@@ -287,6 +318,7 @@ def search_open_slots(
         "rate_period": _rate_period_for_stay(date_range),
     }
     _record_open_slots_query(query_record)
+    _attach_run_sql(sql, params)
     try:
         with stage("sql"):
             with connect(db_url) as conn:
@@ -425,33 +457,67 @@ def search_campsites(numeric_constraints):
 
 
 def _query_vec_literal(query: str) -> str:
-    key = " ".join((query or "").split())
-    with _query_vec_lock:
-        hit = _query_vec_cache.get(key)
-    if hit is not None:
-        return hit
     with stage("embed"):
         embedding = _claims_embedder.embed([query])[0]
-        literal = "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
-    with _query_vec_lock:
-        _query_vec_cache[key] = literal
-    return literal
+        return "[" + ",".join(f"{x:.8f}" for x in embedding) + "]"
 
 
+class _EmbedQueryArgs(BaseModel):
+    query: str = Field(description="Amenity or place phrase to embed.")
+
+
+def _run_embed_query_tool(query: str) -> str:
+    return _query_vec_literal(query)
+
+
+embed_query_tool = StructuredTool.from_function(
+    func=_run_embed_query_tool,
+    name="embed_query",
+    description="Embed one planner retrieve query for pgvector search.",
+    args_schema=_EmbedQueryArgs,
+)
+
+
+def _use_embed_tool() -> bool:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return tracing_env_on()
+
+
+def _invoke_embed_query_tool(query: str) -> str:
+    return embed_query_tool.invoke({"query": query})
+
+
+@traceable(name="embed_queries", run_type="tool")
 def _query_vec_literals(queries: Iterable[str]) -> dict[str, str]:
     """Embed distinct query statements, up to QUERY_EMBED_CONCURRENCY at a time."""
     unique = list(dict.fromkeys(queries))
     if not unique:
         return {}
+    worker = (
+        _invoke_embed_query_tool if _use_embed_tool() else _query_vec_literal
+    )
     workers = min(QUERY_EMBED_CONCURRENCY, len(unique))
     if workers == 1:
         query = unique[0]
-        return {query: _query_vec_literal(query)}
+        return {query: worker(query)}
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        literals = list(pool.map(_query_vec_literal, unique))
+        if worker is _invoke_embed_query_tool:
+            futs = [
+                pool.submit(contextvars.copy_context().run, worker, query)
+                for query in unique
+            ]
+            literals = [fut.result() for fut in futs]
+        else:
+            literals = list(pool.map(worker, unique))
     return dict(zip(unique, literals, strict=True))
 
 
+@traceable(
+    name="search_stated_amenities",
+    run_type="tool",
+    process_inputs=_drop_embedding_input,
+)
 def search_stated_amenities(
     query: str,
     limit: int = 5,
@@ -498,6 +564,7 @@ def search_stated_amenities(
         ORDER BY distance
         LIMIT %s
     """
+    _attach_run_sql(sql, params)
     try:
         with stage("retrieve"):
             with connect(db_url) as conn:
@@ -519,6 +586,11 @@ def search_stated_amenities(
         return [{"error": f"Error searching stated amenities: {e}"}]
 
 
+@traceable(
+    name="search_site_amenities",
+    run_type="tool",
+    process_inputs=_drop_embedding_input,
+)
 def search_site_amenities(
     query: str,
     limit: int = 5,
@@ -565,6 +637,7 @@ def search_site_amenities(
         ORDER BY distance
         LIMIT %s
     """
+    _attach_run_sql(sql, params)
     try:
         with stage("retrieve"):
             with connect(db_url) as conn:
@@ -585,6 +658,11 @@ def search_site_amenities(
         return [{"error": f"Error searching site amenities: {e}"}]
 
 
+@traceable(
+    name="search_campsite_rules",
+    run_type="tool",
+    process_inputs=_drop_embedding_input,
+)
 def search_campsite_rules(
     query: str,
     limit: int = 5,
@@ -640,6 +718,7 @@ def search_campsite_rules(
             ) x
         """
         params = [ids, vec_literal, vec_literal, limit]
+    _attach_run_sql(sql, params)
     try:
         with stage("rules"):
             with connect(db_url) as conn:
@@ -710,6 +789,11 @@ _CLAIMS_BY_SITE_SQL = """
 """
 
 
+@traceable(
+    name="search_review_claims",
+    run_type="tool",
+    process_inputs=_drop_embedding_input,
+)
 def search_review_claims(
     query: str,
     limit: int = 5,
@@ -739,6 +823,7 @@ def search_review_claims(
             vec_literal,
             limit,
         )
+    _attach_run_sql(sql, list(params))
     try:
         today = today_il()
         with stage("retrieve"):

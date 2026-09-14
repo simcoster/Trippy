@@ -158,7 +158,9 @@ Every real turn is 2–4 Nebius calls. Ingest is many more. Reliability here bea
 - Timeouts, retries with jitter, and a circuit breaker per model (30B / 235B / embed).
 - Hard concurrency limit toward Token Factory (don’t open 50 235B calls because 50 webhooks arrived).
 - Fallback: if 235B is down, extractor/recommender on 30B with a user-visible “slower/simpler” path is better than silence.
-- Cache embeddings of identical amenity queries (planner stage 2). Catalog embeddings are already in Postgres — don’t re-embed on read.
+- Cache embeddings of identical amenity queries (planner retrieve):
+  later, a Postgres phrase→vector table. Catalog embeddings are already
+  in Postgres — don’t re-embed claims/amenities on read.
 - Track tokens, latency, error rate, $ per turn. A busy Friday is a cost incident, not a scale incident.
 - Fail closed to the user: “try again in a minute,” not a stack trace.
 
