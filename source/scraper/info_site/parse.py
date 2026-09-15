@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import NamedTuple
 from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
@@ -24,29 +25,76 @@ def parse_price(text: str) -> float | None:
     return float(match.group(1))
 
 
+class GatheredRateRow(NamedTuple):
+    """One published tariff cell, including which discount tab it sat on."""
+
+    tab_id: str
+    rate_class: str
+    raw_label: str
+    price: float
+    notes: str | None
+
+
+def _rate_card_root(soup: BeautifulSoup):
+    """The lazy sales wrapper when present, else the whole page."""
+    wrapped = soup.select_one("div.sales.lazy")
+    if wrapped is not None and wrapped.select("div.tableMain"):
+        return wrapped
+    return soup
+
+
+def parse_rate_tables(html: str) -> list[GatheredRateRow]:
+    """Every rate-class tab (רגיל, מנוי, …) plus per-row tooltip notes."""
+    soup = BeautifulSoup(html, "html.parser")
+    root = _rate_card_root(soup)
+    tab_names: dict[str, str] = {}
+    for tab in soup.select("span.tableTab[data-id]"):
+        tab_id = str(tab.get("data-id") or "").strip()
+        label = normalize_label(tab.get_text(" ", strip=True))
+        if tab_id and label:
+            tab_names[tab_id] = label
+
+    rows: list[GatheredRateRow] = []
+    for wrap in root.select("div.tableMain[data-id]"):
+        tab_id = str(wrap.get("data-id") or "").strip() or "1"
+        rate_class = tab_names.get(tab_id) or tab_id
+        for tr in wrap.select("tbody tr"):
+            cells = tr.find_all("td")
+            if len(cells) < 2:
+                continue
+            label = normalize_label(cells[0].get_text(" ", strip=True))
+            price = parse_price(cells[1].get_text(" ", strip=True))
+            if not label or price is None:
+                continue
+            note_el = tr.find(attrs={"data-content": True})
+            notes = None
+            if note_el is not None:
+                notes = normalize_label(note_el.get("data-content") or "") or None
+            rows.append(
+                GatheredRateRow(
+                    tab_id=tab_id,
+                    rate_class=rate_class,
+                    raw_label=label,
+                    price=price,
+                    notes=notes,
+                )
+            )
+    return rows
+
+
 def parse_rate_table(html: str) -> list[dict]:
     """Extract raw rows from the רגיל tab (`.tableMain[data-id=1]`)."""
-    soup = BeautifulSoup(html, "html.parser")
-    table_wrap = soup.find("div", class_="tableMain", attrs={"data-id": "1"})
-    if table_wrap is None:
-        table_wrap = soup.select_one("div.tableMain[data-id='1']")
-    if table_wrap is None:
-        return []
-
     rows: list[dict] = []
-    for tr in table_wrap.select("tbody tr"):
-        cells = tr.find_all("td")
-        if len(cells) < 2:
+    for row in parse_rate_tables(html):
+        if row.tab_id != "1":
             continue
-        label = normalize_label(cells[0].get_text(" ", strip=True))
-        price = parse_price(cells[1].get_text(" ", strip=True))
-        if not label or price is None:
-            continue
-        note_el = tr.find(attrs={"data-content": True})
-        notes = None
-        if note_el is not None:
-            notes = normalize_label(note_el.get("data-content") or "") or None
-        rows.append({"raw_label": label, "price": price, "notes": notes})
+        rows.append(
+            {
+                "raw_label": row.raw_label,
+                "price": row.price,
+                "notes": row.notes,
+            }
+        )
     return rows
 
 

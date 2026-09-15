@@ -22,15 +22,24 @@ from db.connect import connect, database_url
 from source.scraper.amenity_enrichment.llm import LlmUsage, record_scrape_cost
 from source.scraper.cli import add_site_argument, site_ids
 from source.scraper.info_site.classify import RateCardClassifier, classify_rows
+from source.scraper.info_site.compile_price import (
+    compile_quote_source,
+    digest_source,
+    gather_visitor_info_text,
+    gold_cases_for_site,
+    run_gold_tests,
+)
 from source.scraper.info_site.db import (
     UNCERTAIN_BELOW,
     maybe_fill_booking_hotel_id,
     snapshot_list_prices,
+    store_price_function,
 )
 from source.scraper.info_site.match_listing import InfoWebsiteNameMatcher, MatchCall
 from source.scraper.info_site.parse import (
     parse_booking_hotel_id,
     parse_rate_table,
+    parse_rate_tables,
     parse_wp_post_id,
 )
 from source.scraper.tls import ssl_context
@@ -105,6 +114,45 @@ def fetch_page_html(url: str, *, referer: str = LISTING_URL) -> str:
         return response.text
 
 
+def compile_price_function_for_site(
+    conn,
+    site: dict,
+    html: str,
+    *,
+    usage: LlmUsage | None = None,
+) -> None:
+    cases = gold_cases_for_site(url=site["url"])
+    if not cases:
+        print("    no gold tests for this site; skip price function")
+        return
+    gathered = parse_rate_tables(html)
+    if not gathered:
+        print("    no rate-card rows; skip price function")
+        return
+    visitor = gather_visitor_info_text(site["url"], html)
+    try:
+        source = compile_quote_source(
+            rows=gathered,
+            visitor_info=visitor,
+            site_name=site["name"],
+            usage=usage,
+        )
+    except Exception as exc:
+        print(f"    price function compile failed: {exc}")
+        return
+    failures = run_gold_tests(source, cases)
+    if failures:
+        print("    price function gold failed; keeping previous row")
+        for line in failures:
+            print(f"      {line}")
+        return
+    digest = digest_source(source)
+    status = store_price_function(
+        conn, site_id=site["id"], source=source, digest=digest
+    )
+    print(f"    price function {status} ({len(cases)} gold tests) sha256={digest[:12]}")
+
+
 def scrape_prices_for_site(
     conn,
     site: dict,
@@ -137,6 +185,7 @@ def scrape_prices_for_site(
         print(f"    wp post id={post_id}")
     fees = sum(1 for row in classified if row.kind == "fee")
     print(f"    {len(raw_rows)} table rows, {len(lodging)} lodging stored, {fees} fees skipped")
+    compile_price_function_for_site(conn, site, html, usage=usage)
     return len(lodging)
 
 

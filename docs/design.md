@@ -1031,6 +1031,38 @@ still three listings (caravan-bay water+power, PITCH tent power, site-wide
 (experiments.md 2026-09-08 §1); PITCH and site-wide keep the generic
 names.
 
+## Per-site price functions
+
+Published tariffs are compiled into one Python `quote()` per campsite
+and evaluated outside the recommender. `scrape-prices` still writes
+`list_prices` (regular tab, lodging rows) so `quote_night` remains the
+fallback. Pass 1 gathers every rate-class tab (`.tableMain`, including
+the `sales lazy` wrapper) plus tooltip `data-content`, and the AJAX
+`מידע למבקר` panel. Pass 2 is one **235B** call
+(`role=price_function_compile`) that must emit `quote(...)` with the
+shared `QuoteParams` signature. The 235B is the same bar as listing
+match: this source is shown to users as a breakdown, so a wrong merge
+of Matmon vs regular is worse than a missed compile.
+
+The reply is AST-checked (`import math` only, no dunders, no `open` /
+`eval`) and run against five gold cases per site
+(`source/price_sandbox/gold/cases.py`). All five must match to two
+decimal places. A pass upserts `site_price_functions` (`source`,
+`sha256`, `tests_passed`). An unchanged hash bumps `scraped_at` only.
+A fail leaves the previous passing row; the planner then keeps using
+that function or `quote_night`.
+
+At quote time Streamlit pushes approved sources into the
+`price-sandbox` container (`POST /load`, cap 30) and sends only params
+(`POST /quote`). The sandbox has no Postgres, no `.env`, no internet
+(internal `quote` network in prod; laptop publishes `127.0.0.1:8503`).
+Each quote runs in a short-lived child with a memory cap and a
+sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
+`quote_night`. Planner party size is still `adults_num`; child ages and
+discount flags default off until the extractor grows those fields.
+Fits carry `price_explanation` so the recommender cites the breakdown
+instead of summing.
+
 ## Recommender
 
 `recommender_node` (`source/agent/recommender.py`) is a Kimi-K3
@@ -1123,7 +1155,11 @@ Phase 1 lives on one Nebius CPU VM in `eu-north1` (Finland): Compose
 Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
-an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same image with
+an SSH `-L 8501` to the VM does not steal `localhost:8501`. The
+`price-sandbox` container evaluates compiled `quote()` functions;
+prod Streamlit reaches it only on the internal `quote` network
+(`PRICE_SANDBOX_URL=http://price-sandbox:8503`). Laptop Streamlit uses
+`http://127.0.0.1:8503`. Ingest is the same image with
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH as
 `gh-actions` (`TRIPPY_VM_HOST` / `TRIPPY_SSH_USER` / `TRIPPY_SSH_KEY`).
 Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily

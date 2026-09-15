@@ -462,6 +462,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             "max_occupancy": slot.get("max_occupancy"),
             "occupancy_unknown": slot.get("occupancy_unknown"),
             "price_per_night": slot.get("price_per_night"),
+            "price_explanation": slot.get("price_explanation"),
             "why": why,
         }
 

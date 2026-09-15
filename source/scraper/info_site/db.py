@@ -10,6 +10,7 @@ reported rather than inventing a lodging product the operator never listed.
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import NamedTuple
 
 from source.scraper.amenity_enrichment.llm import LlmUsage
 from source.scraper.info_site.match_listing import (
@@ -293,3 +294,80 @@ def snapshot_list_prices(
                     },
                 )
     return stored
+
+
+class StoredPriceFunction(NamedTuple):
+    site_id: int
+    source: str
+    sha256: str
+
+
+LOAD_PRICE_FUNCTION_HASH_SQL = """
+SELECT sha256 FROM site_price_functions WHERE site_id = %(site_id)s
+"""
+
+LOAD_PRICE_FUNCTIONS_SQL = """
+SELECT site_id, source, sha256
+FROM site_price_functions
+WHERE tests_passed
+ORDER BY site_id
+"""
+
+UPSERT_PRICE_FUNCTION_SQL = """
+INSERT INTO site_price_functions (
+    site_id, source, sha256, tests_passed
+) VALUES (
+    %(site_id)s, %(source)s, %(sha256)s, TRUE
+)
+ON CONFLICT (site_id) DO UPDATE
+SET source = EXCLUDED.source,
+    sha256 = EXCLUDED.sha256,
+    tests_passed = TRUE,
+    scraped_at = now(),
+    updated_at = now()
+"""
+
+TOUCH_PRICE_FUNCTION_SQL = """
+UPDATE site_price_functions
+SET scraped_at = now()
+WHERE site_id = %(site_id)s
+"""
+
+
+def load_price_function_hash(conn, *, site_id: int) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute(LOAD_PRICE_FUNCTION_HASH_SQL, {"site_id": site_id})
+        row = cur.fetchone()
+    if row is None:
+        return None
+    return str(row[0])
+
+
+def load_price_functions(conn) -> list[StoredPriceFunction]:
+    with conn.cursor() as cur:
+        cur.execute(LOAD_PRICE_FUNCTIONS_SQL)
+        rows = cur.fetchall()
+    return [
+        StoredPriceFunction(int(site_id), str(source), str(digest))
+        for site_id, source, digest in rows
+    ]
+
+
+def store_price_function(
+    conn,
+    *,
+    site_id: int,
+    source: str,
+    digest: str,
+) -> str:
+    """Insert or update. Returns 'unchanged' when only scraped_at moves."""
+    previous = load_price_function_hash(conn, site_id=site_id)
+    with conn.cursor() as cur:
+        if previous == digest:
+            cur.execute(TOUCH_PRICE_FUNCTION_SQL, {"site_id": site_id})
+            return "unchanged"
+        cur.execute(
+            UPSERT_PRICE_FUNCTION_SQL,
+            {"site_id": site_id, "source": source, "sha256": digest},
+        )
+    return "updated"

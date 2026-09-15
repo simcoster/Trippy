@@ -12,6 +12,7 @@ set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 # directory, never the working directory.
 path_sep := if os_family() == "windows" { ";" } else { ":" }
 export PYTHONPATH := justfile_directory() + path_sep + justfile_directory() / "source/scraper"
+export PRICE_SANDBOX_URL := env("PRICE_SANDBOX_URL", "http://127.0.0.1:8503")
 
 [private]
 default:
