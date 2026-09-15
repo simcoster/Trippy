@@ -49,8 +49,12 @@ services:
       DATABASE_URL: postgresql://trippy:${POSTGRES_PASSWORD}@trippy-postgres:5432/trippy
       PYTHONPATH: /app:/app/source/scraper
       TRIPPY_PUBLIC_UI: "1"
+      PRICE_SANDBOX_URL: http://price-sandbox:8503
     ports:
       - "127.0.0.1:8501:8501"
+    networks:
+      - default
+      - quote
     command:
       - /app/.venv/bin/streamlit
       - run
@@ -90,5 +94,42 @@ services:
     restart: "no"
     entrypoint: ["/app/scripts/cloud/job.sh"]
 
+  price-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.price-sandbox
+    image: trippy-price-sandbox
+    container_name: trippy-price-sandbox
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 64
+    environment:
+      PRICE_SANDBOX_PORT: "8503"
+    networks:
+      - quote
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8503/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
 volumes:
   trippy_pgdata:
+
+networks:
+  quote:
+    driver: bridge
+    internal: true

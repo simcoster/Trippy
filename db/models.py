@@ -120,6 +120,9 @@ class Campsite(Base):
         back_populates="campsite"
     )
     list_prices: Mapped[list[ListPrice]] = relationship(back_populates="campsite")
+    site_price_function: Mapped[SitePriceFunction | None] = relationship(
+        back_populates="campsite", uselist=False
+    )
     info_website_names: Mapped[list[InfoWebsiteName]] = relationship(
         back_populates="campsite"
     )
@@ -645,3 +648,31 @@ class ListPrice(Base):
     info_website_name: Mapped[InfoWebsiteName] = relationship(
         back_populates="list_prices"
     )
+
+
+class SitePriceFunction(Base):
+    """LLM-compiled quote() for one campsite, stored only after gold tests pass."""
+
+    __tablename__ = "site_price_functions"
+
+    site_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("campsites.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    tests_passed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    scraped_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    campsite: Mapped[Campsite] = relationship(back_populates="site_price_function")

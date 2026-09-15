@@ -6,6 +6,22 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-15, sandboxed per-site price functions)
+
+**Prices are compiled to `quote()`, not summed by the recommender.**
+`scrape-prices` still snapshots `list_prices`, then gathers every
+rate-class tab plus `מידע למבקר` pricing rules, asks the 235B for one
+`quote(...)` per site, AST-checks it (`math` only), and stores the
+source on `site_price_functions` only when five gold cases pass.
+Unchanged hash bumps `scraped_at` only; a fail keeps the previous
+row. Planner quotes via the `price-sandbox` Docker (params in, price
+plus explanation out) and falls back to `quote_night` when
+`PRICE_SANDBOX_URL` is unset or the site has no passing function.
+Supersedes the 2026-09-13 “executable numeric rules” note for
+**prices** (other numeric subjects are still open). A compile-quality
+experiment (18 × 1 call) is not in experiments.md yet — needs a
+`scrape-prices` yes.
+
 ### Done (2026-09-14, scrape-reviews then embed)
 
 **Daily reviews fetch then classify.** `just scrape-reviews` still
