@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 TENT = "לינת שטח באוהלים פרטיים"
+REGULAR = "רגיל"
+MATMON = "מנוי"
+SOLDIER = "חייל בשירות חובה + שירות לאומי"
+SENIOR = "אזרח ותיק"
 
 
 def _ils(value: float) -> str:
@@ -13,8 +17,15 @@ def _ils(value: float) -> str:
 
 
 def _params(lodging: str, **kwargs) -> dict:
-    payload = {"lodging": lodging, "adults_num": 1}
+    payload = {
+        "lodging": lodging,
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": REGULAR,
+    }
     payload.update(kwargs)
+    if "child_num" not in kwargs:
+        payload["child_num"] = len(payload.get("child_ages") or [])
     return payload
 
 
@@ -53,19 +64,19 @@ def _tent_band(
         ),
         _case(
             "two adults matmon",
-            _params(TENT, adults_num=2, is_matmon_sub=True),
+            _params(TENT, adults_num=2, guest_type=MATMON),
             matmon_adult * 2,
             f"2 adults [{_ils(matmon_adult)}]; Matmon",
         ),
         _case(
             "one soldier",
-            _params(TENT, adults_num=1, is_soldier=True),
+            _params(TENT, adults_num=1, guest_type=SOLDIER),
             soldier,
             f"1 soldier [{_ils(soldier)}]",
         ),
         _case(
             "one senior",
-            _params(TENT, adults_num=1, is_senior=True),
+            _params(TENT, adults_num=1, guest_type=SENIOR),
             senior,
             f"1 senior [{_ils(senior)}]",
         ),
@@ -93,7 +104,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon tent",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 114.0,
                 "2 adults [57]; Matmon",
             ),
@@ -133,7 +144,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 114.0,
                 "2 adults [57]; Matmon",
             ),
@@ -173,7 +184,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 96.0,
                 "2 adults [48]; Matmon",
             ),
@@ -213,7 +224,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 70.0,
                 "2 adults [35]; Matmon",
             ),
@@ -256,7 +267,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 96.0,
                 "2 adults [48]; Matmon",
             ),
@@ -296,7 +307,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 70.0,
                 "2 adults [35]; Matmon",
             ),
@@ -308,7 +319,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "one soldier",
-                _params(TENT, adults_num=1, is_soldier=True),
+                _params(TENT, adults_num=1, guest_type=SOLDIER),
                 35.0,
                 "1 soldier [35]",
             ),
@@ -331,7 +342,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 114.0,
                 "2 adults [57]; Matmon",
             ),
@@ -374,7 +385,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 96.0,
                 "2 adults [48]; Matmon",
             ),
@@ -425,7 +436,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 96.0,
                 "2 adults [48]; Matmon",
             ),
@@ -460,7 +471,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 96.0,
                 "2 adults [48]; Matmon",
             ),
@@ -511,7 +522,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 96.0,
                 "2 adults [48]; Matmon",
             ),
@@ -556,7 +567,7 @@ CATALOG: list[dict] = [
             ),
             _case(
                 "two adults matmon",
-                _params(TENT, adults_num=2, is_matmon_sub=True),
+                _params(TENT, adults_num=2, guest_type=MATMON),
                 96.0,
                 "2 adults [48]; Matmon",
             ),

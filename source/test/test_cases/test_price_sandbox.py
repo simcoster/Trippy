@@ -23,14 +23,9 @@ HORASHAT_QUOTE = """
 def quote(
     lodging,
     adults_num,
+    child_num=0,
     child_ages=(),
-    is_matmon_sub=False,
-    is_soldier=False,
-    is_active_reserve=False,
-    is_senior=False,
-    is_student=False,
-    is_disabled_idf=False,
-    is_group=False,
+    guest_type="רגיל",
     is_weekend_or_holiday=False,
     planned_entry_time=None,
     planned_exit_time=None,
@@ -50,7 +45,7 @@ def quote(
     if tent:
         adult_p = 76.0
         child_p = 58.0
-        if is_matmon_sub:
+        if guest_type == "מנוי":
             adult_p = 57.0
             child_p = 44.0
         price = adult_p * adults_num + child_p * children
@@ -146,7 +141,7 @@ def test_parse_sales_lazy_all_tabs():
 
 def test_child_process_times_out():
     source = """
-def quote(lodging, adults_num, child_ages=(), is_matmon_sub=False, is_soldier=False, is_active_reserve=False, is_senior=False, is_student=False, is_disabled_idf=False, is_group=False, is_weekend_or_holiday=False, planned_entry_time=None, planned_exit_time=None):
+def quote(lodging, adults_num, child_num=0, child_ages=(), guest_type="רגיל", is_weekend_or_holiday=False, planned_entry_time=None, planned_exit_time=None):
     total = 0
     for i in range(10 ** 9):
         total = total + 1

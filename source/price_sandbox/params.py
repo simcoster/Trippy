@@ -10,14 +10,9 @@ from typing import Any, Mapping
 class QuoteParams:
     lodging: str
     adults_num: int = 1
+    child_num: int = 0
     child_ages: tuple[int, ...] = ()
-    is_matmon_sub: bool = False
-    is_soldier: bool = False
-    is_active_reserve: bool = False
-    is_senior: bool = False
-    is_student: bool = False
-    is_disabled_idf: bool = False
-    is_group: bool = False
+    guest_type: str = "רגיל"
     is_weekend_or_holiday: bool = False
     planned_entry_time: str | None = None
     planned_exit_time: str | None = None
@@ -26,14 +21,9 @@ class QuoteParams:
         return {
             "lodging": self.lodging,
             "adults_num": int(self.adults_num),
+            "child_num": int(self.child_num),
             "child_ages": tuple(int(age) for age in self.child_ages),
-            "is_matmon_sub": bool(self.is_matmon_sub),
-            "is_soldier": bool(self.is_soldier),
-            "is_active_reserve": bool(self.is_active_reserve),
-            "is_senior": bool(self.is_senior),
-            "is_student": bool(self.is_student),
-            "is_disabled_idf": bool(self.is_disabled_idf),
-            "is_group": bool(self.is_group),
+            "guest_type": str(self.guest_type or "רגיל"),
             "is_weekend_or_holiday": bool(self.is_weekend_or_holiday),
             "planned_entry_time": self.planned_entry_time,
             "planned_exit_time": self.planned_exit_time,
@@ -48,17 +38,14 @@ class QuoteParams:
     def from_mapping(cls, data: Mapping[str, Any]) -> QuoteParams:
         ages_raw = data.get("child_ages") or ()
         ages = tuple(int(age) for age in ages_raw)
+        raw_child_num = data.get("child_num")
+        child_num = len(ages) if raw_child_num is None else int(raw_child_num)
         return cls(
             lodging=str(data.get("lodging") or ""),
             adults_num=int(data.get("adults_num") or 0),
+            child_num=child_num,
             child_ages=ages,
-            is_matmon_sub=bool(data.get("is_matmon_sub") or False),
-            is_soldier=bool(data.get("is_soldier") or False),
-            is_active_reserve=bool(data.get("is_active_reserve") or False),
-            is_senior=bool(data.get("is_senior") or False),
-            is_student=bool(data.get("is_student") or False),
-            is_disabled_idf=bool(data.get("is_disabled_idf") or False),
-            is_group=bool(data.get("is_group") or False),
+            guest_type=str(data.get("guest_type") or "רגיל"),
             is_weekend_or_holiday=bool(data.get("is_weekend_or_holiday") or False),
             planned_entry_time=_opt_str(data.get("planned_entry_time")),
             planned_exit_time=_opt_str(data.get("planned_exit_time")),

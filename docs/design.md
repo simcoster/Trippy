@@ -1038,11 +1038,17 @@ and evaluated outside the recommender. `scrape-prices` still writes
 `list_prices` (regular tab, lodging rows) so `quote_night` remains the
 fallback. Pass 1 gathers every rate-class tab (`.tableMain`, including
 the `sales lazy` wrapper) plus tooltip `data-content`, and the AJAX
-`מידע למבקר` panel. Pass 2 is one **235B** call
-(`role=price_function_compile`) that must emit `quote(...)` with the
-shared `QuoteParams` signature. The 235B is the same bar as listing
-match: this source is shown to users as a breakdown, so a wrong merge
-of Matmon vs regular is worse than a missed compile.
+`מידע למבקר` panel. Each published label is resolved with the same
+`match_info_website_name` flow as `list_prices` (exact, 235B, rescue,
+force). The compile prompt then uses those **canonical**
+`info_website_names` strings as `lodging`, and the rate-card tab as
+`guest_type` (רגיל, מנוי, חייל, … — not adult vs child). Pass 2 is one
+**235B** call (`role=price_function_compile`) that must emit `quote(...)`
+with the shared `QuoteParams` signature. The generated module must
+reject unknown `lodging` / `guest_type` against copied constant tuples.
+The 235B is the same bar as listing match: this source is shown to users
+as a breakdown, so a wrong merge of Matmon vs regular is worse than a
+missed compile.
 
 The reply is AST-checked (`import math` only, no dunders, no `open` /
 `eval`) and run against five gold cases per site
@@ -1053,7 +1059,9 @@ price to two decimal places; the explanation is documentation and the
 failure-message detail, not a string match against the 235B. A pass upserts `site_price_functions` (`source`,
 `sha256`, `tests_passed`). An unchanged hash bumps `scraped_at` only.
 A fail leaves the previous passing row; the planner then keeps using
-that function or `quote_night`.
+that function or `quote_night`. Every compile writes
+`reports/price_functions/<site_id>.py` and `<site_id>.prompt.txt`
+(system + user, gitignored), including failures.
 
 At quote time Streamlit pushes approved sources into the
 `price-sandbox` container (`POST /load`, cap 30) and sends only params
@@ -1061,8 +1069,14 @@ At quote time Streamlit pushes approved sources into the
 (internal `quote` network in prod; laptop publishes `127.0.0.1:8503`).
 Each quote runs in a short-lived child with a memory cap and a
 sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
-`quote_night`. Planner party size is still `adults_num`; child ages and
-discount flags default off until the extractor grows those fields.
+`quote_night`. Planner party size is still `adults_num`; `child_num`,
+child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
+off until the extractor grows those fields. `child_num` is an explicit
+child headcount (toddlers included); `child_ages` only splits toddler /
+child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
+`quote()` applies the קבוצה tab when `adults_num + child_num` meets that
+site's published threshold. `is_weekend_or_holiday` stays a caller flag
+(the night is or is not a weekend).
 Fits carry `price_explanation` so the recommender cites the breakdown
 instead of summing.
 

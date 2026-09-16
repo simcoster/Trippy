@@ -31,7 +31,26 @@ ALLOWED_CALL_NAMES = frozenset(
         "sum",
         "tuple",
         "zip",
+        "next",
         "ValueError",
+    }
+)
+
+SAFE_METHODS = frozenset(
+    {
+        "append",
+        "count",
+        "endswith",
+        "get",
+        "index",
+        "items",
+        "join",
+        "keys",
+        "replace",
+        "split",
+        "startswith",
+        "strip",
+        "values",
     }
 )
 
@@ -52,6 +71,7 @@ SAFE_BUILTINS: dict[str, Any] = {
     "sum": sum,
     "tuple": tuple,
     "zip": zip,
+    "next": next,
     "ValueError": ValueError,
     "True": True,
     "False": False,
@@ -177,11 +197,15 @@ class _AllowlistVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if not isinstance(node.value, ast.Name) or node.value.id != "math":
-            raise PriceFunctionError("attribute access is only allowed on math")
         if node.attr.startswith("_"):
-            raise PriceFunctionError("math dunder attributes are not allowed")
-        self.generic_visit(node)
+            raise PriceFunctionError("dunder attributes are not allowed")
+        if isinstance(node.value, ast.Name) and node.value.id == "math":
+            self.generic_visit(node)
+            return
+        if node.attr in SAFE_METHODS:
+            self.generic_visit(node)
+            return
+        raise PriceFunctionError(f"attribute {node.attr!r} is not allowed")
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
@@ -189,8 +213,15 @@ class _AllowlistVisitor(ast.NodeVisitor):
             if func.id not in ALLOWED_CALL_NAMES:
                 raise PriceFunctionError(f"call to {func.id!r} is not allowed")
         elif isinstance(func, ast.Attribute):
-            if not isinstance(func.value, ast.Name) or func.value.id != "math":
-                raise PriceFunctionError("only math.* calls are allowed")
+            if func.attr.startswith("_"):
+                raise PriceFunctionError("dunder attributes are not allowed")
+            math_call = (
+                isinstance(func.value, ast.Name) and func.value.id == "math"
+            )
+            if not math_call and func.attr not in SAFE_METHODS:
+                raise PriceFunctionError(
+                    f"call to {func.attr!r} is not allowed"
+                )
         else:
             raise PriceFunctionError("call target is not allowed")
         self.generic_visit(node)

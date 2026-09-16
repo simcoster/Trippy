@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -18,19 +19,23 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-from db.connect import connect, database_url
+from db.connect import SCHEMA_ENV, connect, database_url
+from source.price_sandbox.ast_check import compile_quote
 from source.scraper.amenity_enrichment.llm import LlmUsage, record_scrape_cost
 from source.scraper.cli import add_site_argument, site_ids
 from source.scraper.info_site.classify import RateCardClassifier, classify_rows
 from source.scraper.info_site.compile_price import (
+    SYSTEM_PROMPT,
     compile_quote_source,
     digest_source,
     gather_visitor_info_text,
     gold_cases_for_site,
+    match_compile_rows,
     run_gold_tests,
 )
 from source.scraper.info_site.db import (
     UNCERTAIN_BELOW,
+    load_info_website_names,
     maybe_fill_booking_hotel_id,
     snapshot_list_prices,
     store_price_function,
@@ -51,6 +56,7 @@ load_dotenv()
 
 _SCRAPER_DIR = Path(__file__).resolve().parents[1]
 CONFIG_PATH = _SCRAPER_DIR / "config.json"
+_QUOTE_DIR = _SCRAPER_DIR.parents[1] / "reports" / "price_functions"
 LISTING_URL = (
     "https://www.parks.org.il/"
     "%D7%94%D7%96%D7%9E%D7%A0%D7%95%D7%AA-%D7%9C%D7%97%D7%A0%D7%99%D7%95%D7%A0%D7%99-%D7%9C%D7%99%D7%9C%D7%94/"
@@ -114,12 +120,30 @@ def fetch_page_html(url: str, *, referer: str = LISTING_URL) -> str:
         return response.text
 
 
+def _dump_quote(site: dict, source: str, *, user_prompt: str = "") -> None:
+    _QUOTE_DIR.mkdir(parents=True, exist_ok=True)
+    dest = _QUOTE_DIR / f"{site['id']}.py"
+    dest.write_text(source or "", encoding="utf-8")
+    prompt_dest = _QUOTE_DIR / f"{site['id']}.prompt.txt"
+    prompt_dest.write_text(
+        "----- system -----\n"
+        + SYSTEM_PROMPT
+        + "\n\n----- user -----\n"
+        + (user_prompt or ""),
+        encoding="utf-8",
+    )
+    print(f"    wrote {dest}")
+    if user_prompt:
+        print(f"    wrote {prompt_dest}")
+
+
 def compile_price_function_for_site(
     conn,
     site: dict,
     html: str,
     *,
     usage: LlmUsage | None = None,
+    matcher: InfoWebsiteNameMatcher | None = None,
 ) -> None:
     cases = gold_cases_for_site(url=site["url"])
     if not cases:
@@ -129,10 +153,24 @@ def compile_price_function_for_site(
     if not gathered:
         print("    no rate-card rows; skip price function")
         return
+    names = load_info_website_names(conn, site_id=site["id"])
+    if not names:
+        print("    no info_website_names; skip price function")
+        return
+    compile_rows = match_compile_rows(
+        gathered, names, matcher=matcher, usage=usage
+    )
+    if not compile_rows:
+        print("    no matched rate rows; skip price function")
+        return
+    lodgings = [name for _id, name in names]
+    guest_types = list(dict.fromkeys(row.guest_type for row in compile_rows))
     visitor = gather_visitor_info_text(site["url"], html)
     try:
-        source = compile_quote_source(
-            rows=gathered,
+        draft = compile_quote_source(
+            rows=compile_rows,
+            lodgings=lodgings,
+            guest_types=guest_types,
             visitor_info=visitor,
             site_name=site["name"],
             usage=usage,
@@ -140,15 +178,21 @@ def compile_price_function_for_site(
     except Exception as exc:
         print(f"    price function compile failed: {exc}")
         return
-    failures = run_gold_tests(source, cases)
+    _dump_quote(site, draft.source, user_prompt=draft.user_prompt)
+    try:
+        compile_quote(draft.source)
+    except Exception as exc:
+        print(f"    price function compile failed: {exc}")
+        return
+    failures = run_gold_tests(draft.source, cases)
     if failures:
         print("    price function gold failed; keeping previous row")
         for line in failures:
             print(f"      {line}")
         return
-    digest = digest_source(source)
+    digest = digest_source(draft.source)
     status = store_price_function(
-        conn, site_id=site["id"], source=source, digest=digest
+        conn, site_id=site["id"], source=draft.source, digest=digest
     )
     print(f"    price function {status} ({len(cases)} gold tests) sha256={digest[:12]}")
 
@@ -185,7 +229,9 @@ def scrape_prices_for_site(
         print(f"    wp post id={post_id}")
     fees = sum(1 for row in classified if row.kind == "fee")
     print(f"    {len(raw_rows)} table rows, {len(lodging)} lodging stored, {fees} fees skipped")
-    compile_price_function_for_site(conn, site, html, usage=usage)
+    compile_price_function_for_site(
+        conn, site, html, usage=usage, matcher=matcher
+    )
     return len(lodging)
 
 
@@ -254,6 +300,12 @@ def run_prices(
     campsites = fetch_campsites(config, sites=sites)
     if not campsites:
         print("No campsites found")
+        schema = (os.environ.get(SCHEMA_ENV) or "").strip() or "public"
+        if schema == "experiments":
+            print(
+                "    experiments.campsites is empty. "
+                "Re-copy with `just setup-experiments copy`."
+            )
         return 0
 
     pause_s = float(config.get("info_site", {}).get("request_pause_seconds", 0.5))

@@ -53,6 +53,48 @@ not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
 
+### Done (2026-09-16, compile uses canonical lodging + guest_type)
+
+**Compile prompt is catalog names and a tab parameter.** Rate-card
+labels go through the same `match_info_website_name` path as
+`list_prices`; the user prompt’s `lodging` is the canonical
+`info_website_names` string. `guest_type` is the rate-card tab (רגיל,
+מנוי, …) and a `quote()` argument; the boolean discount flags are gone.
+`quote()` must reject unknown lodging / guest_type against constant
+tuples. Reports always get `<site_id>.py` plus `<site_id>.prompt.txt`.
+Achziv 2.py had invented `"tent"`, `next()`, and flag-to-tab mapping.
+Supersedes “dump failed quote()” (dumps on pass too) and the
+“No `childs_num` / flags” bits of the group-flag entry. compile_price,
+QuoteParams, gold, ast_check (`next` + a few str/dict methods);
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, dump failed quote())
+
+**A failing compile is still visible.** AST or gold failure prints the
+model's `quote()` and writes `reports/price_functions/<site_id>.py`.
+It is not stored on `site_price_functions`. scrape.py
+`_dump_failed_quote`; design.md “Per-site price functions”.
+
+### Done (2026-09-16, quote() takes child_num)
+
+**`child_num` is an explicit quote input.** Occupancy, extra-person,
+and קבוצה thresholds use `adults_num + child_num`; `child_ages` only
+splits toddler / child / adult-rate. If omitted on a mapping, it
+defaults to `len(child_ages)`. Supersedes the “No `childs_num`”
+sentence in the group-flag entry below. QuoteParams, compile_price
+prompt, gold `_params`; design.md “Per-site price functions”.
+
+### Done (2026-09-16, group is not a quote flag)
+
+**`is_group` dropped from `QuoteParams`.** Group rates are a per-site
+occupancy policy (30 vs 80, …), not a guest identity like Matmon or
+soldier. `quote()` deduces the קבוצה tab from `adults_num` plus
+`child_ages` against that site's card. No `childs_num` either: the
+ages tuple is the count and the toddler / child / adult split.
+`is_weekend_or_holiday` stays an input. compile_price prompt;
+design.md “Per-site price functions”. Handwritten tests still accept
+`is_group=` as an unused default.
+
 ### Done (2026-09-15, gold price explanations)
 
 **Gold cases now say how the expected price was built.** Each of the

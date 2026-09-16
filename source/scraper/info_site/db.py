@@ -30,6 +30,58 @@ LOAD_INFO_WEBSITE_NAMES_SQL = """
 SELECT id, name FROM info_website_names WHERE site_id = %(site_id)s ORDER BY id
 """
 
+
+def load_info_website_names(conn, *, site_id: int) -> list[tuple[int, str]]:
+    with conn.cursor() as cur:
+        cur.execute(LOAD_INFO_WEBSITE_NAMES_SQL, {"site_id": site_id})
+        return [(int(r[0]), r[1]) for r in cur.fetchall()]
+
+
+def resolve_listing_ids(
+    needle: str,
+    names: list[tuple[int, str]],
+    *,
+    full_label: str | None = None,
+    matcher: InfoWebsiteNameMatcher | None = None,
+    usage: LlmUsage | None = None,
+    unmatched_sink: list[str] | None = None,
+) -> tuple[list[int], float | None]:
+    """Exact name, else 235B pick, rescue-split, then force the first catalog row.
+
+    Same resolution `snapshot_list_prices` uses for `list_prices`.
+    """
+    if not names:
+        return [], None
+    shown = (full_label or "").strip() or needle
+    name_id, confidence = match_info_website_name(
+        needle,
+        names,
+        full_label=full_label,
+        matcher=matcher,
+        usage=usage,
+    )
+    name_ids = [] if name_id is None else [name_id]
+    doubted = name_id is None or (
+        confidence is not None and confidence < UNCERTAIN_BELOW
+    )
+    if doubted and matcher is not None:
+        rescued, rescued_confidence = rescue_info_website_names(
+            shown, names, matcher=matcher, usage=usage
+        )
+        if rescued:
+            name_ids, confidence = rescued, rescued_confidence
+            if len(rescued) > 1:
+                print(f"      SPLIT across {len(rescued)}: {shown!r}")
+    if not name_ids:
+        name_ids, confidence = [names[0][0]], 0.0
+        print(f"      FORCED MATCH (model refused): {shown!r}")
+    if confidence is not None and confidence < UNCERTAIN_BELOW:
+        picked = ", ".join(n for i, n in names if i in name_ids)
+        print(f"      UNCERTAIN {confidence:.2f}: {shown!r} -> {picked!r}")
+        if unmatched_sink is not None:
+            unmatched_sink.append(f"{shown} -> {picked} ({confidence:.2f})")
+    return name_ids, confidence
+
 DELETE_REGULAR_LIST_PRICES_SQL = """
 DELETE FROM list_prices
 WHERE site_id = %(site_id)s
@@ -211,56 +263,14 @@ def snapshot_list_prices(
         stored: list[ClassifiedPriceRow] = []
         resolutions: list[tuple[ClassifiedPriceRow, list[int], float | None]] = []
         for row in lodging:
-            name_id, confidence = match_info_website_name(
+            name_ids, confidence = resolve_listing_ids(
                 row.accommodation_type,
                 names,
-                # The label as the rate card wrote it. The classifier's
-                # normalised type is what can match a catalog name exactly, but
-                # it is also what drops the room numbers, and the model needs
-                # them: `חדר צוות גדול` cannot be told from three other staff
-                # rooms, `... (חדרים 5 ו-6)` can.
                 full_label=row.raw_label,
                 matcher=matcher,
                 usage=usage,
+                unmatched_sink=unmatched_sink,
             )
-            name_ids = [] if name_id is None else [name_id]
-            doubted = name_id is None or (
-                confidence is not None and confidence < UNCERTAIN_BELOW
-            )
-            if doubted and matcher is not None:
-                # A rate card sometimes prices two products on one line, and a
-                # single pick has to be wrong about one of them. Only a doubted
-                # answer is worth a second call, and only a doubted one is
-                # allowed to come back with several names.
-                rescued, rescued_confidence = rescue_info_website_names(
-                    row.raw_label, names, matcher=matcher, usage=usage
-                )
-                if rescued:
-                    name_ids, confidence = rescued, rescued_confidence
-                    if len(rescued) > 1:
-                        print(
-                            f"      SPLIT across {len(rescued)}: {row.raw_label!r}"
-                        )
-            if not name_ids:
-                # The prompt forbids a refusal, so this is the model failing to
-                # follow it rather than a label with no home. Attach the price
-                # to the first candidate at confidence 0 and say so: a price
-                # filed against the wrong unit is visible and fixable, a price
-                # dropped on the floor is neither.
-                name_ids, confidence = [names[0][0]], 0.0
-                print(f"      FORCED MATCH (model refused): {row.raw_label!r}")
-            if confidence is not None and confidence < UNCERTAIN_BELOW:
-                picked = ", ".join(
-                    n for i, n in names if i in name_ids
-                )
-                print(
-                    f"      UNCERTAIN {confidence:.2f}: "
-                    f"{row.raw_label!r} -> {picked!r}"
-                )
-                if unmatched_sink is not None:
-                    unmatched_sink.append(
-                        f"{row.raw_label} -> {picked} ({confidence:.2f})"
-                    )
             resolutions.append((row, name_ids, confidence))
 
         # Every row is resolved before any is written: a clash is only visible
