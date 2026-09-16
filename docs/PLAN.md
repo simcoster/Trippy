@@ -52,6 +52,61 @@ below. design.md “Where it runs”; cloud.md.
 not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
+### Done (2026-09-16, gold JSON per campsite)
+
+**Gold is prices in JSON, not Python helpers.** One
+`source/price_sandbox/gold/sites/<slug>.json` per park; `gold/runner.py`
+loads the file whose `match` sits in the URL and runs `quote()` against
+`expected_price`. Deleted `cases.py` `BAND_76` / `BAND_64` / `BAND_47`
+and the per-site `*.py` modules that imported them — a shared band hid
+that בארות student is 53₪. Numbers from the published cards (prompts
+1–16 plus a live fetch of all 18 parks.org.il pages). Supersedes
+“gold file per campsite” Python modules below.
+
+### Done (2026-09-16, gold file per campsite)
+
+**Every campsite has full gold, not only Achziv.** One module per park
+under `source/price_sandbox/gold/sites/` (מצדה, חורשת טל, …). Tent
+identities include miluim / student / disabled; group occupancy 30 on
+every card that publishes קבוצה (all captured INPA cards); extra cases
+for each lodging on that dump (family tent, couple tent, mahal, staff,
+pitch, caravan, tokul, חושה). Numbers from scrape-prices prompts 1–16;
+בארות / יוטבתה from the 64₪ band after the scrape stopped. Supersedes
+“wait on a captured card”. test_price_gold_all_sites.py; design.md
+“Per-site price functions”.
+
+### Done (2026-09-16, strip quotes from lodging and guest_type)
+
+**Lodging and guest_type identifiers never keep quotation marks.**
+`צה"ל` in `נכה צה"ל ומלווה` made the 235B emit an unterminated Python
+string. `strip_type_quotes` on `QuoteParams` and on compile prompt
+names; gold `DISABLED` is `נכה צהל ומלווה`. design.md “Per-site price
+functions”.
+
+### Done (2026-09-16, one-shot sandbox loader)
+
+**A short-lived loader fills the sandbox; Streamlit only quotes.**
+`python -m source.price_sandbox.load` reads `site_price_functions`,
+`POST /load`, exits. `just load-price-sandbox` (laptop; also from
+`just streamlit` / `scrape-prices` / `run-eval` with `--if-up`).
+Prod: `price-sandbox-loader` on `default`+`quote`, `just prod-load-sandbox`,
+hooked from `prod-up`, `prod-scrape`, bootstrap, and deploy. The jail
+image deletes `load.py`. Search no longer `POST /load`s. Supersedes
+the “maybe a one-shot sandbox loader” note below.
+design.md “Per-site price functions”.
+
+### Open (2026-09-16, maybe a one-shot sandbox loader)
+
+**Streamlit (or the planner on first quote) still `POST /load`s
+functions into the sandbox.** That is the right isolation today: the
+jail has no Postgres. A later shape could be a short-lived loader
+process — reads `site_price_functions`, `POST /load`, exits — so
+Streamlit only quotes. Same security split (loader has the DB, sandbox
+does not). Worth it if `/load` from the UI becomes a footgun (two
+clients, last writer wins) or if compose-up is expected to leave the
+sandbox already filled. Not doing it at ~one Streamlit and a handful
+of functions. design.md “Per-site price functions”.
+
 ### Done (2026-09-16, copy drops leftover experiments tables)
 
 **`just setup-experiments copy` now drops experiments tables that are

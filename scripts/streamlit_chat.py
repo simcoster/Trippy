@@ -94,12 +94,6 @@ if not hasattr(_recommender_mod, "last_recommend_timing"):
 
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
-
-try:
-    agent_search.warmup_price_sandbox()
-except Exception:
-    pass
-
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
 from source.agent.recommender import (
     last_recommend_timing,

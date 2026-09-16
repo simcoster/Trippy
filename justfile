@@ -66,6 +66,7 @@ setup-experiments *args:
 # `just run-eval -- --recommender --from-planner reports/evals/<stamp>.json`
 # `just run-eval -- --limit 2` is the first 2 easy + first 2 hard.
 run-eval *args:
+    just load-price-sandbox -- --if-up --wait-s 3
     uv run python -m source.eval.run {{ trim_start_match(args, "-- ") }}
 
 # Run any just recipe with TRIPPY_SCHEMA=experiments (scrapes, planner, clears)
@@ -95,9 +96,14 @@ scrape-info *args:
 scrape-breadcrumbs *args:
     uv run python -m source.scraper.info_site.breadcrumbs {{ trim_start_match(args, "-- ") }}
 
-# info-site rate cards → list_prices (--site N)
+# info-site rate cards → list_prices (--site N). Reloads the sandbox if it is up.
 scrape-prices *args:
     uv run python -m source.scraper.info_site.scrape --prices {{ trim_start_match(args, "-- ") }}
+    just load-price-sandbox -- --if-up --wait-s 3
+
+# Push site_price_functions into the price sandbox, then exit
+load-price-sandbox *args:
+    uv run python -m source.price_sandbox.load {{ trim_start_match(args, "-- ") }}
 
 # parks.org.il listing → campsites
 scrape-sites:
@@ -186,16 +192,25 @@ scrape-all:
     just scrape-availability
 
 # Local Streamlit agent. 8502 so an SSH -L 8501 to the VM does not steal the tab.
+# Loads quote() into the sandbox if compose is up; otherwise quote_night.
 streamlit:
+    just load-price-sandbox -- --if-up --wait-s 3
     uv run streamlit run scripts/streamlit_chat.py --server.port 8502
 
-# VM: long-running db + streamlit + tunnel
+# VM: long-running db + streamlit + tunnel, then fill the sandbox
 [unix]
 prod-up:
     docker compose -f docker-compose.prod.yml --env-file .env up -d
+    just prod-load-sandbox
+
+# VM: POST site_price_functions into price-sandbox (one-shot, then exit)
+[unix]
+prod-load-sandbox:
+    docker compose -f docker-compose.prod.yml --env-file .env --profile load run --rm price-sandbox-loader
 
 # VM: one-shot ingest. just prod-scrape availability
 #      just prod-scrape availability -- --site 2
 [unix]
 prod-scrape job *args:
     docker compose -f docker-compose.prod.yml --env-file .env --profile scrape run --rm scrape {{job}} {{trim_start_match(args, "-- ")}}
+    just prod-load-sandbox

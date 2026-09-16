@@ -1,4 +1,4 @@
-"""HTTP client Streamlit / the planner use to talk to the price sandbox."""
+"""HTTP client the loader and quote callers use to talk to the price sandbox."""
 
 from __future__ import annotations
 

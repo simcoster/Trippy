@@ -19,6 +19,8 @@ services:
     networks:
       - default
 
+  # Quote jail. Empty until `just load-price-sandbox` (or `just streamlit`,
+  # which loads if this container is up). No Postgres on this network.
   price-sandbox:
     build:
       context: .

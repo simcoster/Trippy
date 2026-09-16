@@ -77,6 +77,8 @@ jobs:
                 -e REVIEWS_REPORT_PATH=/reports/reviews.md \
                 scrape "${JOB}"
             fi
+            docker compose -f docker-compose.prod.yml --env-file .env \
+              --profile load run --rm price-sandbox-loader
 
       - name: Job summary
         env:

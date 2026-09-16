@@ -1,0 +1,164 @@
+{
+  "match": "מעיין-חרוד",
+  "campsite": "חניון לילה גן לאומי מעיין חרוד",
+  "cases": [
+    {
+      "note": "tent two adults regular",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 152.0,
+      "explanation": "2 × 76"
+    },
+    {
+      "note": "tent two adults child and toddler",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 2,
+        "child_num": 2,
+        "guest_type": "רגיל",
+        "child_ages": [
+          7,
+          4
+        ]
+      },
+      "expected_price": 210.0,
+      "explanation": "2 × 76 + child 58 (age 7) + toddler free (age 4)"
+    },
+    {
+      "note": "tent two adults matmon",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "מנוי"
+      },
+      "expected_price": 114.0,
+      "explanation": "2 × 57 matmon"
+    },
+    {
+      "note": "tent one soldier",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "חייל בשירות חובה + שירות לאומי"
+      },
+      "expected_price": 58.0,
+      "explanation": "1 × 58 soldier"
+    },
+    {
+      "note": "tent one miluim",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "משרת מילואים פעיל"
+      },
+      "expected_price": 65.0,
+      "explanation": "1 × 65 miluim"
+    },
+    {
+      "note": "tent one senior",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "אזרח ותיק"
+      },
+      "expected_price": 38.0,
+      "explanation": "1 × 38 senior"
+    },
+    {
+      "note": "tent one student",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "סטודנט"
+      },
+      "expected_price": 65.0,
+      "explanation": "1 × 65 student"
+    },
+    {
+      "note": "tent one disabled",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "נכה צהל ומלווה"
+      },
+      "expected_price": 38.0,
+      "explanation": "1 × 38 disabled"
+    },
+    {
+      "note": "tent group 30",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 30,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 1950.0,
+      "explanation": "30 × 65 group min 30"
+    },
+    {
+      "note": "tent group 30 matmon",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 30,
+        "child_num": 0,
+        "guest_type": "מנוי"
+      },
+      "expected_price": 1950.0,
+      "explanation": "30 × 65 group min 30 (matmon ignored)"
+    },
+    {
+      "note": "מתחם PITCH included 4",
+      "params": {
+        "lodging": "מתחם PITCH",
+        "adults_num": 4,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 476.0,
+      "explanation": "included 4 @ 476"
+    },
+    {
+      "note": "מתחם PITCH plus one extra",
+      "params": {
+        "lodging": "מתחם PITCH",
+        "adults_num": 5,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 552.0,
+      "explanation": "476 + extra 76"
+    },
+    {
+      "note": "עמדת חניה לקרוואן פרטי included 2",
+      "params": {
+        "lodging": "עמדת חניה לקרוואן פרטי",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 305.0,
+      "explanation": "included 2 @ 305"
+    },
+    {
+      "note": "עמדת חניה לקרוואן פרטי plus one extra",
+      "params": {
+        "lodging": "עמדת חניה לקרוואן פרטי",
+        "adults_num": 3,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 381.0,
+      "explanation": "305 + extra 76"
+    }
+  ]
+}

@@ -5,6 +5,15 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
+# Lodging / guest_type identifiers. Hebrew gershayim (צה"ל) must not
+# appear inside generated Python string literals.
+_TYPE_QUOTES = frozenset("\"'“”„‟‘’‚‛«»‹›׳״")
+
+
+def strip_type_quotes(value: str) -> str:
+    """Drop quotation marks from an accommodation or guest-type name."""
+    return "".join(ch for ch in value if ch not in _TYPE_QUOTES)
+
 
 @dataclass(frozen=True)
 class QuoteParams:
@@ -16,6 +25,11 @@ class QuoteParams:
     is_weekend_or_holiday: bool = False
     planned_entry_time: str | None = None
     planned_exit_time: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "lodging", strip_type_quotes(self.lodging))
+        guest = strip_type_quotes(str(self.guest_type or "רגיל"))
+        object.__setattr__(self, "guest_type", guest or "רגיל")
 
     def as_call_kwargs(self) -> dict[str, Any]:
         return {

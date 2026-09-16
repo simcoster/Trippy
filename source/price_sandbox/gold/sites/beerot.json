@@ -1,0 +1,222 @@
+{
+  "match": "בארות",
+  "campsite": "חניון לילה חאן בארות – מכתש רמון",
+  "cases": [
+    {
+      "note": "tent two adults regular",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 128.0,
+      "explanation": "2 × 64"
+    },
+    {
+      "note": "tent two adults child and toddler",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 2,
+        "child_num": 2,
+        "guest_type": "רגיל",
+        "child_ages": [7, 4]
+      },
+      "expected_price": 175.0,
+      "explanation": "2 × 64 + child 47 (age 7) + toddler free (age 4)"
+    },
+    {
+      "note": "tent two adults matmon",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "מנוי"
+      },
+      "expected_price": 96.0,
+      "explanation": "2 × 48 matmon"
+    },
+    {
+      "note": "tent one soldier",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "חייל בשירות חובה + שירות לאומי"
+      },
+      "expected_price": 47.0,
+      "explanation": "1 × 47 soldier"
+    },
+    {
+      "note": "tent one miluim",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "משרת מילואים פעיל"
+      },
+      "expected_price": 54.0,
+      "explanation": "1 × 54 miluim"
+    },
+    {
+      "note": "tent one senior",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "אזרח ותיק"
+      },
+      "expected_price": 32.0,
+      "explanation": "1 × 32 senior"
+    },
+    {
+      "note": "tent one student",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "סטודנט"
+      },
+      "expected_price": 53.0,
+      "explanation": "1 × 53 student"
+    },
+    {
+      "note": "tent one disabled",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 1,
+        "child_num": 0,
+        "guest_type": "נכה צהל ומלווה"
+      },
+      "expected_price": 32.0,
+      "explanation": "1 × 32 disabled"
+    },
+    {
+      "note": "tent group 30",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 30,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 1620.0,
+      "explanation": "30 × 54 group min 30"
+    },
+    {
+      "note": "tent group 30 matmon",
+      "params": {
+        "lodging": "לינת שטח באוהלים פרטיים",
+        "adults_num": 30,
+        "child_num": 0,
+        "guest_type": "מנוי"
+      },
+      "expected_price": 1620.0,
+      "explanation": "30 × 54 group min 30 (matmon ignored)"
+    },
+    {
+      "note": "השכרת אוהל קמפינג משפחתי included 4",
+      "params": {
+        "lodging": "השכרת אוהל קמפינג משפחתי",
+        "adults_num": 4,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 350.0,
+      "explanation": "included 4 @ 350"
+    },
+    {
+      "note": "השכרת אוהל קמפינג משפחתי plus one extra",
+      "params": {
+        "lodging": "השכרת אוהל קמפינג משפחתי",
+        "adults_num": 5,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 438.0,
+      "explanation": "350 + extra 88"
+    },
+    {
+      "note": "מאהל גדול קבוע two adults",
+      "params": {
+        "lodging": "מאהל גדול קבוע",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 192.0,
+      "explanation": "2 × 96"
+    },
+    {
+      "note": "חדר צוות קטן weekday",
+      "params": {
+        "lodging": "חדר צוות קטן",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 430.0,
+      "explanation": "weekday 430"
+    },
+    {
+      "note": "חדר צוות קטן weekend late exit",
+      "params": {
+        "lodging": "חדר צוות קטן",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל",
+        "is_weekend_or_holiday": true,
+        "planned_exit_time": "13:00"
+      },
+      "expected_price": 795.0,
+      "explanation": "weekend 530 + late 265"
+    },
+    {
+      "note": "חדר צוות גדול weekday",
+      "params": {
+        "lodging": "חדר צוות גדול",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 480.0,
+      "explanation": "weekday 480"
+    },
+    {
+      "note": "חדר צוות גדול weekend late exit",
+      "params": {
+        "lodging": "חדר צוות גדול",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל",
+        "is_weekend_or_holiday": true,
+        "planned_exit_time": "13:00"
+      },
+      "expected_price": 1020.0,
+      "explanation": "weekend 680 + late 340"
+    },
+    {
+      "note": "חדר צוות כפול weekday",
+      "params": {
+        "lodging": "חדר צוות כפול",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 860.0,
+      "explanation": "weekday 860"
+    },
+    {
+      "note": "חדר צוות כפול weekend late exit",
+      "params": {
+        "lodging": "חדר צוות כפול",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל",
+        "is_weekend_or_holiday": true,
+        "planned_exit_time": "13:00"
+      },
+      "expected_price": 1590.0,
+      "explanation": "weekend 1060 + late 530"
+    }
+  ]
+}

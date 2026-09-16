@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextvars
 import os
-import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -25,23 +24,17 @@ from source.agent.dates import _parse_iso_day, iso_day, stay_night_starts
 from source.agent.timing import stage
 from source.agent.tracing import tracing_env_on
 from source.price_sandbox.client import (
-    LoadedFunction,
     QuoteRequest,
-    load_into_sandbox,
     quote_via_sandbox,
     sandbox_reachable,
     sandbox_url,
 )
 from source.price_sandbox.params import QuoteParams, QuoteResult
 from source.scraper.amenity_enrichment.llm import ClaimsEmbeddingLLMClient
-from source.scraper.info_site.db import load_price_functions
 from source.scraper.info_site.quote import quote_night
 from source.scraper.info_site.schemas import RatePeriod
 
 load_dotenv()
-
-_SANDBOX_DIGESTS: frozenset[str] | None = None
-_SANDBOX_RETRY_AT = 0.0
 
 
 class _SandboxQuoteKey(NamedTuple):
@@ -298,56 +291,13 @@ def _quote_slot_price(
         return None
 
 
-def warmup_price_sandbox() -> bool:
-    """Push stored functions into the sandbox. False means use quote_night."""
-    return _ensure_sandbox_loaded()
-
-
-def _ensure_sandbox_loaded() -> bool:
-    global _SANDBOX_DIGESTS, _SANDBOX_RETRY_AT
-    if not sandbox_url():
-        return False
-    now = time.monotonic()
-    if now < _SANDBOX_RETRY_AT:
-        return False
-    if not sandbox_reachable():
-        _SANDBOX_RETRY_AT = now + 30.0
-        return False
-    db_url = os.environ.get("DATABASE_URL")
-    if not db_url:
-        return False
-    try:
-        with connect(db_url) as conn:
-            rows = load_price_functions(conn)
-    except Exception:
-        _SANDBOX_RETRY_AT = now + 30.0
-        return False
-    digests = frozenset(row.sha256 for row in rows)
-    if _SANDBOX_DIGESTS == digests:
-        return True
-    try:
-        load_into_sandbox(
-            [
-                LoadedFunction(
-                    site_id=row.site_id, source=row.source, sha256=row.sha256
-                )
-                for row in rows
-            ]
-        )
-    except Exception:
-        _SANDBOX_RETRY_AT = now + 30.0
-        return False
-    _SANDBOX_DIGESTS = digests
-    return True
-
-
 def _sandbox_quotes_for_slots(
     slots: list[dict],
     *,
     party_size: int | None,
     rate_period: RatePeriod,
 ) -> dict[_SandboxQuoteKey, QuoteResult]:
-    if not slots or not _ensure_sandbox_loaded():
+    if not slots or not sandbox_url() or not sandbox_reachable():
         return {}
     adults = party_size if party_size and party_size > 0 else 1
     weekend = rate_period == "weekend_holiday"

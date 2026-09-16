@@ -1044,7 +1044,9 @@ the `sales lazy` wrapper) plus tooltip `data-content`, and the AJAX
 `match_info_website_name` flow as `list_prices` (exact, 235B, rescue,
 force). The compile prompt then uses those **canonical**
 `info_website_names` strings as `lodging`, and the rate-card tab as
-`guest_type` (רגיל, מנוי, חייל, … — not adult vs child). A listing match
+`guest_type` (רגיל, מנוי, חייל, … — not adult vs child). Quotation
+marks (ASCII and Hebrew gershayim) are stripped from both so enum
+values stay valid Python (`נכה צהל ומלווה`, not `צה"ל`). A listing match
 below `UNCERTAIN_BELOW` is dropped, not forced: extras tabs (ציוד
 להשכרה, mattress rental) never become a guest_type. Pass 2 is one
 **235B** call (`role=price_function_compile`) that must emit `quote(...)`
@@ -1073,11 +1075,19 @@ no dunders, no `open` / `eval`; `map` is allowed — late-exit parses
 syntactic unreachable code (statements after `return` / `raise`,
 `if False`, both-branch return). This is AST control flow, not
 dataflow: `if lodging is TENT` twice is not flagged. Then gold cases per site
-(`source/price_sandbox/gold/cases.py`): at least one soldier identity,
-at least one occupancy-override (group) case when that site publishes
-קבוצה, at least one case per lodging on the card, and at least one case
-per identity `guest_type` we have prices for (רגיל, מנוי, חייל, and
-Achziv also מילואים / אזרח ותיק / סטודנט / נכה). Five mixed
+(`source/price_sandbox/gold/sites/<slug>.json`, one file per campsite).
+Each file is a list of explicit prices (`expected_price` plus the
+arithmetic in `explanation`); there is no shared `BAND_*` table and no
+Python helpers that import across parks. `gold/runner.py` loads the
+JSON whose `match` fragment sits in the campsite URL and runs
+`quote()` against those numbers. At least one soldier identity, miluim
+/ student / disabled, occupancy-override (group min 30) on tent, at
+least one case per lodging on that card, and at least one case per
+identity `guest_type` (רגיל, מנוי, חייל, מילואים, אזרח ותיק, סטודנט,
+נכה). Numbers come from the published parks.org.il rate card (captured
+scrape-prices prompts 1–16, live fetch for בארות / יוטבתה), not from
+the compiled `quote()`. Shared tent bands hide real differences —
+בארות student is 53₪, not the 54₪ of other 64₪ parks. Five mixed
 cases were too few — a passing compile could ignore soldier, group, and
 most units. Each case records the expected
 price and the arithmetic that produced it (included occupancy, extra
@@ -1095,10 +1105,14 @@ or gold error in a follow-up turn is a **maybe** — revisit if those
 failures stay common after the prompt is settled. Do not retry gold by
 sending the expected numeric price (that hardcodes the gold cases).
 
-At quote time Streamlit pushes approved sources into the
-`price-sandbox` container (`POST /load`, cap 30) and sends only params
-(`POST /quote`). The sandbox has no Postgres, no `.env`, no internet
-(internal `quote` network in prod; laptop publishes `127.0.0.1:8503`).
+At quote time a one-shot loader (`just load-price-sandbox`, prod
+`price-sandbox-loader`) reads `site_price_functions` and `POST /load`s
+into the `price-sandbox` container (cap 30), then exits. Streamlit /
+the planner only send params (`POST /quote`). The sandbox has no
+Postgres, no `.env`, no internet (internal `quote` network in prod;
+laptop publishes `127.0.0.1:8503`). Re-run the loader after
+`scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
+other) front end does not own this.
 Each quote runs in a short-lived child with a memory cap and a
 sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
 `quote_night`. Planner party size is still `adults_num`; `child_num`,
@@ -1206,8 +1220,10 @@ Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
 an SSH `-L 8501` to the VM does not steal `localhost:8501`. The
-`price-sandbox` container evaluates compiled `quote()` functions;
-prod Streamlit reaches it only on the internal `quote` network
+`price-sandbox` container evaluates compiled `quote()` functions.
+A one-shot loader (`price-sandbox-loader` / `just load-price-sandbox`)
+pushes stored sources in, then exits. Prod Streamlit reaches the jail
+only on the internal `quote` network
 (`PRICE_SANDBOX_URL=http://price-sandbox:8503`). Laptop Streamlit uses
 `http://127.0.0.1:8503`. Ingest is the same image with
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH as

@@ -10,6 +10,10 @@ LLM still goes to Token Factory over HTTPS. The VM does not need a GPU.
 
 ```text
 testers ──HTTPS──► Cloudflare Tunnel ──► Streamlit :8501
+                                              │ quotes
+                                    price-sandbox (quote network)
+                                              ▲ POST /load, then exit
+                                    price-sandbox-loader (one-shot)
                                               │
 GitHub Actions ──SSH──► docker compose run scrape
                                               ▼
@@ -140,9 +144,11 @@ sudo sh ./scripts/cloud/bootstrap.sh
 ```
 
 Bootstrap installs Docker if needed, `trippy-backup` / `trippy-restore`
-(no cron — Actions dumps at 14:00 IDT via `backup.yml`), builds the image,
-starts `db` + `streamlit` + `cloudflared`, runs Alembic. Backup dir is
-`770 root:docker` so `gh-actions` can write it.
+(no cron — Actions dumps at 14:00 IDT via `backup.yml`), builds the
+image, starts `db` + `streamlit` + `cloudflared` + `price-sandbox`,
+runs Alembic, then a one-shot loader pushes `site_price_functions`
+into the sandbox and exits. Backup dir is `770 root:docker` so
+`gh-actions` can write it.
 
 ### 5. Restore the laptop database onto the VM
 
@@ -164,6 +170,12 @@ That replaces `public` only (`pg_restore --clean --if-exists -n public`).
 Alembic first so `vector` / `pg_trgm` exist.
 
 Do not scrape `public` as a smoke test of the new box.
+After the restore, reload compiled quote functions:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env \
+  --profile load run --rm price-sandbox-loader
+```
 
 ### 6. GitHub Actions → SSH (`gh-actions`)
 
@@ -217,6 +229,8 @@ sudo git pull
 sudo docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 sudo docker compose -f docker-compose.prod.yml --env-file .env \
   --profile scrape run --rm scrape migrate
+sudo docker compose -f docker-compose.prod.yml --env-file .env \
+  --profile load run --rm price-sandbox-loader
 ```
 
 ### 8. Day-1 billing check
@@ -238,4 +252,6 @@ is the backup existing until you have done it.
 | Who | laptop | Nebius VM |
 | Bind-mount / `--reload` | yes | no |
 | Streamlit | host `just streamlit` | container |
+| Price sandbox | `127.0.0.1:8503` | internal `quote` network |
+| Load functions | `just load-price-sandbox` | `just prod-load-sandbox` |
 | Postgres port | `5432:5432` | unpublished |

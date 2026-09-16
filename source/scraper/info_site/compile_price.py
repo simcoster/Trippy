@@ -9,8 +9,8 @@ from typing import NamedTuple
 from openai import OpenAI
 
 from source.price_sandbox.ast_check import source_sha256
-from source.price_sandbox.execute import eval_quote_inprocess
-from source.price_sandbox.gold import GoldCase, gold_for_url, prices_close
+from source.price_sandbox.gold import GoldCase, gold_for_url, run_cases
+from source.price_sandbox.params import strip_type_quotes
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_MODEL,
     LlmUsage,
@@ -54,8 +54,10 @@ must define exactly this function (same name, same parameters):
 Rules:
 - Return (price_float, explanation_str). Price is ILS for one night.
 - Define `class Lodging(Enum)` and `class GuestType(Enum)` first. Member
-  *values* are the exact Hebrew strings from the user message. Member *names*
-  are ASCII identifiers (TENT, HUSHA, REGULAR, MATMON, …).
+  *values* are the exact Hebrew strings from the user message (quotation
+  marks already stripped — never write `"`, `'`, or gershayim inside a
+  member value). Member *names* are ASCII identifiers (TENT, HUSHA,
+  REGULAR, MATMON, …).
 - Parse once at the top of quote(), rebinding the parameters:
   `lodging = Lodging(lodging)` and `guest_type = GuestType(guest_type)`.
   An unknown string raises ValueError (do not catch it). After that, compare
@@ -332,13 +334,13 @@ def match_compile_rows(
                 print(f"      skip non-lodging {score}: {row.raw_label!r}")
             continue
         for name_id in ids:
-            lodging = id_to_name.get(name_id) or ""
+            lodging = strip_type_quotes(id_to_name.get(name_id) or "")
             if not lodging:
                 continue
             matched.append(
                 CompileRateRow(
                     lodging=lodging,
-                    guest_type=row.rate_class,
+                    guest_type=strip_type_quotes(row.rate_class),
                     label=_canonical_label(row.raw_label, lodging),
                     price=row.price,
                     notes=row.notes,
@@ -375,9 +377,13 @@ def _rows_payload(rows: list[CompileRateRow], *, include_guest_type: bool) -> st
     lines = []
     for row in rows:
         note = f" | notes: {row.notes}" if row.notes else ""
-        guest = f" guest_type={row.guest_type!r}" if include_guest_type else ""
+        guest = (
+            f" guest_type={strip_type_quotes(row.guest_type)!r}"
+            if include_guest_type
+            else ""
+        )
         lines.append(
-            f"- lodging={row.lodging!r}{guest} "
+            f"- lodging={strip_type_quotes(row.lodging)!r}{guest} "
             f"label={row.label!r} price={row.price}{note}"
         )
     return "\n".join(lines)
@@ -392,8 +398,12 @@ def compile_user_prompt(
     visitor_info: str,
 ) -> str:
     buckets = partition_compile_rows(rows, guest_types)
-    lodging_lines = "\n".join(f"- {name}" for name in lodgings)
-    guest_lines = "\n".join(f"- {name}" for name in buckets.identity_guest_types)
+    lodging_lines = "\n".join(
+        f"- {strip_type_quotes(name)}" for name in lodgings
+    )
+    guest_lines = "\n".join(
+        f"- {strip_type_quotes(name)}" for name in buckets.identity_guest_types
+    )
     identity_block = _rows_payload(
         buckets.identity_rows, include_guest_type=True
     )
@@ -462,22 +472,7 @@ def compile_quote_source(
 
 def run_gold_tests(source: str, cases: list[GoldCase]) -> list[str]:
     """Return human-readable failures; empty means all cases matched."""
-    failures: list[str] = []
-    for index, case in enumerate(cases, start=1):
-        label = case.note or f"case {index}"
-        try:
-            result = eval_quote_inprocess(source, case.params)
-        except Exception as exc:
-            failures.append(f"{label}: {exc}")
-            continue
-        if not prices_close(result.price, case.expected_price):
-            detail = case.explanation or ""
-            if detail:
-                detail = f" ({detail})"
-            failures.append(
-                f"{label}: got {result.price} expected {case.expected_price}{detail}"
-            )
-    return failures
+    return run_cases(source, cases)
 
 
 def gold_cases_for_site(*, url: str) -> list[GoldCase] | None:

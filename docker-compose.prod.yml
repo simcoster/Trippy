@@ -126,6 +126,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot. `just prod-load-sandbox` / after `just prod-up`.
+  #   docker compose -f docker-compose.prod.yml --env-file .env --profile load run --rm price-sandbox-loader
+  price-sandbox-loader:
+    <<: *app
+    profiles: ["load"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://trippy:${POSTGRES_PASSWORD}@trippy-postgres:5432/trippy
+      PYTHONPATH: /app:/app/source/scraper
+      PRICE_SANDBOX_URL: http://price-sandbox:8503
+    networks:
+      - default
+      - quote
+    depends_on:
+      db:
+        condition: service_healthy
+      price-sandbox:
+        condition: service_healthy
+    command:
+      - /app/.venv/bin/python
+      - -m
+      - source.price_sandbox.load
+
 volumes:
   trippy_pgdata:
 
