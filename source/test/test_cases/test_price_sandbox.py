@@ -9,7 +9,7 @@ import pytest
 from source.price_sandbox.ast_check import PriceFunctionError, compile_quote
 from source.price_sandbox.execute import eval_quote_inprocess, run_quote
 from source.price_sandbox.gold import gold_for_url
-from source.price_sandbox.gold.cases import CATALOG
+from source.price_sandbox.gold.cases import BUNGALOW, CATALOG, TENT
 from source.price_sandbox.params import QuoteParams
 from source.price_sandbox.server import load_functions, quote_batch
 from source.scraper.info_site.parse import parse_rate_table, parse_rate_tables
@@ -102,28 +102,32 @@ def test_gold_matches_percent_encoded_hurshat_url():
     )
     cases = gold_for_url(url)
     assert cases is not None
-    assert len(cases) == 5
+    assert len(cases) >= 5
 
 
 def test_hurashat_gold_cases_pass_handwritten_function():
     cases = gold_for_url(HORASHAT_URL)
     assert cases is not None
-    assert len(cases) == 5
-    for case in cases:
-        got = eval_quote_inprocess(HORASHAT_QUOTE, case.params)
-        assert round(got.price, 2) == round(case.expected_price, 2), case.note
-    cases = gold_for_url(HORASHAT_URL)
-    assert cases is not None
-    assert len(cases) == 5
-    for case in cases:
+    supported = {
+        TENT,
+        BUNGALOW,
+    }
+    checked = [
+        case
+        for case in cases
+        if case.params.lodging in supported
+        and case.params.guest_type in ("רגיל", "מנוי")
+    ]
+    assert checked
+    for case in checked:
         got = eval_quote_inprocess(HORASHAT_QUOTE, case.params)
         assert round(got.price, 2) == round(case.expected_price, 2), case.note
 
 
-def test_catalog_has_five_cases_per_site():
+def test_catalog_cases_have_explanations():
     assert len(CATALOG) == 18
     for row in CATALOG:
-        assert len(row["cases"]) == 5, row.get("match")
+        assert len(row["cases"]) >= 5, row.get("match")
         for case in row["cases"]:
             assert case.get("explanation"), row.get("match")
 

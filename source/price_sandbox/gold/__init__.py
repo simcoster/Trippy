@@ -28,7 +28,7 @@ def load_gold_catalog() -> list[dict]:
 
 
 def gold_for_url(url: str) -> list[GoldCase] | None:
-    """Five (or so) cases whose ``match`` fragment sits in *url*, or None."""
+    """Cases whose ``match`` fragment sits in *url*, or None."""
     haystack = _url_haystack(url)
     for row in load_gold_catalog():
         match = str(row.get("match") or "").strip()

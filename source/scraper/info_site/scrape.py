@@ -32,6 +32,7 @@ from source.scraper.info_site.compile_price import (
     gold_cases_for_site,
     match_compile_rows,
     run_gold_tests,
+    static_compile_hits,
 )
 from source.scraper.info_site.db import (
     UNCERTAIN_BELOW,
@@ -137,6 +138,32 @@ def _dump_quote(site: dict, source: str, *, user_prompt: str = "") -> None:
         print(f"    wrote {prompt_dest}")
 
 
+def _print_ast_failure(kind: str, details: list[str]) -> None:
+    print()
+    print("=" * 60)
+    print("!!! PRICE FUNCTION AST FAILED !!!")
+    print(f"!!! {kind}")
+    for line in details:
+        print(f"!!!   {line}")
+    print("=" * 60)
+    print()
+
+
+def _print_store_ok(status: str, *, n_gold: int, digest: str) -> None:
+    if status == "inserted":
+        headline = "PRICE FUNCTION ADDED TO DB"
+    elif status == "updated":
+        headline = "PRICE FUNCTION UPDATED IN DB"
+    else:
+        headline = "PRICE FUNCTION UNCHANGED IN DB (hash match)"
+    print()
+    print("=" * 60)
+    print(f"*** {headline} ***")
+    print(f"*** {n_gold} gold tests  sha256={digest[:12]}")
+    print("=" * 60)
+    print()
+
+
 def compile_price_function_for_site(
     conn,
     site: dict,
@@ -182,7 +209,11 @@ def compile_price_function_for_site(
     try:
         compile_quote(draft.source)
     except Exception as exc:
-        print(f"    price function compile failed: {exc}")
+        _print_ast_failure("allowlist", [str(exc)])
+        return
+    scans = static_compile_hits(draft.source)
+    if scans:
+        _print_ast_failure("static checks", scans)
         return
     failures = run_gold_tests(draft.source, cases)
     if failures:
@@ -194,7 +225,7 @@ def compile_price_function_for_site(
     status = store_price_function(
         conn, site_id=site["id"], source=draft.source, digest=digest
     )
-    print(f"    price function {status} ({len(cases)} gold tests) sha256={digest[:12]}")
+    _print_store_ok(status, n_gold=len(cases), digest=digest)
 
 
 def scrape_prices_for_site(

@@ -305,7 +305,9 @@ guards it. If ranges become common, the alternative is a `qualifier_max` column.
 
 Production schema is not changed to try something out. `just
 setup-experiments copy` rebuilds `experiments` as a copy of `public`
-(tables, rows, views; FKs stay inside the schema). `--empty table,…`
+(tables, rows, views; FKs stay inside the schema) and drops leftover
+tables that are not in `public` (pytest extras, ad-hoc scripts).
+`availability_frozen` is kept. `--empty table,…`
 truncates after the copy. Scrapes, search and the planner then run with
 `TRIPPY_SCHEMA=experiments`, which makes `db.connect.connect` set
 `search_path=experiments,extensions`. Production `connect()` always
@@ -1042,19 +1044,44 @@ the `sales lazy` wrapper) plus tooltip `data-content`, and the AJAX
 `match_info_website_name` flow as `list_prices` (exact, 235B, rescue,
 force). The compile prompt then uses those **canonical**
 `info_website_names` strings as `lodging`, and the rate-card tab as
-`guest_type` (רגיל, מנוי, חייל, … — not adult vs child). Pass 2 is one
+`guest_type` (רגיל, מנוי, חייל, … — not adult vs child). A listing match
+below `UNCERTAIN_BELOW` is dropped, not forced: extras tabs (ציוד
+להשכרה, mattress rental) never become a guest_type. Pass 2 is one
 **235B** call (`role=price_function_compile`) that must emit `quote(...)`
 with the shared `QuoteParams` signature. The generated module must
-reject unknown `lodging` / `guest_type` against copied constant tuples.
+define `Lodging` and `GuestType` enums (member value = canonical
+Hebrew), parse `lodging` / `guest_type` into those members once, and
+compare members after that — not strings. `GuestType` is identity
+tabs only (רגיל, מנוי, חייל, …). The parks.org.il קבוצה tab is **not**
+a GuestType: it is an occupancy override. Compile reads that site's
+threshold from the group-row notes (`GROUP_MIN`, 30 vs 80, …) and, when
+`adults_num + child_num` meets it for a lodging that has a group
+schedule, **always** uses those rates — Matmon and every other identity
+included. `GuestType.GROUP` / `GuestType("קבוצה")` is a compile failure.
+Rate numbers are baked into named fields (`adult` / `child` /
+`weekday` / `weekend` / `late_exit`); quote() must not scan Hebrew
+labels with `in` or `startswith`. It must reject unknown `lodging` /
+`guest_type` via the enum constructor.
 The 235B is the same bar as listing match: this source is shown to users
 as a breakdown, so a wrong merge of Matmon vs regular is worse than a
 missed compile.
 
-The reply is AST-checked (`import math` only, no dunders, no `open` /
-`eval`) and run against five gold cases per site
-(`source/price_sandbox/gold/cases.py`). Each case records the expected
+The reply is AST-checked (`import math` and `from enum import Enum`,
+no dunders, no `open` / `eval`; `map` is allowed — late-exit parses
+`"13:00"` that way). Further static checks, without running
+`quote()`, reject string membership on labels, `GuestType.GROUP`, and
+syntactic unreachable code (statements after `return` / `raise`,
+`if False`, both-branch return). This is AST control flow, not
+dataflow: `if lodging is TENT` twice is not flagged. Then gold cases per site
+(`source/price_sandbox/gold/cases.py`): at least one soldier identity,
+at least one occupancy-override (group) case when that site publishes
+קבוצה, at least one case per lodging on the card, and at least one case
+per identity `guest_type` we have prices for (רגיל, מנוי, חייל, and
+Achziv also מילואים / אזרח ותיק / סטודנט / נכה). Five mixed
+cases were too few — a passing compile could ignore soldier, group, and
+most units. Each case records the expected
 price and the arithmetic that produced it (included occupancy, extra
-person, late-checkout surcharge, Matmon). Compile still matches the
+person, late-checkout surcharge, Matmon, group min). Compile still matches the
 price to two decimal places; the explanation is documentation and the
 failure-message detail, not a string match against the 235B. A pass upserts `site_price_functions` (`source`,
 `sha256`, `tests_passed`). An unchanged hash bumps `scraped_at` only.
@@ -1062,6 +1089,11 @@ A fail leaves the previous passing row; the planner then keeps using
 that function or `quote_night`. Every compile writes
 `reports/price_functions/<site_id>.py` and `<site_id>.prompt.txt`
 (system + user, gitignored), including failures.
+
+Compile is one 235B call today. Retrying a failed compile with the AST
+or gold error in a follow-up turn is a **maybe** — revisit if those
+failures stay common after the prompt is settled. Do not retry gold by
+sending the expected numeric price (that hardcodes the gold cases).
 
 At quote time Streamlit pushes approved sources into the
 `price-sandbox` container (`POST /load`, cap 30) and sends only params
@@ -1074,8 +1106,9 @@ child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
 off until the extractor grows those fields. `child_num` is an explicit
 child headcount (toddlers included); `child_ages` only splits toddler /
 child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
-`quote()` applies the קבוצה tab when `adults_num + child_num` meets that
-site's published threshold. `is_weekend_or_holiday` stays a caller flag
+קבוצה is deduced from `adults_num + child_num` against that site's
+published occupancy notes, and when the threshold is met it overrides
+identity rates (including Matmon). `is_weekend_or_holiday` stays a caller flag
 (the night is or is not a weekend).
 Fits carry `price_explanation` so the recommender cites the breakdown
 instead of summing.

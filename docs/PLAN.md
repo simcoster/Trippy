@@ -52,6 +52,103 @@ below. design.md “Where it runs”; cloud.md.
 not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
+### Done (2026-09-16, copy drops leftover experiments tables)
+
+**`just setup-experiments copy` now drops experiments tables that are
+not in `public`.** Pytest fixtures and ad-hoc scripts leave extra
+tables; `clone_tables` only rebuilt the public set, so leftovers
+survived. `availability_frozen` is kept. `db.experiments.drop_experiments_leftovers`;
+`just setup-experiments status` lists leftovers if any remain.
+
+### Done (2026-09-16, loud store-ok for price functions)
+
+**A passing compile prints `PRICE FUNCTION ADDED TO DB` (or UPDATED /
+UNCHANGED).** `store_price_function` returns `inserted` when there was
+no prior row — the Achziv run’s `updated` was that first upsert.
+scrape.py `_print_store_ok`.
+
+### Done (2026-09-16, loud AST compile failure)
+
+**AST allowlist / static-check failures print a banner.** The quiet
+`price function compile failed: call to 'map'…` line was easy to miss
+under listing-match noise. scrape.py `_print_ast_failure`.
+
+### Done (2026-09-16, map is allowed in quote())
+
+**`map` is on the price-function allowlist.** Achziv compiles were
+dying on `map(int, planned_exit_time.split(":"))` before gold.
+test_price_function_map.py; design.md “Per-site price functions”.
+
+### Done (2026-09-16, gold covers every identity guest_type)
+
+**Matmon was already in gold; miluim / student / disabled / senior were
+not.** Achziv now has one tent case per identity tab. Every other site
+has regular, Matmon, soldier, and senior. Miluim/student/disabled on
+other parks wait on a captured card. test_price_gold_coverage.py;
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, gold covers soldier, group, each lodging)
+
+**Gold recall was five mixed prices; that missed most of the card.**
+Every site now has a soldier case. Achziv has occupancy-30 group
+(regular and Matmon-override) and one weekday case per חושה product.
+Horashat adds staff, wood staff, and caravan. `_tent_band(..., extra=)`
+appends instead of replacing, so extra lodgings no longer drop soldier.
+Group cases for other sites wait on a captured threshold. Supersedes
+“five gold cases per site”. test_price_gold_coverage.py; design.md
+“Per-site price functions”.
+
+### Done (2026-09-16, קבוצה is an occupancy override)
+
+**GuestType is never group.** The קבוצה tableTab is a schedule selected
+by party size, not an identity the caller can pass. Compile omits it
+from the GuestType enum list; `GuestType.GROUP` is a static compile
+failure. When `adults_num + child_num` meets that site's notes
+(`GROUP_MIN`), group rates always override identity (including Matmon).
+Syntactic unreachable code (after return/raise, `if False`) is rejected
+without executing quote(); that is AST control flow, not dataflow.
+Compile retries with the error in a follow-up turn are a maybe — after
+the prompt is settled, if AST/gold failures stay common. Do not retry
+gold by sending the expected price.
+test_price_function_group.py, test_price_function_unreachable.py;
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, quote() does not scan labels)
+
+**Rate-card labels are interpreted at compile time.** The prompt
+requires `RATES[lodging][guest_type]` values to be named fields
+(`adult`, `child`, `weekday`, `weekend`, `late_exit`, …), not
+`{"label", "price"}` rows. `"מבוגר" in label` is a compile failure
+(`runtime_string_scan_hits`). Achziv 2.py still has that pattern
+because it was compiled before this rule. test_price_function_rate_keys.py;
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, enum vars keep parameter names)
+
+**Parsed enums reuse `lodging` and `guest_type`.** Compile prompt:
+`lodging = Lodging(lodging)`, `guest_type = GuestType(guest_type)` —
+no `unit` / `tab`. Supersedes the `unit =` / `tab =` sentence in the
+enum entry below.
+
+### Done (2026-09-16, quote() uses Lodging and GuestType enums)
+
+**Categorical inputs are parsed to enums, then compared as members.**
+The compile prompt requires `class Lodging(Enum)` and
+`class GuestType(Enum)` with Hebrew values; `quote()` does
+`unit = Lodging(lodging)` / `tab = GuestType(guest_type)` and branches
+on `is`. String compares inside the function are out. AST allowlist
+accepts Enum/StrEnum classes and `from enum import Enum`.
+test_price_function_enums.py; design.md “Per-site price functions”.
+
+### Done (2026-09-16, compile drops low-confidence extras)
+
+**A tab is a guest_type only if its rows match catalog lodging.**
+Compile calls `resolve_listing_ids(..., force=False)` and keeps a row
+only when the listing match is exact or ≥ `UNCERTAIN_BELOW`. Rental
+SKUs (השכרת מזרן, השכרת פלטה on ציוד להשכרה) no longer attach to חושה
+and do not enter `GUEST_TYPES`. `list_prices` still force-matches
+lodging labels. test_compile_match_confidence.py; design.md “Per-site
+price functions”.
 
 ### Done (2026-09-16, compile uses canonical lodging + guest_type)
 

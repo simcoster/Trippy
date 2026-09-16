@@ -37,6 +37,11 @@ def load_info_website_names(conn, *, site_id: int) -> list[tuple[int, str]]:
         return [(int(r[0]), r[1]) for r in cur.fetchall()]
 
 
+def listing_match_is_confident(confidence: float | None) -> bool:
+    """Exact hits have no score (`None`); a model pick must clear UNCERTAIN_BELOW."""
+    return confidence is None or confidence >= UNCERTAIN_BELOW
+
+
 def resolve_listing_ids(
     needle: str,
     names: list[tuple[int, str]],
@@ -45,10 +50,12 @@ def resolve_listing_ids(
     matcher: InfoWebsiteNameMatcher | None = None,
     usage: LlmUsage | None = None,
     unmatched_sink: list[str] | None = None,
+    force: bool = True,
 ) -> tuple[list[int], float | None]:
-    """Exact name, else 235B pick, rescue-split, then force the first catalog row.
+    """Exact name, else 235B pick, rescue-split, then optionally force.
 
-    Same resolution `snapshot_list_prices` uses for `list_prices`.
+    `list_prices` keeps `force=True` so a lodging label always lands somewhere.
+    Compile passes `force=False` and drops low-confidence rows (rental extras).
     """
     if not names:
         return [], None
@@ -73,6 +80,8 @@ def resolve_listing_ids(
             if len(rescued) > 1:
                 print(f"      SPLIT across {len(rescued)}: {shown!r}")
     if not name_ids:
+        if not force:
+            return [], confidence
         name_ids, confidence = [names[0][0]], 0.0
         print(f"      FORCED MATCH (model refused): {shown!r}")
     if confidence is not None and confidence < UNCERTAIN_BELOW:
@@ -370,7 +379,7 @@ def store_price_function(
     source: str,
     digest: str,
 ) -> str:
-    """Insert or update. Returns 'unchanged' when only scraped_at moves."""
+    """Insert or update. Returns inserted / updated / unchanged."""
     previous = load_price_function_hash(conn, site_id=site_id)
     with conn.cursor() as cur:
         if previous == digest:
@@ -380,4 +389,4 @@ def store_price_function(
             UPSERT_PRICE_FUNCTION_SQL,
             {"site_id": site_id, "source": source, "sha256": digest},
         )
-    return "updated"
+    return "inserted" if previous is None else "updated"

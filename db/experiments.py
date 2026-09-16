@@ -2,7 +2,9 @@
 
 No foreign key may cross into `public`. `clone_tables` copies DDL with
 `LIKE ... INCLUDING ALL` and replays FKs so both ends live in `experiments`.
-`copy_public` then fills those tables from `public.*`. Views are recreated
+`copy_public` then fills those tables from `public.*`. Leftover tables
+that pytest or ad-hoc scripts left in the schema (names not in `public`)
+are dropped first; `availability_frozen` is kept. Views are recreated
 after the copy so search that reads a view still works.
 
 Alembic's version table stays in `public` — this schema is not migrated.
@@ -17,6 +19,7 @@ import psycopg
 
 SCHEMA = "experiments"
 SKIP_TABLES = frozenset({"alembic_version"})
+KEEP_FROZEN = "availability_frozen"
 _IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 SEARCH_PATH = "-csearch_path=experiments,extensions"
@@ -47,6 +50,55 @@ FROM pg_indexes
 WHERE schemaname = ANY(ARRAY['public', 'experiments'])
   AND tablename = ANY(%(tables)s)
 """
+
+
+def leftover_relation_names(
+    existing: Sequence[str], keep: Sequence[str]
+) -> tuple[str, ...]:
+    """Names in *existing* that copy should drop (not public tables, not frozen)."""
+    keep_set = {table_name(n) for n in keep} | {KEEP_FROZEN}
+    return tuple(name for name in existing if name not in keep_set)
+
+
+def _experiments_relkind(cur, kind: str) -> tuple[str, ...]:
+    cur.execute(
+        """
+        SELECT c.relname
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'experiments'
+          AND c.relkind = %(kind)s
+        ORDER BY c.relname
+        """,
+        {"kind": kind},
+    )
+    return tuple(name for (name,) in cur.fetchall())
+
+
+def leftover_experiments_tables(cur, keep_tables: Sequence[str]) -> tuple[str, ...]:
+    return leftover_relation_names(
+        _experiments_relkind(cur, "r") + _experiments_relkind(cur, "p"),
+        keep_tables,
+    )
+
+
+def drop_experiments_leftovers(cur, keep_tables: Sequence[str]) -> tuple[str, ...]:
+    """Drop experiments tables/views that are not part of the public clone.
+
+    Pytest and ad-hoc scripts leave extra tables in this schema. `copy`
+    must not keep them. `availability_frozen` stays (planner eval).
+    """
+    for kind, drop in (("v", "VIEW"), ("m", "MATERIALIZED VIEW")):
+        for name in _experiments_relkind(cur, kind):
+            cur.execute(
+                f"DROP {drop} IF EXISTS experiments.{table_name(name)} CASCADE"
+            )
+    extras = leftover_experiments_tables(cur, keep_tables)
+    for name in extras:
+        ident = table_name(name)
+        cur.execute(f"DROP TABLE IF EXISTS experiments.{ident} CASCADE")
+        print(f"    dropped leftover {ident}")
+    return extras
 
 
 def table_name(name: str) -> str:
@@ -211,8 +263,10 @@ def copy_public(
 ) -> tuple[str, ...]:
     """Rebuild `experiments` as a data copy of `public`, then optionally empty.
 
-    Returns the table names that were cloned. Views are recreated after the
-    copy. `empty` is TRUNCATE CASCADE after the fill — use it to start a
+    Returns the table names that were cloned. Extra experiments tables
+    (pytest leftovers, not in `public`) are dropped first;
+    `availability_frozen` is kept. Views are recreated after the copy.
+    `empty` is TRUNCATE CASCADE after the fill — use it to start a
     scrape from a full catalog with blank rules, for example.
 
     `skip` tables are still cloned (empty) so FKs onto them survive the
@@ -225,6 +279,7 @@ def copy_public(
     unknown = skip_set - set(tables)
     if unknown:
         raise ValueError(f"skip names are not public tables: {sorted(unknown)}")
+    drop_experiments_leftovers(cur, tables)
     clone_tables(cur, tables)
     # Alphabetical order is not FK order (accommodation_types before
     # campsites). Replica skips the checks; both ends are filled in this loop.

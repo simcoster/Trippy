@@ -55,7 +55,7 @@ pr *title:
 pr *title:
     bash scripts/open_pr.sh {{ if title == "" { "" } else { quote(title) } }}
 
-# Copy public → experiments. `just setup-experiments` or `… copy --empty t1,t2`
+# Copy public → experiments; drops leftover extras. `just setup-experiments` or `… copy --empty t1,t2`
 setup-experiments *args:
     uv run python scripts/setup_experiments.py {{ args }}
 

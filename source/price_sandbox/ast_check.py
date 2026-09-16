@@ -1,17 +1,36 @@
 """AST allowlist for LLM-written site price functions.
 
-The generated module may import ``math`` and define one ``quote`` function.
-Anything else (other imports, dunders, ``eval``, ``open``, nested defs) is
-rejected before ``compile``.
+The generated module may import ``math`` and ``Enum``/``StrEnum``, define
+enum classes, and define one ``quote`` function. Anything else (other
+imports, dunders, ``eval``, ``open``, nested defs) is rejected before
+``compile``.
 """
 
 from __future__ import annotations
 
 import ast
+import enum as enum_mod
 import hashlib
 import math
 from collections.abc import Callable
+from enum import Enum, StrEnum
 from typing import Any
+
+
+def _safe_import(
+    name: str,
+    globals: Any = None,
+    locals: Any = None,
+    fromlist: tuple[str, ...] = (),
+    level: int = 0,
+) -> Any:
+    if level:
+        raise ImportError("relative imports are not allowed")
+    if name == "math":
+        return math
+    if name == "enum":
+        return enum_mod
+    raise ImportError(f"import {name!r} is not allowed")
 
 ALLOWED_CALL_NAMES = frozenset(
     {
@@ -32,6 +51,7 @@ ALLOWED_CALL_NAMES = frozenset(
         "tuple",
         "zip",
         "next",
+        "map",
         "ValueError",
     }
 )
@@ -51,6 +71,8 @@ SAFE_METHODS = frozenset(
         "startswith",
         "strip",
         "values",
+        "name",
+        "value",
     }
 )
 
@@ -72,7 +94,12 @@ SAFE_BUILTINS: dict[str, Any] = {
     "tuple": tuple,
     "zip": zip,
     "next": next,
+    "map": map,
     "ValueError": ValueError,
+    "Enum": Enum,
+    "StrEnum": StrEnum,
+    "__import__": _safe_import,
+    "__build_class__": __build_class__,
     "True": True,
     "False": False,
     "None": None,
@@ -82,6 +109,7 @@ _ALLOWED_NODE_TYPES = frozenset(
     {
         ast.Module,
         ast.FunctionDef,
+        ast.ClassDef,
         ast.arguments,
         ast.arg,
         ast.Return,
@@ -158,8 +186,9 @@ class PriceFunctionError(ValueError):
 
 
 class _AllowlistVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, enum_class_names: frozenset[str] = frozenset()) -> None:
         self.function_count = 0
+        self.enum_class_names = enum_class_names
 
     def generic_visit(self, node: ast.AST) -> None:
         if type(node) not in _ALLOWED_NODE_TYPES:
@@ -180,7 +209,62 @@ class _AllowlistVisitor(ast.NodeVisitor):
         raise PriceFunctionError("async functions are not allowed")
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        raise PriceFunctionError("classes are not allowed")
+        if node.decorator_list:
+            raise PriceFunctionError("decorators are not allowed")
+        if node.keywords:
+            raise PriceFunctionError("enum class keywords are not allowed")
+        bases = []
+        for base in node.bases:
+            if not isinstance(base, ast.Name) or base.id not in {
+                "Enum",
+                "StrEnum",
+                "str",
+            }:
+                raise PriceFunctionError("only Enum / StrEnum classes are allowed")
+            bases.append(base.id)
+        if "Enum" not in bases and "StrEnum" not in bases:
+            raise PriceFunctionError("only Enum / StrEnum classes are allowed")
+        if node.name.startswith("_"):
+            raise PriceFunctionError("enum class name is not a public name")
+        for stmt in node.body:
+            if isinstance(stmt, ast.Expr) and isinstance(
+                stmt.value, ast.Constant
+            ):
+                continue
+            if isinstance(stmt, ast.Pass):
+                continue
+            if isinstance(stmt, ast.Assign):
+                if len(stmt.targets) != 1 or not isinstance(
+                    stmt.targets[0], ast.Name
+                ):
+                    raise PriceFunctionError("enum members must be simple names")
+                if stmt.targets[0].id.startswith("_"):
+                    raise PriceFunctionError("enum member name is not a public name")
+                if not isinstance(stmt.value, ast.Constant):
+                    raise PriceFunctionError("enum member values must be constants")
+                continue
+            raise PriceFunctionError("enum classes may only assign member constants")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.level:
+            raise PriceFunctionError("relative imports are not allowed")
+        if node.module == "math":
+            for alias in node.names:
+                if alias.name == "*" or alias.name.startswith("_"):
+                    raise PriceFunctionError("math import is not a public name")
+            self.generic_visit(node)
+            return
+        if node.module == "enum":
+            allowed = {"Enum", "StrEnum"}
+            for alias in node.names:
+                if alias.name not in allowed or alias.asname is not None:
+                    raise PriceFunctionError(
+                        "only 'from enum import Enum' or StrEnum is allowed"
+                    )
+            self.generic_visit(node)
+            return
+        raise PriceFunctionError("only math and enum imports are allowed")
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -188,18 +272,13 @@ class _AllowlistVisitor(ast.NodeVisitor):
                 raise PriceFunctionError("only 'import math' is allowed")
         self.generic_visit(node)
 
-    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        if node.module != "math" or node.level:
-            raise PriceFunctionError("only 'from math import …' is allowed")
-        for alias in node.names:
-            if alias.name == "*" or alias.name.startswith("_"):
-                raise PriceFunctionError("math import is not a public name")
-        self.generic_visit(node)
-
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if node.attr.startswith("_"):
             raise PriceFunctionError("dunder attributes are not allowed")
         if isinstance(node.value, ast.Name) and node.value.id == "math":
+            self.generic_visit(node)
+            return
+        if isinstance(node.value, ast.Name) and node.value.id in self.enum_class_names:
             self.generic_visit(node)
             return
         if node.attr in SAFE_METHODS:
@@ -210,7 +289,10 @@ class _AllowlistVisitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         if isinstance(func, ast.Name):
-            if func.id not in ALLOWED_CALL_NAMES:
+            if (
+                func.id not in ALLOWED_CALL_NAMES
+                and func.id not in self.enum_class_names
+            ):
                 raise PriceFunctionError(f"call to {func.id!r} is not allowed")
         elif isinstance(func, ast.Attribute):
             if func.attr.startswith("_"):
@@ -218,7 +300,11 @@ class _AllowlistVisitor(ast.NodeVisitor):
             math_call = (
                 isinstance(func.value, ast.Name) and func.value.id == "math"
             )
-            if not math_call and func.attr not in SAFE_METHODS:
+            enum_call = (
+                isinstance(func.value, ast.Name)
+                and func.value.id in self.enum_class_names
+            )
+            if not math_call and not enum_call and func.attr not in SAFE_METHODS:
                 raise PriceFunctionError(
                     f"call to {func.attr!r} is not allowed"
                 )
@@ -280,7 +366,10 @@ class _AllowlistVisitor(ast.NodeVisitor):
 
 def validate_price_ast(tree: ast.AST) -> None:
     """Raise PriceFunctionError if *tree* is not an allowed price module."""
-    visitor = _AllowlistVisitor()
+    enum_names = frozenset(
+        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    )
+    visitor = _AllowlistVisitor(enum_class_names=enum_names)
     visitor.visit(tree)
     if visitor.function_count != 1:
         raise PriceFunctionError("source must define exactly one function, quote()")
@@ -301,7 +390,11 @@ def compile_quote(source: str) -> Callable[..., Any]:
         raise PriceFunctionError(f"invalid Python: {exc}") from exc
     validate_price_ast(tree)
     compiled = compile(tree, "<price_function>", "exec")
-    namespace: dict[str, Any] = {"__builtins__": SAFE_BUILTINS, "math": math}
+    namespace: dict[str, Any] = {
+        "__builtins__": SAFE_BUILTINS,
+        "math": math,
+        "__name__": "<price_function>",
+    }
     exec(compiled, namespace, namespace)
     fn = namespace.get("quote")
     if not callable(fn):
