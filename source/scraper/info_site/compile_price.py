@@ -150,8 +150,11 @@ def run_gold_tests(source: str, cases: list[GoldCase]) -> list[str]:
             failures.append(f"{label}: {exc}")
             continue
         if not prices_close(result.price, case.expected_price):
+            detail = case.explanation or ""
+            if detail:
+                detail = f" ({detail})"
             failures.append(
-                f"{label}: got {result.price} expected {case.expected_price}"
+                f"{label}: got {result.price} expected {case.expected_price}{detail}"
             )
     return failures
 

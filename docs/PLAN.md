@@ -53,6 +53,14 @@ not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
 
+### Done (2026-09-15, gold price explanations)
+
+**Gold cases now say how the expected price was built.** Each of the
+five cases per site carries an `explanation` (late checkout, extra
+person, toddler free, Matmon, included occupancy). Compile still
+gates on the numeric price; the string is for humans and for the
+failure line. design.md “Per-site price functions”.
+
 ### Done (2026-09-15, sandboxed per-site price functions)
 
 **Prices are compiled to `quote()`, not summed by the recommender.**

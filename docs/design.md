@@ -1046,8 +1046,11 @@ of Matmon vs regular is worse than a missed compile.
 
 The reply is AST-checked (`import math` only, no dunders, no `open` /
 `eval`) and run against five gold cases per site
-(`source/price_sandbox/gold/cases.py`). All five must match to two
-decimal places. A pass upserts `site_price_functions` (`source`,
+(`source/price_sandbox/gold/cases.py`). Each case records the expected
+price and the arithmetic that produced it (included occupancy, extra
+person, late-checkout surcharge, Matmon). Compile still matches the
+price to two decimal places; the explanation is documentation and the
+failure-message detail, not a string match against the 235B. A pass upserts `site_price_functions` (`source`,
 `sha256`, `tests_passed`). An unchanged hash bumps `scraped_at` only.
 A fail leaves the previous passing row; the planner then keeps using
 that function or `quote_night`.

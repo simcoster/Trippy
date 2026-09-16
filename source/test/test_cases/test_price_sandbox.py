@@ -129,6 +129,8 @@ def test_catalog_has_five_cases_per_site():
     assert len(CATALOG) == 18
     for row in CATALOG:
         assert len(row["cases"]) == 5, row.get("match")
+        for case in row["cases"]:
+            assert case.get("explanation"), row.get("match")
 
 
 def test_parse_sales_lazy_all_tabs():

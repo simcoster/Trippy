@@ -14,6 +14,7 @@ class GoldCase:
     params: QuoteParams
     expected_price: float
     note: str = ""
+    explanation: str = ""
 
 
 def _url_haystack(url: str) -> str:
@@ -43,6 +44,7 @@ def gold_for_url(url: str) -> list[GoldCase] | None:
                     params=params,
                     expected_price=float(raw["expected_price"]),
                     note=str(raw.get("note") or ""),
+                    explanation=str(raw.get("explanation") or ""),
                 )
             )
         return cases
