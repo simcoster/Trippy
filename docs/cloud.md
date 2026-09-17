@@ -19,7 +19,7 @@ GitHub Actions ──SSH──► docker compose run scrape
                                  └──► Object Storage (trippy-backups)
 ```
 
-Cost, 24/7, `me-west1` `cpu-d3` `4vcpu-16gb`: about **$80/month**
+Cost, 24/7, `eu-north1` `cpu-d3` `4vcpu-16gb`: about **$80/month**
 (compute ~$72 + two 50 GiB network SSD ~$7 + object storage pennies).
 Token Factory is a separate bill.
 
@@ -66,7 +66,7 @@ log still has the per-site scroll. GitHub emails you if the job fails.
 
 In [console.nebius.com](https://console.nebius.com), project you already have:
 
-1. Region **`me-west1`** (Israel). Platform **`cpu-d3`**, preset **`4vcpu-16gb`**.
+1. Region **`eu-north1`** (Finland). Platform **`cpu-d3`**, preset **`4vcpu-16gb`**.
 2. Ubuntu 24.04, 50 GiB boot **network SSD**, Docker later via bootstrap.
 3. Optional second 50 GiB disk mounted at `/var/lib/trippy/backups`
    (only if you dump as root; Actions writes `~/.trippy-backups`).
@@ -80,22 +80,25 @@ In [console.nebius.com](https://console.nebius.com), project you already have:
 
 1. Create bucket `trippy-backups` (Standard class).
 2. Static access keys for that bucket.
-3. Endpoint `https://storage.me-west1.nebius.cloud` (adjust if you picked another region).
+3. Endpoint `https://storage.eu-north1.nebius.cloud` (same region as
+   the VM). `AWS_DEFAULT_REGION=eu-north1`.
 4. Lifecycle: expire prefix `postgres/` after **30 days**.
 5. Put `BACKUP_S3_BUCKET`, `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`,
    `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` **uncommented** in the
    VM `.env`. `backup.yml` requires an upload; a dump that stays on
    disk only fails the job. Laptop `just backup` still skips S3 if
    those are unset. The Actions Summary is `Backup was written to
-   s3://…` after a successful upload.
+   s3://…` after a successful upload. `AWS_SECRET_ACCESS_KEY` is the
+   one-time secret string, not the `accesskey-e00…` resource id.
 
 `pg_dump -n public -Fc` only. `experiments` and `extensions` stay out.
 On-disk `trippy` is tens of MB (indexes + a copy in `experiments`); the
 object is heap+TOAST for `public`. A 2026-09-17 laptop dump was **4.6 MB**.
 Standard storage is **$0.0147/GiB-month** (~$0.002/month for 30 daily
 dumps at that size).
-Egress **$0.015/GiB** applies when downloading off Nebius; VM → bucket
-in `me-west1` does not. No per-object fee on the price list.
+Egress **$0.015/GiB** applies when downloading off Nebius. Upload from
+the VM to the bucket is not that line item. No per-object fee on the
+price list.
 
 Laptop: `just backup` / `just restore backups/trippy-….dump` (docker
 compose cp; do not redirect `pg_dump` in PowerShell). Destructive
