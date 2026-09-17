@@ -12,8 +12,10 @@ esac
 
 if [ -n "${TRIPPY_BACKUP_DIR:-}" ]; then
   BACKUP_DIR="$TRIPPY_BACKUP_DIR"
-elif [ -d /var/lib/trippy/backups ]; then
+elif [ -d /var/lib/trippy/backups ] && [ -w /var/lib/trippy/backups ]; then
   BACKUP_DIR=/var/lib/trippy/backups
+elif [ -n "${HOME:-}" ]; then
+  BACKUP_DIR="${HOME}/.trippy-backups"
 else
   BACKUP_DIR="${ROOT}/backups"
 fi
