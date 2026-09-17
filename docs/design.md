@@ -1118,7 +1118,10 @@ price to two decimal places; the explanation is documentation and the
 failure-message detail, not a string match against the 235B. A compile
 that passes AST upserts `site_price_functions` (`source`, `sha256`,
 `tests_passed`) even when gold still fails after the retry — the
-sandbox should have a quote() rather than last week's. AST / static
+sandbox should have a quote() rather than last week's. The table is
+one row per campsite; a later scrape updates that row. The store
+banner, the `compile:` line, the run-end recap, and `report.md` print
+`scraped_at` / `updated_at` from the upsert. AST / static
 failure still leaves the previous row. An unchanged hash bumps
 `scraped_at` only. Gold misses still print
 `!!! PRICE FUNCTION GOLD FAILED !!!` and the report lists them under

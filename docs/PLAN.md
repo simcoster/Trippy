@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-17, print site_price_functions store times)
+
+**scrape-prices prints `scraped_at` / `updated_at` from the upsert.**
+The table is one row per campsite (`site_id` PK); a GitHub Actions
+re-run updates that row, it does not add another. The banner, the
+`compile:` line, the run-end recap, and `report.md` all show the
+timestamps RETURNING from Postgres. design.md compile / store.
+
 ### Done (2026-09-17, eu-north1)
 
 **VM and object store are both Finland (`eu-north1`).** Not

@@ -10,6 +10,7 @@ reported rather than inventing a lodging product the operator never listed.
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 from typing import NamedTuple
 
 from source.scraper.amenity_enrichment.llm import LlmUsage
@@ -321,6 +322,12 @@ class StoredPriceFunction(NamedTuple):
     sha256: str
 
 
+class PriceFunctionStore(NamedTuple):
+    status: str
+    scraped_at: datetime
+    updated_at: datetime
+
+
 LOAD_PRICE_FUNCTION_HASH_SQL = """
 SELECT sha256 FROM site_price_functions WHERE site_id = %(site_id)s
 """
@@ -344,12 +351,14 @@ SET source = EXCLUDED.source,
     tests_passed = TRUE,
     scraped_at = now(),
     updated_at = now()
+RETURNING scraped_at, updated_at
 """
 
 TOUCH_PRICE_FUNCTION_SQL = """
 UPDATE site_price_functions
 SET scraped_at = now()
 WHERE site_id = %(site_id)s
+RETURNING scraped_at, updated_at
 """
 
 
@@ -378,15 +387,18 @@ def store_price_function(
     site_id: int,
     source: str,
     digest: str,
-) -> str:
-    """Insert or update. Returns inserted / updated / unchanged."""
+) -> PriceFunctionStore:
+    """Insert or update. Status is inserted / updated / unchanged."""
     previous = load_price_function_hash(conn, site_id=site_id)
     with conn.cursor() as cur:
         if previous == digest:
             cur.execute(TOUCH_PRICE_FUNCTION_SQL, {"site_id": site_id})
-            return "unchanged"
-        cur.execute(
-            UPSERT_PRICE_FUNCTION_SQL,
-            {"site_id": site_id, "source": source, "sha256": digest},
-        )
-    return "inserted" if previous is None else "updated"
+            status = "unchanged"
+        else:
+            cur.execute(
+                UPSERT_PRICE_FUNCTION_SQL,
+                {"site_id": site_id, "source": source, "sha256": digest},
+            )
+            status = "inserted" if previous is None else "updated"
+        scraped_at, updated_at = cur.fetchone()
+    return PriceFunctionStore(status, scraped_at, updated_at)
