@@ -42,8 +42,9 @@ docker compose -f docker-compose.prod.yml --env-file .env \
   --profile scrape run --rm scrape availability
 ```
 
-GitHub Actions [`.github/workflows/scrape-availability.yml`](../.github/workflows/scrape-availability.yml)
-and [`.github/workflows/scrape-reviews.yml`](../.github/workflows/scrape-reviews.yml)
+GitHub Actions [`.github/workflows/scrape-availability.yml`](../.github/workflows/scrape-availability.yml),
+[`.github/workflows/scrape-reviews.yml`](../.github/workflows/scrape-reviews.yml),
+and [`.github/workflows/scrape-prices.yml`](../.github/workflows/scrape-prices.yml)
 are GitHub-hosted runners that **SSH into the VM** as `gh-actions` and run
 that `compose run`. The SSH steps live in
 [`scrape-job.yml`](../.github/workflows/scrape-job.yml) (`workflow_call`).
@@ -53,15 +54,18 @@ happens on Nebius, not on GitHub. Daily availability at **08:00 IDT**
 (`cron: 0 6 * * *`; 08:00 in winter IST). One dump per day at **14:00 IDT**
 ([`backup.yml`](../.github/workflows/backup.yml), `cron: 0 11 * * *`;
 13:00 in winter IST) — not before a scrape. On-demand: Actions →
-**Backup Postgres**. Other ingest (claims / info / sites / place-ids) is
+**Backup Postgres**. Prices is `workflow_dispatch` only (rate cards
+change rarely). Other ingest (claims / info / sites / place-ids) is
 [`scrape.yml`](../.github/workflows/scrape.yml) `workflow_dispatch`.
 Two scrapes cannot overlap (`concurrency: scrape` on each caller; the
 afternoon dump uses the same group).
 
-The report is the run’s **Summary** tab (Actions → **Scrape availability**
-or **Scrape reviews** → that run), not a file and not Streamlit.
-Availability lists vacancy changes; reviews lists new Google rows then
-claims written (visit gate / split / embed). The
+The report is the run’s **Summary** tab (Actions → **Scrape availability**,
+**Scrape reviews**, or **Scrape prices** → that run), not a file and not
+Streamlit. Availability lists vacancy changes; reviews lists new Google
+rows then claims written (visit gate / split / embed); prices lists
+stored vs failed compiles, gold/AST lines, and dump names. Function
+dumps stay on the VM under `~/.trippy-scrape/<timestamp>/`. The
 log still has the per-site scroll. GitHub emails you if the job fails.
 
 ## Manual steps

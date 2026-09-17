@@ -1,8 +1,8 @@
 name: Scrape job
 
 # Reusable SSH-to-VM scrape. Callers: scrape-availability.yml,
-# scrape-reviews.yml, scrape.yml. Daily dump is backup.yml (14:00 IDT),
-# not a scrape.
+# scrape-reviews.yml, scrape-prices.yml, scrape.yml. Daily dump is
+# backup.yml (14:00 IDT), not a scrape.
 
 on:
   workflow_call:
@@ -61,13 +61,16 @@ jobs:
             fi
             REPORT_DIR="${HOME}/.trippy-scrape"
             mkdir -p "${REPORT_DIR}"
-            rm -f "${REPORT_DIR}/availability.md" "${REPORT_DIR}/reviews.md"
+            rm -f "${REPORT_DIR}/availability.md" "${REPORT_DIR}/reviews.md" \
+              "${REPORT_DIR}/prices.md"
             if [ -n "${EXTRA}" ]; then
               docker compose -f docker-compose.prod.yml --env-file .env \
                 --profile scrape run --rm \
                 -v "${REPORT_DIR}:/reports" \
                 -e AVAILABILITY_REPORT_PATH=/reports/availability.md \
                 -e REVIEWS_REPORT_PATH=/reports/reviews.md \
+                -e PRICES_REPORT_DIR=/reports \
+                -e PRICES_REPORT_PATH=/reports/prices.md \
                 scrape "${JOB}" ${EXTRA}
             else
               docker compose -f docker-compose.prod.yml --env-file .env \
@@ -75,6 +78,8 @@ jobs:
                 -v "${REPORT_DIR}:/reports" \
                 -e AVAILABILITY_REPORT_PATH=/reports/availability.md \
                 -e REVIEWS_REPORT_PATH=/reports/reviews.md \
+                -e PRICES_REPORT_DIR=/reports \
+                -e PRICES_REPORT_PATH=/reports/prices.md \
                 scrape "${JOB}"
             fi
             docker compose -f docker-compose.prod.yml --env-file .env \

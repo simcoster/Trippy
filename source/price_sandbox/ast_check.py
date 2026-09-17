@@ -52,7 +52,22 @@ ALLOWED_CALL_NAMES = frozenset(
         "zip",
         "next",
         "map",
+        "filter",
+        "all",
+        "any",
+        "dict",
+        "divmod",
+        "format",
+        "frozenset",
+        "isinstance",
+        "iter",
+        "pow",
+        "reversed",
+        "set",
         "ValueError",
+        "Exception",
+        "KeyError",
+        "TypeError",
     }
 )
 
@@ -96,7 +111,22 @@ SAFE_BUILTINS: dict[str, Any] = {
     "zip": zip,
     "next": next,
     "map": map,
+    "filter": filter,
+    "all": all,
+    "any": any,
+    "dict": dict,
+    "divmod": divmod,
+    "format": format,
+    "frozenset": frozenset,
+    "isinstance": isinstance,
+    "iter": iter,
+    "pow": pow,
+    "reversed": reversed,
+    "set": set,
     "ValueError": ValueError,
+    "Exception": Exception,
+    "KeyError": KeyError,
+    "TypeError": TypeError,
     "Enum": Enum,
     "StrEnum": StrEnum,
     "__import__": _safe_import,
@@ -151,6 +181,8 @@ _ALLOWED_NODE_TYPES = frozenset(
         ast.JoinedStr,
         ast.FormattedValue,
         ast.Raise,
+        ast.Try,
+        ast.ExceptHandler,
         ast.Import,
         ast.ImportFrom,
         ast.alias,
@@ -343,9 +375,6 @@ class _AllowlistVisitor(ast.NodeVisitor):
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         raise PriceFunctionError("lambda is not allowed")
-
-    def visit_Try(self, node: ast.Try) -> None:
-        raise PriceFunctionError("try/except is not allowed")
 
     def visit_With(self, node: ast.With) -> None:
         raise PriceFunctionError("with is not allowed")

@@ -147,9 +147,9 @@
       "explanation": "2 × 96"
     },
     {
-      "note": "חדר צוות קטן weekday",
+      "note": "חדרי צוות weekday (rate-card חדר צוות קטן)",
       "params": {
-        "lodging": "חדר צוות קטן",
+        "lodging": "חדרי צוות",
         "adults_num": 2,
         "child_num": 0,
         "guest_type": "רגיל"
@@ -158,9 +158,9 @@
       "explanation": "weekday 430"
     },
     {
-      "note": "חדר צוות קטן weekend late exit",
+      "note": "חדרי צוות weekend late exit (rate-card חדר צוות קטן)",
       "params": {
-        "lodging": "חדר צוות קטן",
+        "lodging": "חדרי צוות",
         "adults_num": 2,
         "child_num": 0,
         "guest_type": "רגיל",
@@ -171,9 +171,9 @@
       "explanation": "weekend 530 + late 265"
     },
     {
-      "note": "חדר צוות גדול weekday",
+      "note": "חדר צוות מאובזר weekday (rate-card חדר צוות גדול rooms 5-6)",
       "params": {
-        "lodging": "חדר צוות גדול",
+        "lodging": "חדר צוות מאובזר",
         "adults_num": 2,
         "child_num": 0,
         "guest_type": "רגיל"
@@ -182,9 +182,9 @@
       "explanation": "weekday 480"
     },
     {
-      "note": "חדר צוות גדול weekend late exit",
+      "note": "חדר צוות מאובזר weekend late exit (rate-card חדר צוות גדול rooms 5-6)",
       "params": {
-        "lodging": "חדר צוות גדול",
+        "lodging": "חדר צוות מאובזר",
         "adults_num": 2,
         "child_num": 0,
         "guest_type": "רגיל",
@@ -195,9 +195,33 @@
       "explanation": "weekend 680 + late 340"
     },
     {
-      "note": "חדר צוות כפול weekday",
+      "note": "חדר צוות מאובזר ומונגש weekday (same גדול tariff as room 5)",
       "params": {
-        "lodging": "חדר צוות כפול",
+        "lodging": "חדר צוות מאובזר ומונגש",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל"
+      },
+      "expected_price": 480.0,
+      "explanation": "weekday 480"
+    },
+    {
+      "note": "חדר צוות מאובזר ומונגש weekend late exit (same גדול tariff as room 5)",
+      "params": {
+        "lodging": "חדר צוות מאובזר ומונגש",
+        "adults_num": 2,
+        "child_num": 0,
+        "guest_type": "רגיל",
+        "is_weekend_or_holiday": true,
+        "planned_exit_time": "13:00"
+      },
+      "expected_price": 1020.0,
+      "explanation": "weekend 680 + late 340"
+    },
+    {
+      "note": "חדר צוות מאובזר כפול weekday (rate-card חדר צוות כפול)",
+      "params": {
+        "lodging": "חדר צוות מאובזר כפול",
         "adults_num": 2,
         "child_num": 0,
         "guest_type": "רגיל"
@@ -206,9 +230,9 @@
       "explanation": "weekday 860"
     },
     {
-      "note": "חדר צוות כפול weekend late exit",
+      "note": "חדר צוות מאובזר כפול weekend late exit (rate-card חדר צוות כפול)",
       "params": {
-        "lodging": "חדר צוות כפול",
+        "lodging": "חדר צוות מאובזר כפול",
         "adults_num": 2,
         "child_num": 0,
         "guest_type": "רגיל",

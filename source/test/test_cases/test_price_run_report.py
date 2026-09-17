@@ -42,7 +42,10 @@ def test_report_lists_failing_tests_and_versioned_dumps(tmp_path):
             outcome="ast_failed",
             n_gold=20,
             retry="fix",
-            failures=["line 147: string membership ':'"],
+            failures=[
+                "attempt 1: חדר צוות קטן weekday: not a valid Lodging",
+                "retry: line 12: string membership ':'",
+            ],
             fail_stems=["13_v1", "13_v2"],
         ),
         PriceFunctionRun(
@@ -66,7 +69,9 @@ def test_report_lists_failing_tests_and_versioned_dumps(tmp_path):
     assert "stored: 1 (1 updated)" in text
     assert "skipped: 1" in text
     assert "הבשור" in text
-    assert "line 147: string membership ':'" in text
+    assert "attempt 1: חדר צוות קטן weekday: not a valid Lodging" in text
+    assert "retry: line 12: string membership ':'" in text
+    assert "https://example/besor" not in text
     assert "`13_v1.py`" in text
     assert "`13_v2.py`" in text
     assert "`13_v1.prompt.txt`" in text

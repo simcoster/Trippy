@@ -19,6 +19,7 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
+from openai import APIConnectionError, APITimeoutError
 
 from db.connect import SCHEMA_ENV, connect, database_url
 from source.scraper.amenity_enrichment.llm import LlmUsage, record_scrape_cost
@@ -51,6 +52,7 @@ from source.scraper.info_site.parse import (
 )
 from source.scraper.info_site.price_report import (
     PriceFunctionRun,
+    run_folder,
     write_run_report,
 )
 from source.scraper.tls import ssl_context
@@ -62,7 +64,6 @@ load_dotenv()
 
 _SCRAPER_DIR = Path(__file__).resolve().parents[1]
 CONFIG_PATH = _SCRAPER_DIR / "config.json"
-_QUOTE_DIR = _SCRAPER_DIR.parents[1] / "reports" / "price_functions"
 LISTING_URL = (
     "https://www.parks.org.il/"
     "%D7%94%D7%96%D7%9E%D7%A0%D7%95%D7%AA-%D7%9C%D7%97%D7%A0%D7%99%D7%95%D7%A0%D7%99-%D7%9C%D7%99%D7%9C%D7%94/"
@@ -115,15 +116,32 @@ def fetch_campsites(config: dict, *, sites: list[int] | None = None) -> list[dic
 
 
 def fetch_page_html(url: str, *, referer: str = LISTING_URL) -> str:
-    with httpx.Client(
-        timeout=45.0,
-        verify=ssl_context(),
-        follow_redirects=True,
-        headers={"User-Agent": USER_AGENT, "Referer": referer},
-    ) as client:
-        response = client.get(url)
-        response.raise_for_status()
-        return response.text
+    delays = (2.0, 8.0)
+    last: Exception | None = None
+    attempts = len(delays) + 1
+    for attempt in range(1, attempts + 1):
+        try:
+            with httpx.Client(
+                timeout=45.0,
+                verify=ssl_context(),
+                follow_redirects=True,
+                headers={"User-Agent": USER_AGENT, "Referer": referer},
+            ) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                return response.text
+        except httpx.HTTPError as exc:
+            last = exc
+            if attempt == attempts:
+                break
+            wait = delays[attempt - 1]
+            print(
+                f"    page fetch error (attempt {attempt}/{attempts}): {exc}; "
+                f"retry in {wait:.0f}s"
+            )
+            time.sleep(wait)
+    assert last is not None
+    raise last
 
 
 def next_fail_stem(directory: Path, site_id: int) -> str:
@@ -138,13 +156,14 @@ def _write_quote_files(
     stem: str,
     source: str,
     *,
+    directory: Path,
     user_prompt: str = "",
     system: str | None = None,
 ) -> tuple[Path, Path]:
-    _QUOTE_DIR.mkdir(parents=True, exist_ok=True)
-    dest = _QUOTE_DIR / f"{stem}.py"
+    directory.mkdir(parents=True, exist_ok=True)
+    dest = directory / f"{stem}.py"
     dest.write_text(source or "", encoding="utf-8")
-    prompt_dest = _QUOTE_DIR / f"{stem}.prompt.txt"
+    prompt_dest = directory / f"{stem}.prompt.txt"
     prompt_dest.write_text(
         "----- system -----\n"
         + (system if system is not None else SYSTEM_PROMPT)
@@ -159,11 +178,16 @@ def _dump_quote(
     site: dict,
     source: str,
     *,
+    directory: Path,
     user_prompt: str = "",
     system: str | None = None,
 ) -> None:
     dest, prompt_dest = _write_quote_files(
-        str(site["id"]), source, user_prompt=user_prompt, system=system
+        str(site["id"]),
+        source,
+        directory=directory,
+        user_prompt=user_prompt,
+        system=system,
     )
     print(f"    wrote {dest}")
     if user_prompt:
@@ -174,12 +198,13 @@ def _dump_failed_quote(
     site: dict,
     source: str,
     *,
+    directory: Path,
     user_prompt: str = "",
     system: str | None = None,
 ) -> str:
-    stem = next_fail_stem(_QUOTE_DIR, site["id"])
+    stem = next_fail_stem(directory, site["id"])
     dest, prompt_dest = _write_quote_files(
-        stem, source, user_prompt=user_prompt, system=system
+        stem, source, directory=directory, user_prompt=user_prompt, system=system
     )
     print(f"    wrote failed {dest}")
     if user_prompt:
@@ -213,14 +238,22 @@ def _print_store_ok(status: str, *, n_gold: int, digest: str) -> None:
     print()
 
 
+def _print_gold_failure(details: list[str]) -> None:
+    print()
+    print("=" * 60)
+    print("!!! PRICE FUNCTION GOLD FAILED !!!")
+    for line in details:
+        print(f"!!!   {line}")
+    print("=" * 60)
+    print()
+
+
 def _print_compile_verdict(verdict) -> None:
     if verdict.stage in {"allowlist", "static"}:
         kind = "allowlist" if verdict.stage == "allowlist" else "static checks"
         _print_ast_failure(kind, verdict.log_lines)
         return
-    print("    price function gold failed; keeping previous row")
-    for line in verdict.log_lines:
-        print(f"      {line}")
+    _print_gold_failure(verdict.log_lines)
 
 
 def _verdict_outcome(verdict) -> str:
@@ -234,6 +267,7 @@ def compile_price_function_for_site(
     site: dict,
     html: str,
     *,
+    quote_dir: Path,
     usage: LlmUsage | None = None,
     matcher: InfoWebsiteNameMatcher | None = None,
 ) -> PriceFunctionRun:
@@ -286,17 +320,25 @@ def compile_price_function_for_site(
         run.skip_reason = str(exc)
         return run
     current_system = SYSTEM_PROMPT
-    _dump_quote(site, draft.source, user_prompt=draft.user_prompt, system=current_system)
+    _dump_quote(
+        site,
+        draft.source,
+        directory=quote_dir,
+        user_prompt=draft.user_prompt,
+        system=current_system,
+    )
     verdict = assess_compiled_source(draft.source, cases)
     if not verdict.ok:
         run.fail_stems.append(
             _dump_failed_quote(
                 site,
                 draft.source,
+                directory=quote_dir,
                 user_prompt=draft.user_prompt,
                 system=current_system,
             )
         )
+        run.failures = list(verdict.log_lines)
         if verdict.retry == "fix":
             print("    retry: fix the function")
             for line in verdict.log_lines:
@@ -337,21 +379,33 @@ def compile_price_function_for_site(
             run.failures = list(verdict.log_lines)
             return run
         _dump_quote(
-            site, draft.source, user_prompt=draft.user_prompt, system=current_system
+            site,
+            draft.source,
+            directory=quote_dir,
+            user_prompt=draft.user_prompt,
+            system=current_system,
         )
         verdict = assess_compiled_source(draft.source, cases)
         if not verdict.ok:
+            retry_lines = list(verdict.log_lines)
+            if run.failures and run.failures != retry_lines:
+                run.failures = [
+                    *(f"attempt 1: {line}" for line in run.failures),
+                    *(f"retry: {line}" for line in retry_lines),
+                ]
+            else:
+                run.failures = retry_lines
             run.fail_stems.append(
                 _dump_failed_quote(
                     site,
                     draft.source,
+                    directory=quote_dir,
                     user_prompt=draft.user_prompt,
                     system=current_system,
                 )
             )
             _print_compile_verdict(verdict)
             run.outcome = _verdict_outcome(verdict)
-            run.failures = list(verdict.log_lines)
             return run
     digest = digest_source(draft.source)
     status = store_price_function(
@@ -370,6 +424,7 @@ def scrape_prices_for_site(
     html: str,
     *,
     classifier: RateCardClassifier,
+    quote_dir: Path,
     usage: LlmUsage | None = None,
     matcher: InfoWebsiteNameMatcher | None = None,
     unmatched_sink: list[str] | None = None,
@@ -398,7 +453,7 @@ def scrape_prices_for_site(
     fees = sum(1 for row in classified if row.kind == "fee")
     print(f"    {len(raw_rows)} table rows, {len(lodging)} lodging stored, {fees} fees skipped")
     run = compile_price_function_for_site(
-        conn, site, html, usage=usage, matcher=matcher
+        conn, site, html, quote_dir=quote_dir, usage=usage, matcher=matcher
     )
     if compile_runs is not None:
         compile_runs.append(run)
@@ -461,13 +516,27 @@ def print_flagged_prompts(matcher: InfoWebsiteNameMatcher) -> None:
 
 
 def run_prices(
-    config: dict, *, usage: LlmUsage | None = None, sites: list[int] | None = None
+    config: dict,
+    *,
+    usage: LlmUsage | None = None,
+    sites: list[int] | None = None,
+    compile_runs: list[PriceFunctionRun] | None = None,
+    quote_dir: Path | None = None,
 ) -> tuple[int, list[PriceFunctionRun]]:
     """Scrape rate cards for the configured campsites. Returns rows stored.
 
     `usage` collects every LLM call so the caller can report the run's cost.
+    `compile_runs` is filled in place so an interrupt can still write the
+    Markdown report for sites that finished.
+    `quote_dir` holds this run's `{id}.py` dumps; defaults to a new
+    timestamped folder under `reports/scrape_prices/`.
     """
-    compile_runs: list[PriceFunctionRun] = []
+    if compile_runs is None:
+        compile_runs = []
+    if quote_dir is None:
+        quote_dir = run_folder(datetime.now())
+        quote_dir.mkdir(parents=True, exist_ok=True)
+        print(f"run folder {quote_dir}")
     campsites = fetch_campsites(config, sites=sites)
     if not campsites:
         print("No campsites found")
@@ -507,16 +576,33 @@ def run_prices(
                 )
                 continue
             calls_before = len(matcher.calls)
-            saved = scrape_prices_for_site(
-                conn,
-                site,
-                html,
-                classifier=classifier,
-                usage=usage,
-                matcher=matcher,
-                unmatched_sink=unmatched,
-                compile_runs=compile_runs,
-            )
+            try:
+                saved = scrape_prices_for_site(
+                    conn,
+                    site,
+                    html,
+                    classifier=classifier,
+                    quote_dir=quote_dir,
+                    usage=usage,
+                    matcher=matcher,
+                    unmatched_sink=unmatched,
+                    compile_runs=compile_runs,
+                )
+            except (APIConnectionError, APITimeoutError) as exc:
+                print(f"    LLM connection error after retries: {exc}")
+                compile_runs.append(
+                    PriceFunctionRun(
+                        site_id=site["id"],
+                        site_name=site["name"],
+                        url=site.get("url", ""),
+                        outcome="compile_error",
+                        skip_reason=str(exc),
+                    )
+                )
+                for call in matcher.calls[calls_before:]:
+                    call.site = site["name"]
+                conn.commit()
+                continue
             for call in matcher.calls[calls_before:]:
                 call.site = site["name"]
             conn.commit()
@@ -550,17 +636,41 @@ def main(argv: list[str] | None = None) -> None:
     usage = LlmUsage()
     started_at = datetime.now()
     t0 = time.perf_counter()
-    _total, compile_runs = run_prices(
-        load_config(), usage=usage, sites=site_ids(args.site)
-    )
-    seconds = time.perf_counter() - t0
-    report = write_run_report(
-        compile_runs, usage, started_at=started_at, seconds=seconds
-    )
-    print(f"run report {report}")
-    written = record_scrape_cost("scrape-prices", usage)
-    if written:
-        print(f"cost report appended to {written}")
+    compile_runs: list[PriceFunctionRun] = []
+    quote_dir = run_folder(started_at)
+    quote_dir.mkdir(parents=True, exist_ok=True)
+    print(f"run folder {quote_dir}")
+    try:
+        run_prices(
+            load_config(),
+            usage=usage,
+            sites=site_ids(args.site),
+            compile_runs=compile_runs,
+            quote_dir=quote_dir,
+        )
+    except KeyboardInterrupt:
+        print()
+        print("interrupted — writing report for sites finished so far")
+        raise
+    finally:
+        seconds = time.perf_counter() - t0
+        report = write_run_report(
+            compile_runs,
+            usage,
+            started_at=started_at,
+            seconds=seconds,
+            directory=quote_dir,
+            name="report.md",
+        )
+        failed = sum(
+            1
+            for run in compile_runs
+            if run.outcome in {"gold_failed", "ast_failed", "compile_error"}
+        )
+        print(f"run report {report}  ({len(compile_runs)} sites, {failed} failed)")
+        written = record_scrape_cost("scrape-prices", usage)
+        if written:
+            print(f"cost report appended to {written}")
 
 
 if __name__ == "__main__":

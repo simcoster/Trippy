@@ -40,6 +40,7 @@ Cadence (the jobs *are* the product staying true):
 |-----|-----------|
 | Vacancy (`scrape-availability`) | once a day (08:00 IDT) |
 | Reviews (`scrape-reviews`) | once a day (09:00 IDT); fetch then embed |
+| Prices (`scrape-prices`) | `workflow_dispatch` (rate cards) |
 | Claims catch-up (`populate-claims` / `--embed-only`) | `workflow_dispatch` |
 | The rest (`scrape-sites`, `scrape-info`, place ids, …) | about once a month |
 

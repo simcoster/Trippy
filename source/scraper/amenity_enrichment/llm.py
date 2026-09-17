@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
@@ -19,7 +20,7 @@ from typing import Any
 
 import httpx
 from langchain_openai import ChatOpenAI
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, OpenAI
 
 from source.scraper.tls import ssl_context
 
@@ -141,7 +142,36 @@ def make_nebius_openai_client() -> OpenAI:
         base_url=NEBIUS_BASE_URL,
         api_key=api_key,
         http_client=httpx.Client(verify=ssl_context(), timeout=120.0),
+        max_retries=6,
     )
+
+
+LLM_CONNECT_RETRY_DELAYS = (2.0, 8.0, 20.0)
+
+
+def nebius_chat_create(client: OpenAI, **kwargs: Any) -> Any:
+    """One chat completion. Connection/timeouts retry with backoff.
+
+    DNS blips (`getaddrinfo failed`) and dropped TLS should not abort a
+    multi-site scrape. 4xx answers are not retried.
+    """
+    attempts = len(LLM_CONNECT_RETRY_DELAYS) + 1
+    last: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return client.chat.completions.create(**kwargs)
+        except (APIConnectionError, APITimeoutError) as exc:
+            last = exc
+            if attempt == attempts:
+                break
+            wait = LLM_CONNECT_RETRY_DELAYS[attempt - 1]
+            print(
+                f"    LLM connection error (attempt {attempt}/{attempts}): {exc}; "
+                f"retry in {wait:.0f}s"
+            )
+            time.sleep(wait)
+    assert last is not None
+    raise last
 
 
 @dataclass

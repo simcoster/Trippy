@@ -11,6 +11,7 @@ from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
+    nebius_chat_create,
 )
 
 from .parse import normalize_label
@@ -116,7 +117,8 @@ class RateCardClassifier:
         *,
         usage: LlmUsage | None = None,
     ) -> ClassificationPayload:
-        response = self.client.chat.completions.create(
+        response = nebius_chat_create(
+            self.client,
             model=self.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},

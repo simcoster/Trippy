@@ -9,6 +9,31 @@ decided.
 
 ## 2026-09-17
 
+### 2. Do the remaining three compile misses recover on a second draw?
+
+**Question.** After the 18-site scrape stored 15/18, do הבשור,
+תל ערד, and בארות pass on a second `scrape-prices` with the same
+prompts and retry policy (and with a Markdown run report + `_vN`
+fail dumps)?
+
+**Setup.** `TRIPPY_SCHEMA=experiments` (existing copy; no `public`
+writes). `just on-experiments scrape-prices -- --site 13,15,17`.
+Temp 0. ~5.1 min.
+
+**Result.** 1/3 stored. הבשור passed on the first compile (no retry;
+was `':' in` static). תל ערד occupancy regen fired: mahal included
+36 stayed 3096 vs gold 3080 after both draws. בארות first compile
+missed gold lodging names (`חדר צוות קטן/גדול/כפול` not in the
+catalog enum) plus family-tent extra 614 vs 438; the fix turn emitted
+`try/except` and failed the allowlist. 114 calls, ~$0.028. Report
+`reports/scrape_prices/2026-09-17_063211.md`; fail dumps `15_v3`/`15_v4`,
+`17_v3`/`17_v4` (`_v1`/`_v2` already on disk from earlier attempts).
+
+**Decision.** Occupancy regen is doing the job it was for (price-only
+miss, no expected number). It does not close a 16₪ included-count
+miss by itself. בארות is catalog names vs gold labels, not a retry
+shape. design.md “Per-site price functions”.
+
 ### 1. Do fix vs occupancy-regenerate retries recover failed compiles?
 
 **Question.** After allowlisting `while`/`insert` and stating included

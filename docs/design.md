@@ -1048,7 +1048,10 @@ force). The compile prompt then uses those **canonical**
 marks (ASCII and Hebrew gershayim) are stripped from both so enum
 values stay valid Python (`נכה צהל ומלווה`, not `צה"ל`). A listing match
 below `UNCERTAIN_BELOW` is dropped, not forced: extras tabs (ציוד
-להשכרה, mattress rental) never become a guest_type. Pass 2 is one
+להשכרה, mattress rental) never become a guest_type. תוספת יציאה מאוחרת
+and תוספת אדם / מבוגר / ילד are rate words on that unit (same as
+אמצע שבוע), not a different product — a 0.60 skip of `תוספת יציאה
+מאוחרת חושה` is what left Achziv gold 675 without the 225 surcharge. Pass 2 is one
 **235B** call (`role=price_function_compile`) that must emit `quote(...)`
 with the shared `QuoteParams` signature. The generated module must
 define `Lodging` and `GuestType` enums (member value = canonical
@@ -1072,7 +1075,10 @@ The reply is AST-checked (`import math` and `from enum import Enum`,
 no dunders, no `open` / `eval`; `map` is allowed — late-exit parses
 `"13:00"` that way; `while` and `list.insert` are allowed — Yehudiya
 padded `child_ages` with `while`, Mishmar built the explanation with
-`insert`). Further static checks, without running
+`insert`; `try`/`except` is allowed — בארות used it to parse a time;
+`filter` / `any` / `all` / `reversed` / `dict` / `set` / `iter` /
+`divmod` / `isinstance` / `pow` / `format` / `frozenset` are allowed
+(sequence and conversion builtins; not `open` / `eval` / `getattr`). Further static checks, without running
 `quote()`, reject string membership on labels, `GuestType.GROUP`, and
 syntactic unreachable code (statements after `return` / `raise`,
 `if False`, both-branch return; `while` bodies are scanned the same
@@ -1088,7 +1094,10 @@ Each file is a list of explicit prices (`expected_price` plus the
 arithmetic in `explanation`); there is no shared `BAND_*` table and no
 Python helpers that import across parks. `gold/runner.py` loads the
 JSON whose `match` fragment sits in the campsite URL and runs
-`quote()` against those numbers. At least one soldier identity, miluim
+`quote()` against those numbers. `lodging` is the catalog string
+(`info_website_names`), not the rate-card nickname — בארות gold is
+`חדרי צוות` / `חדר צוות מאובזר` / `חדר צוות מאובזר ומונגש` /
+`חדר צוות מאובזר כפול`, not `חדר צוות קטן/גדול/כפול`. At least one soldier identity, miluim
 / student / disabled, occupancy-override (group min 30) on tent, at
 least one case per lodging on that card, and at least one case per
 identity `guest_type` (רגיל, מנוי, חייל, מילואים, אזרח ותיק, סטודנט,
@@ -1105,13 +1114,22 @@ failure-message detail, not a string match against the 235B. A pass upserts `sit
 `sha256`, `tests_passed`). An unchanged hash bumps `scraped_at` only.
 A fail leaves the previous passing row; the planner then keeps using
 that function or `quote_night`. Every compile writes
-`reports/price_functions/<site_id>.py` and `<site_id>.prompt.txt`
-(system + user, gitignored), including the latest failure. Each
-attempt that does not pass is also kept as `<site_id>_vN.py` and
-`<site_id>_vN.prompt.txt` (`13_v1` is the first fail, `13_v2` the
-retry if that also failed). A Markdown report per run lives under
-`reports/scrape_prices/<timestamp>.md`: stored vs failed, retry kind,
-failing gold / AST lines, dump paths, and cost by role.
+`reports/scrape_prices/<timestamp>/<site_id>.py` and
+`<site_id>.prompt.txt` (system + user, gitignored), including the
+latest failure. Each attempt that does not pass is also kept as
+`<site_id>_vN.py` and `<site_id>_vN.prompt.txt` (`13_v1` is the first
+fail, `13_v2` the retry if that also failed). The Markdown report is
+`reports/scrape_prices/<timestamp>/report.md` in that same folder:
+stored vs failed, retry kind, failing gold / AST lines, dump names,
+and cost by role. The report is written in `finally`, so Ctrl+C still
+leaves the folder for sites that finished. A gold miss prints `!!! PRICE FUNCTION GOLD FAILED !!!`
+(same fat banner as AST). 2026-09-17 3-site re-run stored הבשור on
+the first compile; occupancy regen fired on תל ערד (3096 vs 3080)
+and did not recover; בארות fix emitted `try/except`
+(experiments.md 2026-09-17 §2). A later run stored 1, 3–5, failed
+Achziv (late-exit row skipped at 0.60), then KeyboardInterrupt at
+משמר with no report — that is why the terminal had no run-end
+summary.
 
 Compile is one 235B call, then at most one retry. AST / syntax /
 NameError / static hits is a **fix** turn (failed function + error
@@ -1125,7 +1143,9 @@ retry gold by sending the expected numeric price (that hardcodes the
 gold cases). 2026-09-17 experiments-schema scrape stored 15/18 with
 4 fix retries and 0 occupancy regenerates (experiments.md 2026-09-17
 §1); occupancy regen stays because a price-only miss is still the
-class that must not see `expected 438`.
+class that must not see `expected 438`. A 3-site re-run then fired
+regen on תל ערד (3096 vs 3080 included 36) and still missed;
+בארות fix emitted `try/except` (experiments.md 2026-09-17 §2).
 
 At quote time a one-shot loader (`just load-price-sandbox`, prod
 `price-sandbox-loader`) reads `site_price_functions` and `POST /load`s
@@ -1251,11 +1271,16 @@ only on the internal `quote` network
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH as
 `gh-actions` (`TRIPPY_VM_HOST` / `TRIPPY_SSH_USER` / `TRIPPY_SSH_KEY`).
 Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
-reviews at 09:00 IDT (`scrape-reviews.yml`). Both call `scrape-job.yml`.
-One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n public -Fc`
-to `~/.trippy-backups` and Nebius object storage (`eu-north1`, same
-region as the VM). Scrapes do not
-dump. No VM cron. WAL-G is unused: the catalog dump is a few megabytes.
+reviews at 09:00 IDT (`scrape-reviews.yml`). Prices is
+`workflow_dispatch` (`scrape-prices.yml`; extra args `--site 2`).
+All three call `scrape-job.yml`. After prices (and after every other
+scrape) the VM runs `price-sandbox-loader` so Streamlit sees the new
+`quote()` sources. The prices Actions Summary is `report.md` (stored vs
+failed, gold/AST lines); dumps stay in `~/.trippy-scrape/<timestamp>/`
+on the VM. One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n
+public -Fc` to `~/.trippy-backups` and Nebius object storage
+(`eu-north1`, same region as the VM). Scrapes do not dump. No VM cron.
+WAL-G is unused: the catalog dump is a few megabytes.
 After each availability fetch the scraper stores
 `booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
 chrome; almost never repeats) and `offers_sha256` of aggregated

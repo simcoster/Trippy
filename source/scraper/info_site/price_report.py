@@ -16,6 +16,7 @@ from pathlib import Path
 from source.scraper.amenity_enrichment.llm import LlmUsage
 
 REPORT_DIR_ENV = "PRICES_REPORT_DIR"
+REPORT_COPY_ENV = "PRICES_REPORT_PATH"
 DEFAULT_REPORT_DIR = Path("reports") / "scrape_prices"
 
 
@@ -34,6 +35,12 @@ class PriceFunctionRun:
     store_status: str = ""
 
 
+def run_folder(started_at: datetime, directory: Path | None = None) -> Path:
+    """One directory per scrape-prices run: dumps and the Markdown report."""
+    root = directory or Path(os.environ.get(REPORT_DIR_ENV) or DEFAULT_REPORT_DIR)
+    return root / f"{started_at:%Y-%m-%d_%H%M%S}"
+
+
 def report_path(started_at: datetime, directory: Path | None = None) -> Path:
     folder = directory or Path(os.environ.get(REPORT_DIR_ENV) or DEFAULT_REPORT_DIR)
     return folder / f"{started_at:%Y-%m-%d_%H%M%S}.md"
@@ -46,13 +53,21 @@ def write_run_report(
     started_at: datetime,
     seconds: float,
     directory: Path | None = None,
+    name: str | None = None,
 ) -> Path:
     path = report_path(started_at, directory)
+    if name is not None:
+        path = path.with_name(name)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         render_run_report(runs, usage, started_at=started_at, seconds=seconds),
         encoding="utf-8",
     )
+    copy = (os.environ.get(REPORT_COPY_ENV) or "").strip()
+    if copy:
+        dest = Path(copy)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     return path
 
 
@@ -107,8 +122,6 @@ def render_run_report(
 
 def _site_section(run: PriceFunctionRun) -> list[str]:
     lines = [f"### {run.site_id}. {run.site_name}", ""]
-    if run.url:
-        lines += [f"<{run.url}>", ""]
     lines.append(f"- outcome: {_outcome_label(run)}")
     if run.retry:
         lines.append(f"- retry: {run.retry}")

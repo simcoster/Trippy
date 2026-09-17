@@ -16,6 +16,7 @@ from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_MODEL,
     LlmUsage,
     make_nebius_openai_client,
+    nebius_chat_create,
 )
 from source.scraper.info_site.db import listing_match_is_confident, resolve_listing_ids
 from source.scraper.info_site.match_listing import InfoWebsiteNameMatcher
@@ -57,7 +58,7 @@ Rules:
 - Define `class Lodging(Enum)` and `class GuestType(Enum)` first. Member
   *values* are the exact Hebrew strings from the user message (quotation
   marks already stripped — never write `"`, `'`, or gershayim inside a
-  member value). Member *names* are ASCII identifiers (TENT, HUSHA,
+  member value). Member *names* are ASCII identifiers (TENT, CABIN,
   REGULAR, MATMON, …).
 - Parse once at the top of quote(), rebinding the parameters:
   `lodging = Lodging(lodging)` and `guest_type = GuestType(guest_type)`.
@@ -73,9 +74,9 @@ Rules:
   `{{"label", "price"}}` rows, do not write `"מבוגר" in …` / `"ילד" in …`
   / `"תוספת" in …`, do not startswith/endswith. Hebrew lives only as
   enum member values and inside the explanation string.
-- Example shape (numbers from the user message, not these):
-  `RATES[Lodging.TENT][GuestType.REGULAR] = {{"adult": 76.0, "child": 58.0}}`
-  `RATES[Lodging.HUSHA][GuestType.REGULAR] = {{"weekday": 350.0, "weekend": 450.0, "late_exit": 225.0}}`
+- Example shape (invented numbers — copy rates from the user message only):
+  `RATES[Lodging.TENT][GuestType.REGULAR] = {{"adult": 10.0, "child": 8.0}}`
+  `RATES[Lodging.CABIN][GuestType.REGULAR] = {{"weekday": 100.0, "weekend": 120.0, "late_exit": 50.0}}`
   Then `rates = RATES[lodging][guest_type]`; tent uses `rates["adult"]`
   and `rates.get("child", rates["adult"])`; a unit uses
   `rates["weekend"] if is_weekend_or_holiday else rates["weekday"]`
@@ -94,9 +95,10 @@ Rules:
   GuestType.GROUP, never `GuestType("קבוצה")`. קבוצה is an occupancy
   override on a separate schedule in the user message, not a tab the
   caller can pass.
-- Read that site's threshold from the occupancy-override notes (sites
-  differ: 30 vs 80, …) and bake it as a number (`GROUP_MIN = 30`).
-  Store those numbers as `GROUP_RATES[lodging] = {{"adult": …, "child": …}}`,
+- Read that site's threshold from the occupancy-override notes and bake
+  it as a number (`GROUP_MIN`). Sites differ; do not assume a threshold
+  from this prompt. Store those numbers as
+  `GROUP_RATES[lodging] = {{"adult": …, "child": …}}`,
   not under `RATES[lodging][GuestType.GROUP]`.
 - After parsing identity, if `adults_num + child_num >= GROUP_MIN` and
   that lodging has an occupancy schedule, use GROUP_RATES for that
@@ -104,24 +106,25 @@ Rules:
   included. Below the threshold, keep `RATES[lodging][guest_type]`.
 - `is_weekend_or_holiday` selects אמצע שבוע vs סופי שבוע וחגים unit rates.
   Per-person tent rows with no weekday split apply every night.
-- Per-unit lodging (bungalow, room, חושה, family tent, mahal) ignores party
+- Per-unit lodging (bungalow, room, hut, family tent, mahal) ignores party
   size except extra-person surcharges (תוספת מבוגר / תוספת ילד / תוספת אדם).
-  Included occupancy is the עד N on that unit's own price row (family tent
-  "עד 4 לנים" → 4 people at the unit price). A תוספת אדם row is the N+1st
-  guest, not folded into the unit. A cap in the notes ("עד 5 לנים באוהל")
-  is a maximum, not included occupancy.
+  Included occupancy is the עד N on that unit's own price row (a family
+  tent row "עד N לנים" → N people at the unit price). A תוספת אדם row is
+  the N+1st guest, not folded into the unit. A cap in the notes
+  ("עד M לנים") is a maximum, not included occupancy.
 - Two published sizes of the same kind of lodging are different Lodging
-  members when both appear in the Lodging list (תל ערד: מאהל עד 10 at 860
-  vs כפול עד 36 at 3080). Quote each member's unit price. Do not price the
-  larger size as extras on the smaller unit.
+  members when both appear in the Lodging list. Quote each member's unit
+  price from that member's own rows. Do not price the larger size as
+  extras on the smaller unit, and do not copy a number from this prompt.
 - Count free under-5s in one name and reuse it (`toddler_count`).
 - `planned_exit_time` after 12:00 on a weekend: add the matching
   תוספת יציאה מאוחרת row when one exists for that product.
 - Use only the rate rows and visitor-info pricing rules supplied. Do not invent
   tariffs. Ignore non-price visitor rules (dogs, music, glass).
 - Only `import math` and `from enum import Enum` (or StrEnum). No other
-  imports, no files, no network, no try/except. Build the explanation like:
-  "2 adults [76] + 2 children [58] [ages 5,7] + 1 toddler [free] (age 4); Matmon"
+  imports, no files, no network. try/except is allowed; do not catch the
+  enum constructor. Build the explanation like:
+  "2 adults [10] + 2 children [8] [ages 5,7] + 1 toddler [free] (age 4); Matmon"
 """
 
 FIX_SYSTEM_PROMPT = f"""You fix one Python quote() module for an Israeli campsite.
@@ -274,6 +277,14 @@ def _scan_unreachable_stmt(stmt: ast.stmt, hits: list[str]) -> None:
         return
     if isinstance(stmt, ast.FunctionDef):
         _scan_unreachable_body(stmt.body, hits)
+        return
+    if isinstance(stmt, ast.Try):
+        _scan_unreachable_body(stmt.body, hits)
+        for handler in stmt.handlers:
+            _scan_unreachable_body(handler.body, hits)
+        _scan_unreachable_body(stmt.orelse, hits)
+        _scan_unreachable_body(stmt.finalbody, hits)
+        return
 
 
 def unreachable_code_hits(source: str) -> list[str]:
@@ -497,7 +508,8 @@ def _complete_python(
 ) -> CompileQuoteDraft:
     llm = client or make_nebius_openai_client()
     chosen = model or QWEN_INSTRUCT_MODEL
-    response = llm.chat.completions.create(
+    response = nebius_chat_create(
+        llm,
         model=chosen,
         messages=[
             {"role": "system", "content": system},

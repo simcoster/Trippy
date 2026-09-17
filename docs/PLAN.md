@@ -52,6 +52,79 @@ below. design.md “Where it runs”; cloud.md.
 not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
+### Done (2026-09-17, scrape-prices GitHub Action)
+
+**`scrape-prices.yml`** is `workflow_dispatch` (extra args `--site 2`),
+same SSH/`concurrency: scrape` path as availability and reviews.
+`job.sh prices` already existed. Summary is `prices.md` (`PRICES_REPORT_PATH`);
+dumps go to `PRICES_REPORT_DIR=/reports` → `~/.trippy-scrape/<timestamp>/`.
+Loader still runs after the scrape.
+
+### Done (2026-09-17, one folder per scrape-prices run)
+
+**Each scrape-prices run writes `reports/scrape_prices/<timestamp>/`**
+(`2.py`, `2_v1.py`, prompts, `report.md`). Older flat
+`reports/price_functions/` dumps are leftover from before this.
+
+### Done (2026-09-17, gold fail banner + interrupt report; late-exit is a surcharge)
+
+**Gold misses print `!!! PRICE FUNCTION GOLD FAILED !!!`** like AST, and
+an interrupted scrape still writes the Markdown report (Ctrl+C at משמר
+lost the summary). Listing-match prompt: תוספת יציאה מאוחרת / תוספת אדם
+are rate words on that unit — אכזיב skipped `תוספת יציאה מאוחרת חושה`
+at 0.60 so gold 675 never saw 225.
+
+### Done (2026-09-17, more quote() builtins: any, all, dict, …)
+
+**Allowlisted the remaining harmless sequence/conversion builtins** on
+generated `quote()`: `any`, `all`, `reversed`, `dict`, `set`,
+`frozenset`, `iter`, `divmod`, `isinstance`, `pow`, `format`. Not
+`open` / `eval` / `getattr`. תל ערד had failed on `any`.
+
+### Done (2026-09-17, filter allowlisted in price functions)
+
+**`filter` is an allowed builtin** in generated `quote()` (`ast_check`),
+same as `map` / `next`. מצדה's first compile used it and was rejected
+until a fix rewrite.
+
+### Done (2026-09-17, retry Nebius/page connection errors)
+
+**scrape-prices retries DNS/connect blips.** `nebius_chat_create` waits
+2s / 8s / 20s on `APIConnectionError` / timeout; the OpenAI client
+`max_retries` is 6. Page fetches retry twice. A site that still fails
+is recorded and the run continues (Castel died the whole job on
+`getaddrinfo failed`).
+
+### Done (2026-09-17, compile prompt has no park names or live tariffs)
+
+**Compile SYSTEM_PROMPT is generic.** No park name, no INPA band
+(76/58), no חושה 350/450, no `GROUP_MIN = 30`, no "עד 4/5 לנים".
+Example rates are invented (10/8, 100/120). Occupancy is עד N / cap M.
+The user message still names the campsite being compiled.
+
+### Done (2026-09-17, beerot gold uses catalog lodging names)
+
+**בארות gold `lodging` is `info_website_names`, not rate-card nicknames.**
+`חדר צוות קטן` → `חדרי צוות`; `חדר צוות כפול` → `חדר צוות מאובזר כפול`;
+`חדר צוות גדול` (rooms 5–6, same tariff) → `חדר צוות מאובזר` and
+`חדר צוות מאובזר ומונגש`. Prices unchanged.
+
+### Done (2026-09-17, try/except allowed; Tel Arad numbers out of the prompt)
+
+**Price-function AST allows `try`/`except`** (`Exception` / `KeyError` /
+`TypeError` in the sandbox builtins). Compile prompt no longer forbids
+it, and no longer names תל ערד 860/3080 — that few-shot was copied
+onto the small mahal. scrape-prices Markdown report omits campsite
+URLs.
+
+### Done (2026-09-17, scrape-prices 13/15/17 re-run)
+
+**Re-ran the three compile misses on experiments.** הבשור stored on
+the first compile. תל ערד occupancy regen fired (3096 vs 3080) and
+still failed. בארות fix turned gold lodging-name misses into
+`try/except`. Report `reports/scrape_prices/2026-09-17_063211.md`.
+experiments.md 2026-09-17 §2.
+
 ### Done (2026-09-17, scrape-prices run report and versioned fail dumps)
 
 **Each scrape-prices run writes a Markdown report** under
