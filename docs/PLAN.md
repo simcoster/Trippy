@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-17, backup summary)
+
+**Actions backup must upload.** `BACKUP_S3_BUCKET` unset used to
+succeed after a local dump only. `backup.yml` now fails that, and
+the Summary is `Backup was written to s3://…` on success. cloud.md.
+
 ### Done (2026-09-17, backup dir)
 
 **Actions dumps to `~/.trippy-backups`.** `gh-actions` is not root;

@@ -36,4 +36,36 @@ jobs:
             export TRIPPY_ROOT
             export TRIPPY_COMPOSE_FILE=docker-compose.prod.yml
             export TRIPPY_BACKUP_DIR="${HOME}/.trippy-backups"
+            export TRIPPY_BACKUP_REQUIRE_S3=1
+            export BACKUP_REPORT_PATH="${HOME}/.trippy-backups/last.md"
+            if [ -f .env ]; then
+              set -a
+              # shellcheck disable=SC1091
+              . ./.env
+              set +a
+            fi
+            bucket=$(printf '%s' "${BACKUP_S3_BUCKET:-}" | tr -d '\r')
+            if [ -z "${bucket}" ]; then
+              echo "BACKUP_S3_BUCKET is unset in ${TRIPPY_ROOT}/.env" >&2
+              echo "Uncomment the object-store keys (see .env.example) and re-run." >&2
+              exit 1
+            fi
             sh scripts/cloud/backup.sh
+
+      - name: Job summary
+        if: ${{ !cancelled() }}
+        env:
+          HOST: ${{ secrets.TRIPPY_VM_HOST }}
+          SSH_USER: ${{ secrets.TRIPPY_SSH_USER }}
+          SSH_KEY: ${{ secrets.TRIPPY_SSH_KEY }}
+        run: |
+          set -eu
+          key="$(mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$key"
+          chmod 600 "$key"
+          ssh -i "$key" -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile=/dev/null \
+            "${SSH_USER}@${HOST}" \
+            "test -f \"\$HOME/.trippy-backups/last.md\" && cat \"\$HOME/.trippy-backups/last.md\" || echo \"_Backup did not write an object-store report (dump or upload failed)._\"" \
+            >> "$GITHUB_STEP_SUMMARY"

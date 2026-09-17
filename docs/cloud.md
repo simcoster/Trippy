@@ -83,10 +83,11 @@ In [console.nebius.com](https://console.nebius.com), project you already have:
 3. Endpoint `https://storage.me-west1.nebius.cloud` (adjust if you picked another region).
 4. Lifecycle: expire prefix `postgres/` after **30 days**.
 5. Put `BACKUP_S3_BUCKET`, `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`,
-   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` in the VM `.env` (and
-   laptop `.env` if `just backup` should upload). If `BACKUP_S3_BUCKET`
-   is unset, dumps stay on disk only. If it is set, a failed upload
-   fails the dump.
+   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` **uncommented** in the
+   VM `.env`. `backup.yml` requires an upload; a dump that stays on
+   disk only fails the job. Laptop `just backup` still skips S3 if
+   those are unset. The Actions Summary is `Backup was written to
+   s3://…` after a successful upload.
 
 `pg_dump -n public -Fc` only. `experiments` and `extensions` stay out.
 On-disk `trippy` is tens of MB (indexes + a copy in `experiments`); the

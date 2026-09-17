@@ -57,13 +57,43 @@ echo "wrote ${dump} (${size} bytes, public schema)"
 
 find "${BACKUP_DIR}" -type f -name 'trippy-*.dump' -mtime "+${KEEP_LOCAL}" -delete
 
-if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
-  : "${AWS_ENDPOINT_URL:?AWS_ENDPOINT_URL is required to upload}"
-  docker run --rm \
-    --env-file "${ROOT}/.env" \
-    -v "${dump}:/data/dump:ro" \
-    amazon/aws-cli \
-    --endpoint-url "${AWS_ENDPOINT_URL}" \
-    s3 cp /data/dump "s3://${BACKUP_S3_BUCKET}/postgres/${name}"
-  echo "uploaded s3://${BACKUP_S3_BUCKET}/postgres/${name}"
+# Comments and Windows CRLF in .env leave a trailing CR on values.
+BACKUP_S3_BUCKET=$(printf '%s' "${BACKUP_S3_BUCKET:-}" | tr -d '\r')
+AWS_ENDPOINT_URL=$(printf '%s' "${AWS_ENDPOINT_URL:-}" | tr -d '\r')
+AWS_ACCESS_KEY_ID=$(printf '%s' "${AWS_ACCESS_KEY_ID:-}" | tr -d '\r')
+AWS_SECRET_ACCESS_KEY=$(printf '%s' "${AWS_SECRET_ACCESS_KEY:-}" | tr -d '\r')
+AWS_DEFAULT_REGION=$(printf '%s' "${AWS_DEFAULT_REGION:-}" | tr -d '\r')
+
+if [ -z "${BACKUP_S3_BUCKET}" ]; then
+  if [ "${TRIPPY_BACKUP_REQUIRE_S3:-}" = "1" ]; then
+    echo "backup.sh: BACKUP_S3_BUCKET is unset in ${ROOT}/.env — object-store upload is required" >&2
+    exit 1
+  fi
+  echo "BACKUP_S3_BUCKET unset; dump stayed on disk only"
+  exit 0
 fi
+
+: "${AWS_ENDPOINT_URL:?AWS_ENDPOINT_URL is required to upload}"
+: "${AWS_ACCESS_KEY_ID:?AWS_ACCESS_KEY_ID is required to upload}"
+: "${AWS_SECRET_ACCESS_KEY:?AWS_SECRET_ACCESS_KEY is required to upload}"
+
+s3_uri="s3://${BACKUP_S3_BUCKET}/postgres/${name}"
+docker run --rm \
+  -e AWS_ACCESS_KEY_ID \
+  -e AWS_SECRET_ACCESS_KEY \
+  -e AWS_DEFAULT_REGION \
+  -e AWS_ENDPOINT_URL \
+  -v "${dump}:/data/dump:ro" \
+  amazon/aws-cli \
+  --endpoint-url "${AWS_ENDPOINT_URL}" \
+  s3 cp /data/dump "${s3_uri}"
+echo "uploaded ${s3_uri}"
+
+report="${BACKUP_REPORT_PATH:-${BACKUP_DIR}/last.md}"
+mkdir -p "$(dirname "${report}")"
+{
+  echo "Backup was written to \`${s3_uri}\`."
+  echo
+  echo "- local: \`${dump}\`"
+  echo "- size: ${size} bytes"
+} > "${report}"
