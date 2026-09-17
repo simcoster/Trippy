@@ -30,6 +30,9 @@ Thumbs.db
 # Agent scratch / non-production probe output
 temp/
 
+# Local pg_dump -Fc of public (just backup)
+backups/
+
 __pycache__/graph.cpython-314.pyc
 
 # Per-run LLM cost log written by the scrape-* recipes (SCRAPE_COST_LOG overrides)

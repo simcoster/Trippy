@@ -31,19 +31,19 @@ if id ubuntu >/dev/null 2>&1; then
 fi
 
 mkdir -p "${BACKUP_DIR}"
-chmod 700 "${BACKUP_DIR}"
+chgrp docker "${BACKUP_DIR}"
+chmod 770 "${BACKUP_DIR}"
 
 install -m 0755 "${ROOT}/scripts/cloud/backup.sh" /usr/local/sbin/trippy-backup
-cat >/etc/cron.d/trippy-backup <<EOF
-# Daily 01:15 UTC dump + optional object-store upload.
-15 1 * * * root /usr/local/sbin/trippy-backup >> /var/log/trippy-backup.log 2>&1
-EOF
+install -m 0755 "${ROOT}/scripts/cloud/restore.sh" /usr/local/sbin/trippy-restore
+# GitHub Actions dumps once a day at 14:00 IDT (backup.yml). No VM cron.
+rm -f /etc/cron.d/trippy-backup
 
 cd "${ROOT}"
 docker compose -f docker-compose.prod.yml --env-file .env build
 docker compose -f docker-compose.prod.yml --env-file .env up -d
 docker compose -f docker-compose.prod.yml --env-file .env --profile scrape run --rm scrape migrate
 
-echo "compose is up. Register a GitHub self-hosted runner labeled 'trippy' (see docs/cloud.md)."
-echo "Restore a laptop dump with:"
-echo "  docker compose -f docker-compose.prod.yml --env-file .env exec -T db pg_restore -U trippy -d trippy --clean --if-exists < dump.dump"
+echo "compose is up. GitHub Actions SSHs as gh-actions (see docs/cloud.md)."
+echo "Dump public schema: just backup   (or /usr/local/sbin/trippy-backup)"
+echo "Restore: just restore backups/trippy-….dump"

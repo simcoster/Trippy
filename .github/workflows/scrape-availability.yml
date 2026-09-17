@@ -27,4 +27,5 @@ jobs:
       job: availability
       extra_args: ${{ github.event.inputs.extra_args || '' }}
       report_file: availability.md
+      backup: false
     secrets: inherit

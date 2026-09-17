@@ -1,0 +1,39 @@
+name: Backup Postgres
+
+# One dump per day. Public schema on the VM → disk + object storage.
+# 14:00 IDT (Israel summer). Winter (IST) this is 13:00.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 11 * * *"
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Dump public schema on the VM
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          TRIPPY_ROOT: ${{ vars.TRIPPY_ROOT || '/opt/trippy' }}
+        with:
+          host: ${{ secrets.TRIPPY_VM_HOST }}
+          username: ${{ secrets.TRIPPY_SSH_USER }}
+          key: ${{ secrets.TRIPPY_SSH_KEY }}
+          command_timeout: 30m
+          envs: TRIPPY_ROOT
+          script: |
+            set -eu
+            cd "${TRIPPY_ROOT}"
+            export TRIPPY_ROOT
+            export TRIPPY_COMPOSE_FILE=docker-compose.prod.yml
+            export TRIPPY_BACKUP_DIR=/var/lib/trippy/backups
+            sh scripts/cloud/backup.sh
