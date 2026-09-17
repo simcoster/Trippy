@@ -6,6 +6,33 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-17, eu-north1)
+
+**VM and object store are both Finland (`eu-north1`).** Not
+`me-west1`. Scrape/backup cron stays IDT (when we want the job, not
+the datacenter clock). Supersedes the “bucket not the VM's region”
+note below. cloud.md; design.md “Where it runs”.
+
+### Done (2026-09-17, backup region)
+
+**Object store is `eu-north1`, not the VM's `me-west1`.** Endpoint
+`https://storage.eu-north1.nebius.cloud`. PutObject AccessDenied was
+the `accesskey-e00…` resource id pasted as `AWS_SECRET_ACCESS_KEY`.
+cloud.md; `.env.example`.
+
+### Done (2026-09-17, backup summary)
+
+**Actions backup must upload.** `BACKUP_S3_BUCKET` unset used to
+succeed after a local dump only. `backup.yml` now fails that, and
+the Summary is `Backup was written to s3://…` on success. cloud.md.
+
+### Done (2026-09-17, backup dir)
+
+**Actions dumps to `~/.trippy-backups`.** `gh-actions` is not root;
+`/var/lib/trippy/backups` from bootstrap is `700` and the first
+`backup.yml` run died with permission denied. Same home-dir pattern
+as scrape reports. cloud.md; design.md “Where it runs”.
+
 ### Done (2026-09-17, afternoon dump)
 
 **One dump per day at 14:00 IDT**, not before a scrape.

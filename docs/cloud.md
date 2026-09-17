@@ -15,11 +15,11 @@ GitHub Actions ──SSH──► docker compose run scrape
                                               ▼
                                     Postgres (compose network only)
                                               │
-     14:00 IDT  pg_dump -n public ──► /var/lib/trippy/backups
+     14:00 IDT  pg_dump -n public ──► ~/.trippy-backups
                                  └──► Object Storage (trippy-backups)
 ```
 
-Cost, 24/7, `me-west1` `cpu-d3` `4vcpu-16gb`: about **$80/month**
+Cost, 24/7, `eu-north1` `cpu-d3` `4vcpu-16gb`: about **$80/month**
 (compute ~$72 + two 50 GiB network SSD ~$7 + object storage pennies).
 Token Factory is a separate bill.
 
@@ -66,9 +66,10 @@ log still has the per-site scroll. GitHub emails you if the job fails.
 
 In [console.nebius.com](https://console.nebius.com), project you already have:
 
-1. Region **`me-west1`** (Israel). Platform **`cpu-d3`**, preset **`4vcpu-16gb`**.
+1. Region **`eu-north1`** (Finland). Platform **`cpu-d3`**, preset **`4vcpu-16gb`**.
 2. Ubuntu 24.04, 50 GiB boot **network SSD**, Docker later via bootstrap.
-3. Optional second 50 GiB disk mounted at `/var/lib/trippy/backups`.
+3. Optional second 50 GiB disk mounted at `/var/lib/trippy/backups`
+   (only if you dump as root; Actions writes `~/.trippy-backups`).
 4. SSH key. Security group: **22** reachable from the internet (GitHub-hosted
    runners have no stable IP list worth allowlisting). Key-only, no passwords.
    Do not open 5432 or 8501. Use a **static** public IP — GitHub stores it as
@@ -79,21 +80,25 @@ In [console.nebius.com](https://console.nebius.com), project you already have:
 
 1. Create bucket `trippy-backups` (Standard class).
 2. Static access keys for that bucket.
-3. Endpoint `https://storage.me-west1.nebius.cloud` (adjust if you picked another region).
+3. Endpoint `https://storage.eu-north1.nebius.cloud` (same region as
+   the VM). `AWS_DEFAULT_REGION=eu-north1`.
 4. Lifecycle: expire prefix `postgres/` after **30 days**.
 5. Put `BACKUP_S3_BUCKET`, `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`,
-   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` in the VM `.env` (and
-   laptop `.env` if `just backup` should upload). If `BACKUP_S3_BUCKET`
-   is unset, dumps stay on disk only. If it is set, a failed upload
-   fails the dump.
+   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` **uncommented** in the
+   VM `.env`. `backup.yml` requires an upload; a dump that stays on
+   disk only fails the job. Laptop `just backup` still skips S3 if
+   those are unset. The Actions Summary is `Backup was written to
+   s3://…` after a successful upload. `AWS_SECRET_ACCESS_KEY` is the
+   one-time secret string, not the `accesskey-e00…` resource id.
 
 `pg_dump -n public -Fc` only. `experiments` and `extensions` stay out.
 On-disk `trippy` is tens of MB (indexes + a copy in `experiments`); the
 object is heap+TOAST for `public`. A 2026-09-17 laptop dump was **4.6 MB**.
 Standard storage is **$0.0147/GiB-month** (~$0.002/month for 30 daily
 dumps at that size).
-Egress **$0.015/GiB** applies when downloading off Nebius; VM → bucket
-in `me-west1` does not. No per-object fee on the price list.
+Egress **$0.015/GiB** applies when downloading off Nebius. Upload from
+the VM to the bucket is not that line item. No per-object fee on the
+price list.
 
 Laptop: `just backup` / `just restore backups/trippy-….dump` (docker
 compose cp; do not redirect `pg_dump` in PowerShell). Destructive
@@ -101,7 +106,8 @@ compose cp; do not redirect `pg_dump` in PowerShell). Destructive
 `TRIPPY_SCHEMA=experiments`. VM: one GitHub Actions dump at 14:00 IDT
 ([`backup.yml`](../.github/workflows/backup.yml)), not cron and not
 tied to a scrape. [`scripts/cloud/backup.sh`](../scripts/cloud/backup.sh)
-writes under `/var/lib/trippy/backups` (7 days) and `s3://…/postgres/`.
+writes under `~/.trippy-backups` (7 days; `gh-actions` cannot write
+`/var/lib/trippy/backups`) and `s3://…/postgres/`.
 Restore: `just restore backups/…` or `s3://trippy-backups/postgres/…`.
 
 ### 3. Cloudflare Tunnel

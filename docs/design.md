@@ -1119,7 +1119,8 @@ input; `--from-planner` re-runs recommend only.
 
 ## Where it runs (2026-09-12)
 
-Phase 1 lives on one Nebius CPU VM: Compose Postgres (not managed),
+Phase 1 lives on one Nebius CPU VM in `eu-north1` (Finland): Compose
+Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
 an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same image with
@@ -1128,7 +1129,8 @@ an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same i
 Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
 reviews at 09:00 IDT (`scrape-reviews.yml`). Both call `scrape-job.yml`.
 One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n public -Fc`
-to `/var/lib/trippy/backups` and Nebius object storage. Scrapes do not
+to `~/.trippy-backups` and Nebius object storage (`eu-north1`, same
+region as the VM). Scrapes do not
 dump. No VM cron. WAL-G is unused: the catalog dump is a few megabytes.
 After each availability fetch the scraper stores
 `booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
