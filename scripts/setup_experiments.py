@@ -32,6 +32,7 @@ from db.experiments import (
     copy_public,
     empty_tables,
     freeze_availability,
+    leftover_experiments_tables,
     public_base_tables,
     table_name,
 )
@@ -109,6 +110,11 @@ def cmd_status() -> None:
                 print(f"    availability_frozen: {cur.fetchone()[0]} row(s)")
             else:
                 print("    availability_frozen: (missing)")
+            extras = leftover_experiments_tables(cur, tables)
+            if extras:
+                print(f"leftover (not in public; copy drops these): {len(extras)}")
+                for name in extras:
+                    print(f"    {name}")
 
 
 def main(argv: list[str] | None = None) -> None:

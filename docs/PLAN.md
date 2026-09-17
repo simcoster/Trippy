@@ -52,6 +52,356 @@ below. design.md “Where it runs”; cloud.md.
 not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
+### Done (2026-09-17, store AST-ok quote() even when gold fails)
+
+**scrape-prices writes `site_price_functions` after retries if AST
+passed**, including gold misses (בארות / תל ערד). AST/static still
+does not store. Report keeps them under Failures as
+`gold failed (stored updated)`.
+
+### Done (2026-09-17, GuestType only on per-person rates)
+
+**Compile prompt:** soldier / Matmon / miluim / student / senior /
+disabled change per-person rates only. Per-unit (חושה, family tent)
+ignores `guest_type` unless that unit has its own identity rows.
+
+### Done (2026-09-17, מעל X is X and up; per-person vs per-unit keys)
+
+**Compile prompt:** "מעל X לנים" / "X ומעלה" → `GROUP_MIN` is X, not
+X+1 (הקסטל used 31). Per-person schedules (tent, group) use `adult` /
+`child`; per-unit (חושה, family tent) use `weekday` / `weekend` and
+must not read `rates["adult"]`.
+
+### Done (2026-09-17, drop Scrape / Scrape job from Actions)
+
+**Deleted `scrape.yml`** (claims / info / sites / place-ids dropdown).
+Those stay `just prod-scrape <job>` on the VM. **`scrape-job.yml` is
+now `.github/actions/scrape-job`** so GitHub does not list it as a
+runnable workflow. Availability, reviews, and prices checkout the
+repo and call the composite action.
+
+### Done (2026-09-17, scrape-prices GitHub Action)
+
+**`scrape-prices.yml`** is `workflow_dispatch` (extra args `--site 2`),
+same SSH/`concurrency: scrape` path as availability and reviews.
+`job.sh prices` already existed. Summary is `prices.md` (`PRICES_REPORT_PATH`);
+dumps go to `PRICES_REPORT_DIR=/reports` → `~/.trippy-scrape/<timestamp>/`.
+Loader still runs after the scrape.
+
+### Done (2026-09-17, one folder per scrape-prices run)
+
+**Each scrape-prices run writes `reports/scrape_prices/<timestamp>/`**
+(`2.py`, `2_v1.py`, prompts, `report.md`). Older flat
+`reports/price_functions/` dumps are leftover from before this.
+
+### Done (2026-09-17, gold fail banner + interrupt report; late-exit is a surcharge)
+
+**Gold misses print `!!! PRICE FUNCTION GOLD FAILED !!!`** like AST, and
+an interrupted scrape still writes the Markdown report (Ctrl+C at משמר
+lost the summary). Listing-match prompt: תוספת יציאה מאוחרת / תוספת אדם
+are rate words on that unit — אכזיב skipped `תוספת יציאה מאוחרת חושה`
+at 0.60 so gold 675 never saw 225.
+
+### Done (2026-09-17, more quote() builtins: any, all, dict, …)
+
+**Allowlisted the remaining harmless sequence/conversion builtins** on
+generated `quote()`: `any`, `all`, `reversed`, `dict`, `set`,
+`frozenset`, `iter`, `divmod`, `isinstance`, `pow`, `format`. Not
+`open` / `eval` / `getattr`. תל ערד had failed on `any`.
+
+### Done (2026-09-17, filter allowlisted in price functions)
+
+**`filter` is an allowed builtin** in generated `quote()` (`ast_check`),
+same as `map` / `next`. מצדה's first compile used it and was rejected
+until a fix rewrite.
+
+### Done (2026-09-17, retry Nebius/page connection errors)
+
+**scrape-prices retries DNS/connect blips.** `nebius_chat_create` waits
+2s / 8s / 20s on `APIConnectionError` / timeout; the OpenAI client
+`max_retries` is 6. Page fetches retry twice. A site that still fails
+is recorded and the run continues (Castel died the whole job on
+`getaddrinfo failed`).
+
+### Done (2026-09-17, compile prompt has no park names or live tariffs)
+
+**Compile SYSTEM_PROMPT is generic.** No park name, no INPA band
+(76/58), no חושה 350/450, no `GROUP_MIN = 30`, no "עד 4/5 לנים".
+Example rates are invented (10/8, 100/120). Occupancy is עד N / cap M.
+The user message still names the campsite being compiled.
+
+### Done (2026-09-17, beerot gold uses catalog lodging names)
+
+**בארות gold `lodging` is `info_website_names`, not rate-card nicknames.**
+`חדר צוות קטן` → `חדרי צוות`; `חדר צוות כפול` → `חדר צוות מאובזר כפול`;
+`חדר צוות גדול` (rooms 5–6, same tariff) → `חדר צוות מאובזר` and
+`חדר צוות מאובזר ומונגש`. Prices unchanged.
+
+### Done (2026-09-17, try/except allowed; Tel Arad numbers out of the prompt)
+
+**Price-function AST allows `try`/`except`** (`Exception` / `KeyError` /
+`TypeError` in the sandbox builtins). Compile prompt no longer forbids
+it, and no longer names תל ערד 860/3080 — that few-shot was copied
+onto the small mahal. scrape-prices Markdown report omits campsite
+URLs.
+
+### Done (2026-09-17, scrape-prices 13/15/17 re-run)
+
+**Re-ran the three compile misses on experiments.** הבשור stored on
+the first compile. תל ערד occupancy regen fired (3096 vs 3080) and
+still failed. בארות fix turned gold lodging-name misses into
+`try/except`. Report `reports/scrape_prices/2026-09-17_063211.md`.
+experiments.md 2026-09-17 §2.
+
+### Done (2026-09-17, scrape-prices run report and versioned fail dumps)
+
+**Each scrape-prices run writes a Markdown report** under
+`reports/scrape_prices/<timestamp>.md` (stored vs failed, retry kind,
+failing gold / AST lines, dump paths, cost by role). Failed compile
+attempts are kept as `reports/price_functions/<id>_vN.py` and
+`<id>_vN.prompt.txt`; `<id>.py` is still the latest attempt. The fix
+turn dumps `FIX_SYSTEM_PROMPT`.
+
+### Done (2026-09-17, compile retries: fix vs occupancy regenerate)
+
+**One retry after a failed price-function compile.** AST / syntax /
+NameError / static → `compile_quote_fix` (the function + error text,
+`price_function_compile_fix`). Gold price misses only → same rate-card
+prompt plus occupancy class, no expected numbers
+(`price_function_compile_retry`). `assess_compiled_source` decides
+which. Supersedes “retry policy … not wired” below.
+
+### Done (2026-09-16, while/insert and occupancy in the compile prompt)
+
+**`while` and `list.insert` are allowlisted** (`ast_check`). Yehudiya
+and Mishmar failed those on the 18-site scrape, not on prices.
+Compile prompt now states included occupancy = עד N on the unit row
+(תוספת is N+1; a notes cap is not included), two published sizes are
+separate Lodging members (Tel Arad 860 vs 3080), and free under-5s
+live in one name (`toddler_count`) — the NameErrors were typos
+(`todder_count` / `toddlers_count`), not prompt variants. Retry policy in design.md (not wired): AST/syntax/NameError is a
+fix-the-function turn; gold occupancy is a regenerate without the
+expected number; not temp>0. Supersedes the “retry is a maybe” note
+below.
+
+### Done (2026-09-16, gold JSON per campsite)
+
+**Gold is prices in JSON, not Python helpers.** One
+`source/price_sandbox/gold/sites/<slug>.json` per park; `gold/runner.py`
+loads the file whose `match` sits in the URL and runs `quote()` against
+`expected_price`. Deleted `cases.py` `BAND_76` / `BAND_64` / `BAND_47`
+and the per-site `*.py` modules that imported them — a shared band hid
+that בארות student is 53₪. Numbers from the published cards (prompts
+1–16 plus a live fetch of all 18 parks.org.il pages). Supersedes
+“gold file per campsite” Python modules below.
+
+### Done (2026-09-16, gold file per campsite)
+
+**Every campsite has full gold, not only Achziv.** One module per park
+under `source/price_sandbox/gold/sites/` (מצדה, חורשת טל, …). Tent
+identities include miluim / student / disabled; group occupancy 30 on
+every card that publishes קבוצה (all captured INPA cards); extra cases
+for each lodging on that dump (family tent, couple tent, mahal, staff,
+pitch, caravan, tokul, חושה). Numbers from scrape-prices prompts 1–16;
+בארות / יוטבתה from the 64₪ band after the scrape stopped. Supersedes
+“wait on a captured card”. test_price_gold_all_sites.py; design.md
+“Per-site price functions”.
+
+### Done (2026-09-16, strip quotes from lodging and guest_type)
+
+**Lodging and guest_type identifiers never keep quotation marks.**
+`צה"ל` in `נכה צה"ל ומלווה` made the 235B emit an unterminated Python
+string. `strip_type_quotes` on `QuoteParams` and on compile prompt
+names; gold `DISABLED` is `נכה צהל ומלווה`. design.md “Per-site price
+functions”.
+
+### Done (2026-09-16, one-shot sandbox loader)
+
+**A short-lived loader fills the sandbox; Streamlit only quotes.**
+`python -m source.price_sandbox.load` reads `site_price_functions`,
+`POST /load`, exits. `just load-price-sandbox` (laptop; also from
+`just streamlit` / `scrape-prices` / `run-eval` with `--if-up`).
+Prod: `price-sandbox-loader` on `default`+`quote`, `just prod-load-sandbox`,
+hooked from `prod-up`, `prod-scrape`, bootstrap, and deploy. The jail
+image deletes `load.py`. Search no longer `POST /load`s. Supersedes
+the “maybe a one-shot sandbox loader” note below.
+design.md “Per-site price functions”.
+
+### Open (2026-09-16, maybe a one-shot sandbox loader)
+
+**Streamlit (or the planner on first quote) still `POST /load`s
+functions into the sandbox.** That is the right isolation today: the
+jail has no Postgres. A later shape could be a short-lived loader
+process — reads `site_price_functions`, `POST /load`, exits — so
+Streamlit only quotes. Same security split (loader has the DB, sandbox
+does not). Worth it if `/load` from the UI becomes a footgun (two
+clients, last writer wins) or if compose-up is expected to leave the
+sandbox already filled. Not doing it at ~one Streamlit and a handful
+of functions. design.md “Per-site price functions”.
+
+### Done (2026-09-16, copy drops leftover experiments tables)
+
+**`just setup-experiments copy` now drops experiments tables that are
+not in `public`.** Pytest fixtures and ad-hoc scripts leave extra
+tables; `clone_tables` only rebuilt the public set, so leftovers
+survived. `availability_frozen` is kept. `db.experiments.drop_experiments_leftovers`;
+`just setup-experiments status` lists leftovers if any remain.
+
+### Done (2026-09-16, loud store-ok for price functions)
+
+**A passing compile prints `PRICE FUNCTION ADDED TO DB` (or UPDATED /
+UNCHANGED).** `store_price_function` returns `inserted` when there was
+no prior row — the Achziv run’s `updated` was that first upsert.
+scrape.py `_print_store_ok`.
+
+### Done (2026-09-16, loud AST compile failure)
+
+**AST allowlist / static-check failures print a banner.** The quiet
+`price function compile failed: call to 'map'…` line was easy to miss
+under listing-match noise. scrape.py `_print_ast_failure`.
+
+### Done (2026-09-16, map is allowed in quote())
+
+**`map` is on the price-function allowlist.** Achziv compiles were
+dying on `map(int, planned_exit_time.split(":"))` before gold.
+test_price_function_map.py; design.md “Per-site price functions”.
+
+### Done (2026-09-16, gold covers every identity guest_type)
+
+**Matmon was already in gold; miluim / student / disabled / senior were
+not.** Achziv now has one tent case per identity tab. Every other site
+has regular, Matmon, soldier, and senior. Miluim/student/disabled on
+other parks wait on a captured card. test_price_gold_coverage.py;
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, gold covers soldier, group, each lodging)
+
+**Gold recall was five mixed prices; that missed most of the card.**
+Every site now has a soldier case. Achziv has occupancy-30 group
+(regular and Matmon-override) and one weekday case per חושה product.
+Horashat adds staff, wood staff, and caravan. `_tent_band(..., extra=)`
+appends instead of replacing, so extra lodgings no longer drop soldier.
+Group cases for other sites wait on a captured threshold. Supersedes
+“five gold cases per site”. test_price_gold_coverage.py; design.md
+“Per-site price functions”.
+
+### Done (2026-09-16, קבוצה is an occupancy override)
+
+**GuestType is never group.** The קבוצה tableTab is a schedule selected
+by party size, not an identity the caller can pass. Compile omits it
+from the GuestType enum list; `GuestType.GROUP` is a static compile
+failure. When `adults_num + child_num` meets that site's notes
+(`GROUP_MIN`), group rates always override identity (including Matmon).
+Syntactic unreachable code (after return/raise, `if False`) is rejected
+without executing quote(); that is AST control flow, not dataflow.
+Compile retries with the error in a follow-up turn are a maybe — after
+the prompt is settled, if AST/gold failures stay common. Do not retry
+gold by sending the expected price.
+test_price_function_group.py, test_price_function_unreachable.py;
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, quote() does not scan labels)
+
+**Rate-card labels are interpreted at compile time.** The prompt
+requires `RATES[lodging][guest_type]` values to be named fields
+(`adult`, `child`, `weekday`, `weekend`, `late_exit`, …), not
+`{"label", "price"}` rows. `"מבוגר" in label` is a compile failure
+(`runtime_string_scan_hits`). Achziv 2.py still has that pattern
+because it was compiled before this rule. test_price_function_rate_keys.py;
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, enum vars keep parameter names)
+
+**Parsed enums reuse `lodging` and `guest_type`.** Compile prompt:
+`lodging = Lodging(lodging)`, `guest_type = GuestType(guest_type)` —
+no `unit` / `tab`. Supersedes the `unit =` / `tab =` sentence in the
+enum entry below.
+
+### Done (2026-09-16, quote() uses Lodging and GuestType enums)
+
+**Categorical inputs are parsed to enums, then compared as members.**
+The compile prompt requires `class Lodging(Enum)` and
+`class GuestType(Enum)` with Hebrew values; `quote()` does
+`unit = Lodging(lodging)` / `tab = GuestType(guest_type)` and branches
+on `is`. String compares inside the function are out. AST allowlist
+accepts Enum/StrEnum classes and `from enum import Enum`.
+test_price_function_enums.py; design.md “Per-site price functions”.
+
+### Done (2026-09-16, compile drops low-confidence extras)
+
+**A tab is a guest_type only if its rows match catalog lodging.**
+Compile calls `resolve_listing_ids(..., force=False)` and keeps a row
+only when the listing match is exact or ≥ `UNCERTAIN_BELOW`. Rental
+SKUs (השכרת מזרן, השכרת פלטה on ציוד להשכרה) no longer attach to חושה
+and do not enter `GUEST_TYPES`. `list_prices` still force-matches
+lodging labels. test_compile_match_confidence.py; design.md “Per-site
+price functions”.
+
+### Done (2026-09-16, compile uses canonical lodging + guest_type)
+
+**Compile prompt is catalog names and a tab parameter.** Rate-card
+labels go through the same `match_info_website_name` path as
+`list_prices`; the user prompt’s `lodging` is the canonical
+`info_website_names` string. `guest_type` is the rate-card tab (רגיל,
+מנוי, …) and a `quote()` argument; the boolean discount flags are gone.
+`quote()` must reject unknown lodging / guest_type against constant
+tuples. Reports always get `<site_id>.py` plus `<site_id>.prompt.txt`.
+Achziv 2.py had invented `"tent"`, `next()`, and flag-to-tab mapping.
+Supersedes “dump failed quote()” (dumps on pass too) and the
+“No `childs_num` / flags” bits of the group-flag entry. compile_price,
+QuoteParams, gold, ast_check (`next` + a few str/dict methods);
+design.md “Per-site price functions”.
+
+### Done (2026-09-16, dump failed quote())
+
+**A failing compile is still visible.** AST or gold failure prints the
+model's `quote()` and writes `reports/price_functions/<site_id>.py`.
+It is not stored on `site_price_functions`. scrape.py
+`_dump_failed_quote`; design.md “Per-site price functions”.
+
+### Done (2026-09-16, quote() takes child_num)
+
+**`child_num` is an explicit quote input.** Occupancy, extra-person,
+and קבוצה thresholds use `adults_num + child_num`; `child_ages` only
+splits toddler / child / adult-rate. If omitted on a mapping, it
+defaults to `len(child_ages)`. Supersedes the “No `childs_num`”
+sentence in the group-flag entry below. QuoteParams, compile_price
+prompt, gold `_params`; design.md “Per-site price functions”.
+
+### Done (2026-09-16, group is not a quote flag)
+
+**`is_group` dropped from `QuoteParams`.** Group rates are a per-site
+occupancy policy (30 vs 80, …), not a guest identity like Matmon or
+soldier. `quote()` deduces the קבוצה tab from `adults_num` plus
+`child_ages` against that site's card. No `childs_num` either: the
+ages tuple is the count and the toddler / child / adult split.
+`is_weekend_or_holiday` stays an input. compile_price prompt;
+design.md “Per-site price functions”. Handwritten tests still accept
+`is_group=` as an unused default.
+
+### Done (2026-09-15, gold price explanations)
+
+**Gold cases now say how the expected price was built.** Each of the
+five cases per site carries an `explanation` (late checkout, extra
+person, toddler free, Matmon, included occupancy). Compile still
+gates on the numeric price; the string is for humans and for the
+failure line. design.md “Per-site price functions”.
+
+### Done (2026-09-15, sandboxed per-site price functions)
+
+**Prices are compiled to `quote()`, not summed by the recommender.**
+`scrape-prices` still snapshots `list_prices`, then gathers every
+rate-class tab plus `מידע למבקר` pricing rules, asks the 235B for one
+`quote(...)` per site, AST-checks it (`math` only), and stores the
+source on `site_price_functions` only when five gold cases pass.
+Unchanged hash bumps `scraped_at` only; a fail keeps the previous
+row. Planner quotes via the `price-sandbox` Docker (params in, price
+plus explanation out) and falls back to `quote_night` when
+`PRICE_SANDBOX_URL` is unset or the site has no passing function.
+Supersedes the 2026-09-13 “executable numeric rules” note for
+**prices** (other numeric subjects are still open). A compile-quality
+experiment (18 × 1 call) is not in experiments.md yet — needs a
+`scrape-prices` yes.
 
 ### Done (2026-09-14, scrape-reviews then embed)
 

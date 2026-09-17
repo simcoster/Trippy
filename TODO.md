@@ -46,3 +46,18 @@ Phase 1 is a Streamlit server + Compose Postgres. `docs/scaling.md` is the later
 ## 6. README with design choices
 
 Root `README.md` is empty. Write a short one that a new clone can follow: what Trippy is, how to run (Compose, `just`, Streamlit), and the load-bearing choices (with pointers into `docs/design.md` / `docs/claims.md` / `docs/scaling.md` — do not duplicate those files).
+
+## 7. External clock for scrapes + VM start/stop
+
+GitHub Actions `schedule` is late (hours) and can skip. Maybe drop it.
+
+VM cron is already on the box (`/etc/cron.d/trippy-backup`) and is the right place to run scrapes **once the VM is up**. It cannot start a stopped VM.
+
+`docs/cloud.md` already says start/stop of the VM is later. That needs an **external** trigger:
+
+- **Nebius** has `compute instance start` / `stop` (API + CLI). No instance scheduler, no Cloud Scheduler. Serverless AI jobs are one-shot GPU containers, not a cron for this VM. Do not `shutdown` from inside Linux — Nebius treats that as a failure and reboots, still billing.
+- **Cloudflare** (already paying via the tunnel) has Workers **Cron Triggers**. A tiny Worker can POST to the Nebius start/stop API on a cron. Free plan: 5 crons/account, 10 ms CPU (I/O wait does not count; one `fetch` to Nebius is fine). Tunnel cannot help while the VM is off — start must go through Nebius’s public API. Once the box is up, VM cron runs availability/reviews; a later Worker cron stops the VM.
+
+GitHub Actions stays as `workflow_dispatch` (manual) if we still want a Summary tab.
+
+Constraint: Streamlit dies when the VM is off. Testers only during the on window.

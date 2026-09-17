@@ -1,6 +1,6 @@
 name: Scrape availability
 
-# Daily vacancy scrape. SSH and report live in scrape-job.yml.
+# Daily vacancy scrape. SSH lives in .github/actions/scrape-job.
 
 on:
   workflow_dispatch:
@@ -22,10 +22,16 @@ permissions:
 
 jobs:
   scrape:
-    uses: ./.github/workflows/scrape-job.yml
-    with:
-      job: availability
-      extra_args: ${{ github.event.inputs.extra_args || '' }}
-      report_file: availability.md
-      backup: false
-    secrets: inherit
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/scrape-job
+        with:
+          job: availability
+          extra_args: ${{ github.event.inputs.extra_args || '' }}
+          report_file: availability.md
+          vm_host: ${{ secrets.TRIPPY_VM_HOST }}
+          ssh_user: ${{ secrets.TRIPPY_SSH_USER }}
+          ssh_key: ${{ secrets.TRIPPY_SSH_KEY }}
+          trippy_root: ${{ vars.TRIPPY_ROOT || '/opt/trippy' }}

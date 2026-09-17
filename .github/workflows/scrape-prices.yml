@@ -1,0 +1,35 @@
+name: Scrape prices
+
+# Rate cards → list_prices + compiled quote() functions.
+# SSH lives in .github/actions/scrape-job. Reloads the price sandbox after.
+
+on:
+  workflow_dispatch:
+    inputs:
+      extra_args:
+        description: Extra args, e.g. --site 2
+        required: false
+        default: ""
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/scrape-job
+        with:
+          job: prices
+          extra_args: ${{ github.event.inputs.extra_args || '' }}
+          report_file: prices.md
+          vm_host: ${{ secrets.TRIPPY_VM_HOST }}
+          ssh_user: ${{ secrets.TRIPPY_SSH_USER }}
+          ssh_key: ${{ secrets.TRIPPY_SSH_KEY }}
+          trippy_root: ${{ vars.TRIPPY_ROOT || '/opt/trippy' }}

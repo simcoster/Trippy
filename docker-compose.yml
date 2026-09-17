@@ -16,6 +16,48 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - default
+
+  # Quote jail. Empty until `just load-price-sandbox` (or `just streamlit`,
+  # which loads if this container is up). No Postgres on this network.
+  price-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.price-sandbox
+    image: trippy-price-sandbox
+    container_name: trippy-price-sandbox
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 64
+    environment:
+      PRICE_SANDBOX_PORT: "8503"
+    ports:
+      - "127.0.0.1:8503:8503"
+    networks:
+      - quote
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8503/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   trippy_pgdata:
+
+networks:
+  quote:
+    driver: bridge
+    internal: true

@@ -12,6 +12,7 @@ from source.scraper.amenity_enrichment.llm import (
     LlmUsage,
     _parse_json_payload,
     make_nebius_openai_client,
+    nebius_chat_create,
 )
 
 SYSTEM_PROMPT = """You match one Hebrew lodging name to the campsite's list of lodging products.
@@ -25,7 +26,8 @@ Rules:
 - Match the same lodging PRODUCT. These do not change the product:
     a unit or room number      בונגלו עם מזגן מספר 42  =  בונגלו עם מזגן
     singular vs plural         עמדות חניה  =  עמדת חניה
-    a rate word                לינה ב-, אמצע שבוע, סופי שבוע וחגים
+    a rate word                לינה ב-, אמצע שבוע, סופי שבוע וחגים,
+                               תוספת יציאה מאוחרת, תוספת אדם / מבוגר / ילד
     a place suffix             ... - חניון צפוני
 - These DO change the product, and must never be matched to each other:
     accessible vs not          חושה מונגשת  ≠  חושה
@@ -47,6 +49,12 @@ Examples:
   Candidates: 1. בונגלו עם מזגן  2. בונגלו מונגש עם מזגן
   -> {"name": "בונגלו עם מזגן", "confidence": 1.0}
      (the number identifies one unit; "מונגש" would be a different product)
+
+  Name: תוספת יציאה מאוחרת בונגלו סופי שבוע
+  Candidates: 1. בונגלו עם מזגן  2. בונגלו מונגש עם מזגן
+  -> {"name": "בונגלו עם מזגן", "confidence": 1.0}
+     (late-exit / extra-person is a surcharge on that unit, not a
+      different product; "מונגש" would still be a different product)
 
   Name: לינה בחושה כפולה סופי שבוע וחגים
   Candidates: 1. חושה  2. חושה כפולה  3. חושה עם מזגן שירותים ומקלחת
@@ -231,7 +239,8 @@ class InfoWebsiteNameMatcher:
         # accommodation types. Naming one side "Rate-card" would be wrong for
         # two of the three.
         user_message = f"Name: {booking_name}\nCandidates:\n{numbered}"
-        response = self.client.chat.completions.create(
+        response = nebius_chat_create(
+            self.client,
             model=self.model,
             messages=[
                 {"role": "system", "content": self.system_prompt},
@@ -292,7 +301,8 @@ class InfoWebsiteNameMatcher:
             f"{i}. {name}" for i, name in enumerate(listing_names, start=1)
         )
         user_message = f"Name: {booking_name}\nCandidates:\n{numbered}"
-        response = self.client.chat.completions.create(
+        response = nebius_chat_create(
+            self.client,
             model=self.model,
             messages=[
                 {"role": "system", "content": MULTI_MATCH_PROMPT},
@@ -364,7 +374,8 @@ class InfoWebsiteNameMatcher:
             f"Both were matched to: {collided_on}\n"
             f"Candidates:\n{numbered}"
         )
-        response = self.client.chat.completions.create(
+        response = nebius_chat_create(
+            self.client,
             model=self.model,
             messages=[
                 {"role": "system", "content": COLLISION_PROMPT},

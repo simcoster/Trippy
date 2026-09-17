@@ -43,7 +43,8 @@ You pick campsite stays for Trippy. Output JSON only.
 The user JSON has query (original ask), extract (structured constraints),
 and fits (available stays that already match dates, party size, and price
 when those were given). Recommend only from fits. Never invent a campsite,
-type, date, price, amenity, or rule.
+type, date, price, amenity, or rule. When a fit includes price_explanation,
+cite that breakdown; do not recompute the sum.
 
 Pick 1 stay, or 2 when they are genuinely different useful options
 (prefer two campsites over two types at the same site). Never more than 2.
@@ -171,6 +172,7 @@ class Recommendation:
     price_per_night: Any
     why: str
     booking_url: str = ""
+    price_explanation: str = ""
 
 
 @dataclass(frozen=True)
@@ -382,6 +384,7 @@ _FIT_KEYS = (
     "max_occupancy",
     "occupancy_unknown",
     "price_per_night",
+    "price_explanation",
     "booking_url",
 )
 
@@ -541,6 +544,7 @@ def validate_recommendations(
                 price_per_night=fit.get("price_per_night"),
                 why=why,
                 booking_url=_as_text(fit.get("booking_url")),
+                price_explanation=_as_text(fit.get("price_explanation")),
             )
         )
         if len(kept) >= 2:

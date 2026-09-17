@@ -305,7 +305,9 @@ guards it. If ranges become common, the alternative is a `qualifier_max` column.
 
 Production schema is not changed to try something out. `just
 setup-experiments copy` rebuilds `experiments` as a copy of `public`
-(tables, rows, views; FKs stay inside the schema). `--empty table,…`
+(tables, rows, views; FKs stay inside the schema) and drops leftover
+tables that are not in `public` (pytest extras, ad-hoc scripts).
+`availability_frozen` is kept. `--empty table,…`
 truncates after the copy. Scrapes, search and the planner then run with
 `TRIPPY_SCHEMA=experiments`, which makes `db.connect.connect` set
 `search_path=experiments,extensions`. Production `connect()` always
@@ -1031,6 +1033,151 @@ still three listings (caravan-bay water+power, PITCH tent power, site-wide
 (experiments.md 2026-09-08 §1); PITCH and site-wide keep the generic
 names.
 
+## Per-site price functions
+
+Published tariffs are compiled into one Python `quote()` per campsite
+and evaluated outside the recommender. `scrape-prices` still writes
+`list_prices` (regular tab, lodging rows) so `quote_night` remains the
+fallback. Pass 1 gathers every rate-class tab (`.tableMain`, including
+the `sales lazy` wrapper) plus tooltip `data-content`, and the AJAX
+`מידע למבקר` panel. Each published label is resolved with the same
+`match_info_website_name` flow as `list_prices` (exact, 235B, rescue,
+force). The compile prompt then uses those **canonical**
+`info_website_names` strings as `lodging`, and the rate-card tab as
+`guest_type` (רגיל, מנוי, חייל, … — not adult vs child). Quotation
+marks (ASCII and Hebrew gershayim) are stripped from both so enum
+values stay valid Python (`נכה צהל ומלווה`, not `צה"ל`). A listing match
+below `UNCERTAIN_BELOW` is dropped, not forced: extras tabs (ציוד
+להשכרה, mattress rental) never become a guest_type. תוספת יציאה מאוחרת
+and תוספת אדם / מבוגר / ילד are rate words on that unit (same as
+אמצע שבוע), not a different product — a 0.60 skip of `תוספת יציאה
+מאוחרת חושה` is what left Achziv gold 675 without the 225 surcharge. Pass 2 is one
+**235B** call (`role=price_function_compile`) that must emit `quote(...)`
+with the shared `QuoteParams` signature. The generated module must
+define `Lodging` and `GuestType` enums (member value = canonical
+Hebrew), parse `lodging` / `guest_type` into those members once, and
+compare members after that — not strings. `GuestType` is identity
+tabs only (רגיל, מנוי, חייל, …). The parks.org.il קבוצה tab is **not**
+a GuestType: it is an occupancy override. Compile reads that site's
+threshold from the group-row notes (`GROUP_MIN`; "מעל X לנים" is X
+people and up, not X+1) and, when
+`adults_num + child_num` meets it for a lodging that has a group
+schedule, **always** uses those rates — Matmon and every other identity
+included. `GuestType.GROUP` / `GuestType("קבוצה")` is a compile failure.
+Rate numbers are baked into named fields: per-person (tent, group)
+`adult` / `child`; per-unit (חושה, bungalow, family tent)
+`weekday` / `weekend` / `late_exit` — a unit dict has no `adult`.
+Soldier / Matmon / miluim and the other identity tabs apply to
+per-person rates only; a unit ignores `guest_type` unless it has its
+own identity rows.
+quote() must not scan Hebrew labels with `in` or `startswith`. It must
+reject unknown `lodging` / `guest_type` via the enum constructor.
+The 235B is the same bar as listing match: this source is shown to users
+as a breakdown, so a wrong merge of Matmon vs regular is worse than a
+missed compile.
+
+The reply is AST-checked (`import math` and `from enum import Enum`,
+no dunders, no `open` / `eval`; `map` is allowed — late-exit parses
+`"13:00"` that way; `while` and `list.insert` are allowed — Yehudiya
+padded `child_ages` with `while`, Mishmar built the explanation with
+`insert`; `try`/`except` is allowed — בארות used it to parse a time;
+`filter` / `any` / `all` / `reversed` / `dict` / `set` / `iter` /
+`divmod` / `isinstance` / `pow` / `format` / `frozenset` are allowed
+(sequence and conversion builtins; not `open` / `eval` / `getattr`). Further static checks, without running
+`quote()`, reject string membership on labels, `GuestType.GROUP`, and
+syntactic unreachable code (statements after `return` / `raise`,
+`if False`, both-branch return; `while` bodies are scanned the same
+way as `for`). This is AST control flow, not
+dataflow: `if lodging is TENT` twice is not flagged. Included occupancy
+is the עד N on that unit row; a תוספת אדם is the N+1st guest (family
+tent notes "עד 5 לנים" are a cap, not included 5 — Yehiam/Tel Arad gold
+438 vs compiled 350). Two published sizes are different Lodging members
+when both are in the catalog (Tel Arad mahal 860 for 10 vs 3080 for the
+כפול 36), not extras on the smaller unit. Then gold cases per site
+(`source/price_sandbox/gold/sites/<slug>.json`, one file per campsite).
+Each file is a list of explicit prices (`expected_price` plus the
+arithmetic in `explanation`); there is no shared `BAND_*` table and no
+Python helpers that import across parks. `gold/runner.py` loads the
+JSON whose `match` fragment sits in the campsite URL and runs
+`quote()` against those numbers. `lodging` is the catalog string
+(`info_website_names`), not the rate-card nickname — בארות gold is
+`חדרי צוות` / `חדר צוות מאובזר` / `חדר צוות מאובזר ומונגש` /
+`חדר צוות מאובזר כפול`, not `חדר צוות קטן/גדול/כפול`. At least one soldier identity, miluim
+/ student / disabled, occupancy-override (group min 30) on tent, at
+least one case per lodging on that card, and at least one case per
+identity `guest_type` (רגיל, מנוי, חייל, מילואים, אזרח ותיק, סטודנט,
+נכה). Numbers come from the published parks.org.il rate card (captured
+scrape-prices prompts 1–16, live fetch for בארות / יוטבתה), not from
+the compiled `quote()`. Shared tent bands hide real differences —
+בארות student is 53₪, not the 54₪ of other 64₪ parks. Five mixed
+cases were too few — a passing compile could ignore soldier, group, and
+most units. Each case records the expected
+price and the arithmetic that produced it (included occupancy, extra
+person, late-checkout surcharge, Matmon, group min). Compile still matches the
+price to two decimal places; the explanation is documentation and the
+failure-message detail, not a string match against the 235B. A compile
+that passes AST upserts `site_price_functions` (`source`, `sha256`,
+`tests_passed`) even when gold still fails after the retry — the
+sandbox should have a quote() rather than last week's. AST / static
+failure still leaves the previous row. An unchanged hash bumps
+`scraped_at` only. Gold misses still print
+`!!! PRICE FUNCTION GOLD FAILED !!!` and the report lists them under
+Failures as `gold failed (stored updated)`. Every compile writes
+`reports/scrape_prices/<timestamp>/<site_id>.py` and
+`<site_id>.prompt.txt` (system + user, gitignored), including the
+latest failure. Each attempt that does not pass is also kept as
+`<site_id>_vN.py` and `<site_id>_vN.prompt.txt` (`13_v1` is the first
+fail, `13_v2` the retry if that also failed). The Markdown report is
+`reports/scrape_prices/<timestamp>/report.md` in that same folder:
+stored vs failed, retry kind, failing gold / AST lines, dump names,
+and cost by role. The report is written in `finally`, so Ctrl+C still
+leaves the folder for sites that finished. A gold miss prints `!!! PRICE FUNCTION GOLD FAILED !!!`
+(same fat banner as AST). 2026-09-17 3-site re-run stored הבשור on
+the first compile; occupancy regen fired on תל ערד (3096 vs 3080)
+and did not recover; בארות fix emitted `try/except`
+(experiments.md 2026-09-17 §2). A later run stored 1, 3–5, failed
+Achziv (late-exit row skipped at 0.60), then KeyboardInterrupt at
+משמר with no report — that is why the terminal had no run-end
+summary.
+
+Compile is one 235B call, then at most one retry. AST / syntax /
+NameError / static hits is a **fix** turn (failed function + error
+text, no expected gold price, `role=price_function_compile_fix`). A
+gold occupancy miss regenerates from the same rate-card prompt plus
+the error class (wrong included count, lodging names, no numeric
+expected price, `role=price_function_compile_retry`). Do not bump
+temperature — temp 0 keeps the rate numbers still; a second draw at
+temp>0 repeats the same occupancy bug with different typos. Do not
+retry gold by sending the expected numeric price (that hardcodes the
+gold cases). 2026-09-17 experiments-schema scrape stored 15/18 with
+4 fix retries and 0 occupancy regenerates (experiments.md 2026-09-17
+§1); occupancy regen stays because a price-only miss is still the
+class that must not see `expected 438`. A 3-site re-run then fired
+regen on תל ערד (3096 vs 3080 included 36) and still missed;
+בארות fix emitted `try/except` (experiments.md 2026-09-17 §2).
+
+At quote time a one-shot loader (`just load-price-sandbox`, prod
+`price-sandbox-loader`) reads `site_price_functions` and `POST /load`s
+into the `price-sandbox` container (cap 30), then exits. Streamlit /
+the planner only send params (`POST /quote`). The sandbox has no
+Postgres, no `.env`, no internet (internal `quote` network in prod;
+laptop publishes `127.0.0.1:8503`). Re-run the loader after
+`scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
+other) front end does not own this.
+Each quote runs in a short-lived child with a memory cap and a
+sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
+`quote_night`. Planner party size is still `adults_num`; `child_num`,
+child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
+off until the extractor grows those fields. `child_num` is an explicit
+child headcount (toddlers included); `child_ages` only splits toddler /
+child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
+קבוצה is deduced from `adults_num + child_num` against that site's
+published occupancy notes, and when the threshold is met it overrides
+identity rates (including Matmon). `is_weekend_or_holiday` stays a caller flag
+(the night is or is not a weekend).
+Fits carry `price_explanation` so the recommender cites the breakdown
+instead of summing.
+
 ## Recommender
 
 `recommender_node` (`source/agent/recommender.py`) is a Kimi-K3
@@ -1123,15 +1270,28 @@ Phase 1 lives on one Nebius CPU VM in `eu-north1` (Finland): Compose
 Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
-an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same image with
+an SSH `-L 8501` to the VM does not steal `localhost:8501`. The
+`price-sandbox` container evaluates compiled `quote()` functions.
+A one-shot loader (`price-sandbox-loader` / `just load-price-sandbox`)
+pushes stored sources in, then exits. Prod Streamlit reaches the jail
+only on the internal `quote` network
+(`PRICE_SANDBOX_URL=http://price-sandbox:8503`). Laptop Streamlit uses
+`http://127.0.0.1:8503`. Ingest is the same image with
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH as
 `gh-actions` (`TRIPPY_VM_HOST` / `TRIPPY_SSH_USER` / `TRIPPY_SSH_KEY`).
 Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
-reviews at 09:00 IDT (`scrape-reviews.yml`). Both call `scrape-job.yml`.
-One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n public -Fc`
-to `~/.trippy-backups` and Nebius object storage (`eu-north1`, same
-region as the VM). Scrapes do not
-dump. No VM cron. WAL-G is unused: the catalog dump is a few megabytes.
+reviews at 09:00 IDT (`scrape-reviews.yml`). Prices is
+`workflow_dispatch` (`scrape-prices.yml`; extra args `--site 2`).
+SSH is `.github/actions/scrape-job` (not a workflow, so it does not
+show in Actions). After prices (and after every other
+scrape) the VM runs `price-sandbox-loader` so Streamlit sees the new
+`quote()` sources. The prices Actions Summary is `report.md` (stored vs
+failed, gold/AST lines); dumps stay in `~/.trippy-scrape/<timestamp>/`
+on the VM. One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n
+public -Fc` to `~/.trippy-backups` and Nebius object storage
+(`eu-north1`, same region as the VM). Scrapes do not dump. No VM cron.
+WAL-G is unused: the catalog dump is a few megabytes. Claims / info /
+sites / place-ids are `just prod-scrape` on the VM, not GitHub.
 After each availability fetch the scraper stores
 `booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
 chrome; almost never repeats) and `offers_sha256` of aggregated

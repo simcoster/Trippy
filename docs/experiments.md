@@ -7,6 +7,58 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-17
+
+### 2. Do the remaining three compile misses recover on a second draw?
+
+**Question.** After the 18-site scrape stored 15/18, do הבשור,
+תל ערד, and בארות pass on a second `scrape-prices` with the same
+prompts and retry policy (and with a Markdown run report + `_vN`
+fail dumps)?
+
+**Setup.** `TRIPPY_SCHEMA=experiments` (existing copy; no `public`
+writes). `just on-experiments scrape-prices -- --site 13,15,17`.
+Temp 0. ~5.1 min.
+
+**Result.** 1/3 stored. הבשור passed on the first compile (no retry;
+was `':' in` static). תל ערד occupancy regen fired: mahal included
+36 stayed 3096 vs gold 3080 after both draws. בארות first compile
+missed gold lodging names (`חדר צוות קטן/גדול/כפול` not in the
+catalog enum) plus family-tent extra 614 vs 438; the fix turn emitted
+`try/except` and failed the allowlist. 114 calls, ~$0.028. Report
+`reports/scrape_prices/2026-09-17_063211.md`; fail dumps `15_v3`/`15_v4`,
+`17_v3`/`17_v4` (`_v1`/`_v2` already on disk from earlier attempts).
+
+**Decision.** Occupancy regen is doing the job it was for (price-only
+miss, no expected number). It does not close a 16₪ included-count
+miss by itself. בארות is catalog names vs gold labels, not a retry
+shape. design.md “Per-site price functions”.
+
+### 1. Do fix vs occupancy-regenerate retries recover failed compiles?
+
+**Question.** After allowlisting `while`/`insert` and stating included
+occupancy in the compile prompt, does one AST/NameError **fix** turn
+and one occupancy **regenerate** (no expected gold price) lift the
+9/18 misses from the previous experiments-schema scrape-prices?
+
+**Setup.** `TRIPPY_SCHEMA=experiments` (existing copy; no `public`
+writes). `just on-experiments scrape-prices` on all 18 sites. Temp 0.
+`price_function_compile` then at most one of `price_function_compile_fix`
+or `price_function_compile_retry`. ~17.6 min.
+
+**Result.** 15/18 stored (was 9/18 on the dumps from the prior run).
+4 fix retries, 0 occupancy regenerates. Fix recovered מצדה (`filter`
+not allowed → rewritten). Fix did not recover הבשור (`':' in` time
+parse, still static), תל ערד (`any` then KeyError `weekday` on mahal
+36), בארות (gold lodging names not in the catalog enum). Occupancy
+regen never fired: יחיעם extra 438 passed on the first compile;
+remaining misses were exceptions, not price deltas. 465 calls,
+~$0.106 (`compile` 18 + `fix` 4).
+
+**Decision.** Keep both retry kinds. Gold בארות names and `':' in` /
+`any`/`filter` allowlist are separate follow-ups. design.md
+“Per-site price functions”.
+
 ## 2026-09-14
 
 ### 1. Does a weekday glued to desert drop the landscape?

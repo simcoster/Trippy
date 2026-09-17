@@ -23,13 +23,15 @@ just setup-experiments freeze-availability
 just setup-experiments status
 ```
 
-`copy` rebuilds `experiments` from `public` (DDL + rows + views). No FK
-crosses into `public`. `--empty` is `TRUNCATE … CASCADE` after the copy.
-`--skip availability` clones that table empty so FKs survive, and does
-not copy live occupancy. `freeze-availability` snapshots
-`public.availability` into `experiments.availability_frozen` for the
-planner benchmark (`evals/planner_v1.json`). `copy` does not drop the
-frozen table. `just run-eval` runs this copy (skip availability) first.
+`copy` rebuilds `experiments` from `public` (DDL + rows + views). Extra
+tables that pytest or ad-hoc scripts left in the schema (names not in
+`public`) are dropped first. No FK crosses into `public`. `--empty` is
+`TRUNCATE … CASCADE` after the copy. `--skip availability` clones that
+table empty so FKs survive, and does not copy live occupancy.
+`freeze-availability` snapshots `public.availability` into
+`experiments.availability_frozen` for the planner benchmark
+(`evals/planner_v1.json`). `copy` does not drop the frozen table.
+`just run-eval` runs this copy (skip availability) first.
 
 ## Run production code against the copy
 

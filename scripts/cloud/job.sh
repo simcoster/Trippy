@@ -37,6 +37,8 @@ case "$job" in
     exec "$PY" -m source.scraper.rules_ingest.rooms "$@"
     ;;
   prices)
+    export PRICES_REPORT_DIR="${PRICES_REPORT_DIR:-/tmp/trippy-prices}"
+    export PRICES_REPORT_PATH="${PRICES_REPORT_PATH:-/tmp/trippy-prices-report.md}"
     exec "$PY" -m source.scraper.info_site.scrape --prices "$@"
     ;;
   rules)
