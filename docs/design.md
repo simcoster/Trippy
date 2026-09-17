@@ -1273,14 +1273,16 @@ only on the internal `quote` network
 Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
 reviews at 09:00 IDT (`scrape-reviews.yml`). Prices is
 `workflow_dispatch` (`scrape-prices.yml`; extra args `--site 2`).
-All three call `scrape-job.yml`. After prices (and after every other
+SSH is `.github/actions/scrape-job` (not a workflow, so it does not
+show in Actions). After prices (and after every other
 scrape) the VM runs `price-sandbox-loader` so Streamlit sees the new
 `quote()` sources. The prices Actions Summary is `report.md` (stored vs
 failed, gold/AST lines); dumps stay in `~/.trippy-scrape/<timestamp>/`
 on the VM. One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n
 public -Fc` to `~/.trippy-backups` and Nebius object storage
 (`eu-north1`, same region as the VM). Scrapes do not dump. No VM cron.
-WAL-G is unused: the catalog dump is a few megabytes.
+WAL-G is unused: the catalog dump is a few megabytes. Claims / info /
+sites / place-ids are `just prod-scrape` on the VM, not GitHub.
 After each availability fetch the scraper stores
 `booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
 chrome; almost never repeats) and `offers_sha256` of aggregated

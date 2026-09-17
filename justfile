@@ -98,7 +98,7 @@ scrape-breadcrumbs *args:
 
 # info-site rate cards → list_prices (--site N). Reloads the sandbox if it is up.
 scrape-prices *args:
-    uv run python -m source.scraper.info_site.scrape --prices {{ trim_start_match(args, "-- ") }}
+    uv run python -u -m source.scraper.info_site.scrape --prices {{ trim_start_match(args, "-- ") }}
     just load-price-sandbox -- --if-up --wait-s 3
 
 # Push site_price_functions into the price sandbox, then exit

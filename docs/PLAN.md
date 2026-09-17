@@ -52,6 +52,14 @@ below. design.md “Where it runs”; cloud.md.
 not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
+### Done (2026-09-17, drop Scrape / Scrape job from Actions)
+
+**Deleted `scrape.yml`** (claims / info / sites / place-ids dropdown).
+Those stay `just prod-scrape <job>` on the VM. **`scrape-job.yml` is
+now `.github/actions/scrape-job`** so GitHub does not list it as a
+runnable workflow. Availability, reviews, and prices checkout the
+repo and call the composite action.
+
 ### Done (2026-09-17, scrape-prices GitHub Action)
 
 **`scrape-prices.yml`** is `workflow_dispatch` (extra args `--site 2`),

@@ -213,14 +213,14 @@ def _dump_failed_quote(
 
 
 def _print_ast_failure(kind: str, details: list[str]) -> None:
-    print()
-    print("=" * 60)
-    print("!!! PRICE FUNCTION AST FAILED !!!")
-    print(f"!!! {kind}")
+    print(flush=True)
+    print("=" * 60, flush=True)
+    print("!!! PRICE FUNCTION AST FAILED !!!", flush=True)
+    print(f"!!! {kind}", flush=True)
     for line in details:
-        print(f"!!!   {line}")
-    print("=" * 60)
-    print()
+        print(f"!!!   {line}", flush=True)
+    print("=" * 60, flush=True)
+    print(flush=True)
 
 
 def _print_store_ok(status: str, *, n_gold: int, digest: str) -> None:
@@ -230,22 +230,22 @@ def _print_store_ok(status: str, *, n_gold: int, digest: str) -> None:
         headline = "PRICE FUNCTION UPDATED IN DB"
     else:
         headline = "PRICE FUNCTION UNCHANGED IN DB (hash match)"
-    print()
-    print("=" * 60)
-    print(f"*** {headline} ***")
-    print(f"*** {n_gold} gold tests  sha256={digest[:12]}")
-    print("=" * 60)
-    print()
+    print(flush=True)
+    print("=" * 60, flush=True)
+    print(f"*** {headline} ***", flush=True)
+    print(f"*** {n_gold} gold tests  sha256={digest[:12]}", flush=True)
+    print("=" * 60, flush=True)
+    print(flush=True)
 
 
 def _print_gold_failure(details: list[str]) -> None:
-    print()
-    print("=" * 60)
-    print("!!! PRICE FUNCTION GOLD FAILED !!!")
+    print(flush=True)
+    print("=" * 60, flush=True)
+    print("!!! PRICE FUNCTION GOLD FAILED !!!", flush=True)
     for line in details:
-        print(f"!!!   {line}")
-    print("=" * 60)
-    print()
+        print(f"!!!   {line}", flush=True)
+    print("=" * 60, flush=True)
+    print(flush=True)
 
 
 def _print_compile_verdict(verdict) -> None:
@@ -457,6 +457,8 @@ def scrape_prices_for_site(
     )
     if compile_runs is not None:
         compile_runs.append(run)
+    status = run.store_status or run.outcome
+    print(f"    compile: {status}", flush=True)
     return len(lodging)
 
 

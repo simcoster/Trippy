@@ -1,7 +1,7 @@
 name: Scrape reviews
 
 # Daily Google reviews scrape, then embed unclassified rows.
-# SSH and report live in scrape-job.yml. --embed-only skips Google.
+# SSH lives in .github/actions/scrape-job. --embed-only skips Google.
 
 on:
   workflow_dispatch:
@@ -23,10 +23,16 @@ permissions:
 
 jobs:
   scrape:
-    uses: ./.github/workflows/scrape-job.yml
-    with:
-      job: reviews
-      extra_args: ${{ github.event.inputs.extra_args || '' }}
-      report_file: reviews.md
-      backup: false
-    secrets: inherit
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/scrape-job
+        with:
+          job: reviews
+          extra_args: ${{ github.event.inputs.extra_args || '' }}
+          report_file: reviews.md
+          vm_host: ${{ secrets.TRIPPY_VM_HOST }}
+          ssh_user: ${{ secrets.TRIPPY_SSH_USER }}
+          ssh_key: ${{ secrets.TRIPPY_SSH_KEY }}
+          trippy_root: ${{ vars.TRIPPY_ROOT || '/opt/trippy' }}

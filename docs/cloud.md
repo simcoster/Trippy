@@ -47,7 +47,8 @@ GitHub Actions [`.github/workflows/scrape-availability.yml`](../.github/workflow
 and [`.github/workflows/scrape-prices.yml`](../.github/workflows/scrape-prices.yml)
 are GitHub-hosted runners that **SSH into the VM** as `gh-actions` and run
 that `compose run`. The SSH steps live in
-[`scrape-job.yml`](../.github/workflows/scrape-job.yml) (`workflow_call`).
+[`.github/actions/scrape-job`](../.github/actions/scrape-job/action.yml)
+(a composite action, so it does not appear in the Actions list).
 The scrape itself (INPA HTTP, LLM, Postgres writes)
 happens on Nebius, not on GitHub. Daily availability at **08:00 IDT**
 (`cron: 0 5 * * *`; 07:00 in winter IST); daily reviews at **09:00 IDT**
@@ -56,9 +57,9 @@ happens on Nebius, not on GitHub. Daily availability at **08:00 IDT**
 13:00 in winter IST) — not before a scrape. On-demand: Actions →
 **Backup Postgres**. Prices is `workflow_dispatch` only (rate cards
 change rarely). Other ingest (claims / info / sites / place-ids) is
-[`scrape.yml`](../.github/workflows/scrape.yml) `workflow_dispatch`.
-Two scrapes cannot overlap (`concurrency: scrape` on each caller; the
-afternoon dump uses the same group).
+`just prod-scrape <job>` on the VM. Two scrapes cannot overlap
+(`concurrency: scrape` on each caller; the afternoon dump uses the
+same group).
 
 The report is the run’s **Summary** tab (Actions → **Scrape availability**,
 **Scrape reviews**, or **Scrape prices** → that run), not a file and not
