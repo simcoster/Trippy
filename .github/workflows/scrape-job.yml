@@ -1,7 +1,8 @@
 name: Scrape job
 
 # Reusable SSH-to-VM scrape. Callers: scrape-availability.yml,
-# scrape-reviews.yml, scrape.yml (manual other jobs).
+# scrape-reviews.yml, scrape.yml. Daily dump is backup.yml (14:00 IDT),
+# not a scrape.
 
 on:
   workflow_call:
@@ -20,6 +21,11 @@ on:
         type: string
         required: false
         default: ""
+      backup:
+        description: Dump public schema to disk + object storage before the scrape
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -34,16 +40,23 @@ jobs:
         env:
           JOB: ${{ inputs.job }}
           EXTRA: ${{ inputs.extra_args }}
+          BACKUP: ${{ inputs.backup }}
           TRIPPY_ROOT: ${{ vars.TRIPPY_ROOT || '/opt/trippy' }}
         with:
           host: ${{ secrets.TRIPPY_VM_HOST }}
           username: ${{ secrets.TRIPPY_SSH_USER }}
           key: ${{ secrets.TRIPPY_SSH_KEY }}
           command_timeout: 180m
-          envs: JOB,EXTRA,TRIPPY_ROOT
+          envs: JOB,EXTRA,BACKUP,TRIPPY_ROOT
           script: |
             set -eu
             cd "${TRIPPY_ROOT}"
+            if [ "${BACKUP}" = "true" ] || [ "${BACKUP}" = "True" ]; then
+              export TRIPPY_ROOT
+              export TRIPPY_COMPOSE_FILE=docker-compose.prod.yml
+              export TRIPPY_BACKUP_DIR=/var/lib/trippy/backups
+              sh scripts/cloud/backup.sh
+            fi
             REPORT_DIR="${HOME}/.trippy-scrape"
             mkdir -p "${REPORT_DIR}"
             rm -f "${REPORT_DIR}/availability.md" "${REPORT_DIR}/reviews.md"

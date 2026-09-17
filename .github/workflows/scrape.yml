@@ -33,4 +33,5 @@ jobs:
     with:
       job: ${{ inputs.job }}
       extra_args: ${{ inputs.extra_args || '' }}
+      backup: false
     secrets: inherit

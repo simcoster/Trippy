@@ -6,6 +6,26 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-17, afternoon dump)
+
+**One dump per day at 14:00 IDT**, not before a scrape.
+`backup.yml` (`0 11 * * *`; 13:00 IST in winter) SSHs
+`scripts/cloud/backup.sh`. Availability, reviews, and manual
+`scrape.yml` pass `backup: false`. Supersedes the
+“dumps immediately before scrape-availability” bit of the entry
+below. design.md “Where it runs”; cloud.md.
+
+### Done (2026-09-17)
+
+**Public-schema dumps to Nebius object storage.** `just backup` /
+`just restore` (docker compose cp; not a shell redirect) and
+`scripts/cloud/backup.sh` write `pg_dump -n public -Fc` only —
+`experiments` stays out. GitHub Actions dumps immediately before
+`scrape-availability` (and before manual `scrape.yml`); reviews do
+not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
+first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
+cloud.md.
+
 ### Done (2026-09-14, scrape-reviews then embed)
 
 **Daily reviews fetch then classify.** `just scrape-reviews` still

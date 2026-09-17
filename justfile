@@ -84,6 +84,7 @@ scrape-rooms *args:
 
 # All info-page scrapes in dependency order: rooms → prices → rules → breadcrumbs
 scrape-info *args:
+    just backup-if-public
     just scrape-rooms {{ args }}
     just scrape-prices {{ args }}
     just scrape-rules {{ args }}
@@ -124,26 +125,64 @@ clear-availability *args:
 
 # Truncate Google reviews; keep campsites and breadcrumb region claims
 clear-reviews:
+    just backup-if-public
     uv run python scripts/clear_reviews_and_claims.py
 
 # Delete claims and null reviews.is_relevant; keep review rows
 clear-claims:
+    just backup-if-public
     uv run python scripts/clear_claims.py
 
 # Clear all info-page data: rules, prices, types, names, vocabulary, breadcrumb claims + availability
 clear-info *args:
+    just backup-if-public
     uv run python scripts/clear_info.py {{ trim_start_match(args, "-- ") }}
 
 # Delete site-level campsite_rules; keeps per-unit rows + vocabulary (--all, --subjects, --site N)
 clear-rules *args:
+    just backup-if-public
     uv run python scripts/clear_rules.py {{ trim_start_match(args, "-- ") }}
 
 # Apply pending Alembic migrations
 update-tables:
     uv run alembic upgrade head
 
+# Dump public schema (custom format). Uploads to Nebius if BACKUP_S3_BUCKET is set.
+[windows]
+backup:
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/cloud/backup.ps1
+
+# Dump public schema (custom format). Uploads to Nebius if BACKUP_S3_BUCKET is set.
+[unix]
+backup:
+    sh scripts/cloud/backup.sh
+
+# Restore public schema from a local dump or s3://bucket/key. Leaves experiments alone.
+[windows]
+restore dump:
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/cloud/restore.ps1 {{ quote(dump) }}
+
+# Restore public schema from a local dump or s3://bucket/key. Leaves experiments alone.
+[unix]
+restore dump:
+    sh scripts/cloud/restore.sh {{ quote(dump) }}
+
+[private]
+[windows]
+backup-if-public:
+    if ($env:TRIPPY_SCHEMA -eq 'experiments') { Write-Host 'skip backup (TRIPPY_SCHEMA=experiments)' } else { just backup }
+
+[private]
+[unix]
+backup-if-public:
+    if [ "${TRIPPY_SCHEMA:-public}" = experiments ]; then echo "skip backup (TRIPPY_SCHEMA=experiments)"; else just backup; fi
+
 # sites, then everything the info page gives, then availability
-scrape-all: scrape-sites scrape-info scrape-availability
+scrape-all:
+    just backup-if-public
+    just scrape-sites
+    just scrape-info
+    just scrape-availability
 
 # Local Streamlit agent. 8502 so an SSH -L 8501 to the VM does not steal the tab.
 streamlit:

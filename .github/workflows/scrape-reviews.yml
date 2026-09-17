@@ -28,4 +28,5 @@ jobs:
       job: reviews
       extra_args: ${{ github.event.inputs.extra_args || '' }}
       report_file: reviews.md
+      backup: false
     secrets: inherit

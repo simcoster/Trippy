@@ -15,8 +15,8 @@ GitHub Actions ──SSH──► docker compose run scrape
                                               ▼
                                     Postgres (compose network only)
                                               │
-                         pg_dump ──► /var/lib/trippy/backups
-                                 └──► Object Storage (optional)
+     14:00 IDT  pg_dump -n public ──► /var/lib/trippy/backups
+                                 └──► Object Storage (trippy-backups)
 ```
 
 Cost, 24/7, `me-west1` `cpu-d3` `4vcpu-16gb`: about **$80/month**
@@ -46,10 +46,13 @@ that `compose run`. The SSH steps live in
 The scrape itself (INPA HTTP, LLM, Postgres writes)
 happens on Nebius, not on GitHub. Daily availability at **08:00 IDT**
 (`cron: 0 5 * * *`; 07:00 in winter IST); daily reviews at **09:00 IDT**
-(`cron: 0 6 * * *`; 08:00 in winter IST). Other ingest
-(claims / info / sites / place-ids) is
+(`cron: 0 6 * * *`; 08:00 in winter IST). One dump per day at **14:00 IDT**
+([`backup.yml`](../.github/workflows/backup.yml), `cron: 0 11 * * *`;
+13:00 in winter IST) — not before a scrape. On-demand: Actions →
+**Backup Postgres**. Other ingest (claims / info / sites / place-ids) is
 [`scrape.yml`](../.github/workflows/scrape.yml) `workflow_dispatch`.
-Two scrapes cannot overlap (`concurrency: scrape` on each caller).
+Two scrapes cannot overlap (`concurrency: scrape` on each caller; the
+afternoon dump uses the same group).
 
 The report is the run’s **Summary** tab (Actions → **Scrape availability**
 or **Scrape reviews** → that run), not a file and not Streamlit.
@@ -74,11 +77,32 @@ In [console.nebius.com](https://console.nebius.com), project you already have:
 
 ### 2. Object Storage (backups)
 
-1. Create bucket `trippy-backups`.
+1. Create bucket `trippy-backups` (Standard class).
 2. Static access keys for that bucket.
 3. Endpoint `https://storage.me-west1.nebius.cloud` (adjust if you picked another region).
-4. Put `BACKUP_S3_BUCKET`, `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`,
-   `AWS_SECRET_ACCESS_KEY` in the VM `.env`. If those are unset, dumps stay on disk only.
+4. Lifecycle: expire prefix `postgres/` after **30 days**.
+5. Put `BACKUP_S3_BUCKET`, `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`,
+   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` in the VM `.env` (and
+   laptop `.env` if `just backup` should upload). If `BACKUP_S3_BUCKET`
+   is unset, dumps stay on disk only. If it is set, a failed upload
+   fails the dump.
+
+`pg_dump -n public -Fc` only. `experiments` and `extensions` stay out.
+On-disk `trippy` is tens of MB (indexes + a copy in `experiments`); the
+object is heap+TOAST for `public`. A 2026-09-17 laptop dump was **4.6 MB**.
+Standard storage is **$0.0147/GiB-month** (~$0.002/month for 30 daily
+dumps at that size).
+Egress **$0.015/GiB** applies when downloading off Nebius; VM → bucket
+in `me-west1` does not. No per-object fee on the price list.
+
+Laptop: `just backup` / `just restore backups/trippy-….dump` (docker
+compose cp; do not redirect `pg_dump` in PowerShell). Destructive
+`just scrape-info` / `clear-*` dump first unless
+`TRIPPY_SCHEMA=experiments`. VM: one GitHub Actions dump at 14:00 IDT
+([`backup.yml`](../.github/workflows/backup.yml)), not cron and not
+tied to a scrape. [`scripts/cloud/backup.sh`](../scripts/cloud/backup.sh)
+writes under `/var/lib/trippy/backups` (7 days) and `s3://…/postgres/`.
+Restore: `just restore backups/…` or `s3://trippy-backups/postgres/…`.
 
 ### 3. Cloudflare Tunnel
 
@@ -104,29 +128,34 @@ cd /opt/trippy
 sudo cp .env.example .env
 sudo chmod 600 .env
 # edit .env: POSTGRES_PASSWORD, NEBIUS_API_KEY, GOOGLE_API_KEY,
-#            CLOUDFLARE_TUNNEL_TOKEN, LANGSMITH_API_KEY, optional AWS_* 
+#            CLOUDFLARE_TUNNEL_TOKEN, LANGSMITH_API_KEY,
+#            BACKUP_S3_BUCKET + AWS_*
 sudo sh ./scripts/cloud/bootstrap.sh
 ```
 
-Bootstrap installs Docker if needed, daily cron for
-[`scripts/cloud/backup.sh`](../scripts/cloud/backup.sh), builds the image,
-starts `db` + `streamlit` + `cloudflared`, runs Alembic.
+Bootstrap installs Docker if needed, `trippy-backup` / `trippy-restore`
+(no cron — Actions dumps at 14:00 IDT via `backup.yml`), builds the image,
+starts `db` + `streamlit` + `cloudflared`, runs Alembic. Backup dir is
+`770 root:docker` so `gh-actions` can write it.
 
-### 5. Restore the laptop database
+### 5. Restore the laptop database onto the VM
 
-On the laptop (with Compose Postgres up):
+On the laptop (Compose Postgres up):
 
-```bash
-docker compose exec -T db pg_dump -U trippy -Fc trippy > trippy.dump
+```text
+just backup
 ```
 
-Copy `trippy.dump` to the VM, then:
+Copy `backups/trippy-*.dump` to the VM, then:
 
 ```bash
 cd /opt/trippy
-docker compose -f docker-compose.prod.yml --env-file .env exec -T db \
-  pg_restore -U trippy -d trippy --clean --if-exists < trippy.dump
+just restore backups/trippy-YYYYMMDDTHHMMSSZ.dump
 ```
+
+That replaces `public` only (`pg_restore --clean --if-exists -n public`).
+`experiments` and `extensions` stay. A new cluster needs `db/init` /
+Alembic first so `vector` / `pg_trgm` exist.
 
 Do not scrape `public` as a smoke test of the new box.
 
@@ -191,9 +220,10 @@ is the `4vcpu-16gb` you meant, not a GPU preset.
 
 ## Restore drill
 
-Once: take today's object-store dump (or a local file), `pg_restore` onto
-this VM or a throwaway disk, `just streamlit` / the public URL, one real
-query. That is the backup existing until you have done it.
+Once: take today's object-store dump (`just restore s3://trippy-backups/postgres/…`
+or a local file) onto a throwaway Compose project, `just streamlit`, one
+real query. Do not `--clean` onto live `public` as the first test. That
+is the backup existing until you have done it.
 
 ## Local vs prod Compose
 
