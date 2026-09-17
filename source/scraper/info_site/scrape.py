@@ -223,7 +223,9 @@ def _print_ast_failure(kind: str, details: list[str]) -> None:
     print(flush=True)
 
 
-def _print_store_ok(status: str, *, n_gold: int, digest: str) -> None:
+def _print_store_ok(
+    status: str, *, n_gold: int, digest: str, gold_ok: bool = True
+) -> None:
     if status == "inserted":
         headline = "PRICE FUNCTION ADDED TO DB"
     elif status == "updated":
@@ -233,6 +235,8 @@ def _print_store_ok(status: str, *, n_gold: int, digest: str) -> None:
     print(flush=True)
     print("=" * 60, flush=True)
     print(f"*** {headline} ***", flush=True)
+    if not gold_ok:
+        print("*** gold still failing; stored anyway ***", flush=True)
     print(f"*** {n_gold} gold tests  sha256={digest[:12]}", flush=True)
     print("=" * 60, flush=True)
     print(flush=True)
@@ -256,10 +260,30 @@ def _print_compile_verdict(verdict) -> None:
     _print_gold_failure(verdict.log_lines)
 
 
-def _verdict_outcome(verdict) -> str:
+def _store_compiled(conn, site: dict, source: str, cases, verdict, run: PriceFunctionRun) -> PriceFunctionRun:
+    """AST-ok source goes in the DB even when gold still fails."""
     if verdict.stage in {"allowlist", "static"}:
-        return "ast_failed"
-    return "gold_failed"
+        _print_compile_verdict(verdict)
+        run.outcome = "ast_failed"
+        if not run.failures:
+            run.failures = list(verdict.log_lines)
+        return run
+    digest = digest_source(source)
+    status = store_price_function(
+        conn, site_id=site["id"], source=source, digest=digest
+    )
+    run.store_status = status
+    run.digest = digest
+    if verdict.ok:
+        _print_store_ok(status, n_gold=len(cases), digest=digest)
+        run.outcome = "stored"
+        return run
+    _print_compile_verdict(verdict)
+    _print_store_ok(status, n_gold=len(cases), digest=digest, gold_ok=False)
+    run.outcome = "gold_failed"
+    if not run.failures:
+        run.failures = list(verdict.log_lines)
+    return run
 
 
 def compile_price_function_for_site(
@@ -374,10 +398,7 @@ def compile_price_function_for_site(
                 return run
             current_system = SYSTEM_PROMPT
         else:
-            _print_compile_verdict(verdict)
-            run.outcome = _verdict_outcome(verdict)
-            run.failures = list(verdict.log_lines)
-            return run
+            return _store_compiled(conn, site, draft.source, cases, verdict, run)
         _dump_quote(
             site,
             draft.source,
@@ -404,18 +425,8 @@ def compile_price_function_for_site(
                     system=current_system,
                 )
             )
-            _print_compile_verdict(verdict)
-            run.outcome = _verdict_outcome(verdict)
-            return run
-    digest = digest_source(draft.source)
-    status = store_price_function(
-        conn, site_id=site["id"], source=draft.source, digest=digest
-    )
-    _print_store_ok(status, n_gold=len(cases), digest=digest)
-    run.outcome = "stored"
-    run.store_status = status
-    run.digest = digest
-    return run
+            return _store_compiled(conn, site, draft.source, cases, verdict, run)
+    return _store_compiled(conn, site, draft.source, cases, verdict, run)
 
 
 def scrape_prices_for_site(
@@ -458,6 +469,8 @@ def scrape_prices_for_site(
     if compile_runs is not None:
         compile_runs.append(run)
     status = run.store_status or run.outcome
+    if run.outcome == "gold_failed" and run.store_status:
+        status = f"gold_failed (stored {run.store_status})"
     print(f"    compile: {status}", flush=True)
     return len(lodging)
 

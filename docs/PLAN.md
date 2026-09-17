@@ -52,6 +52,26 @@ below. design.md “Where it runs”; cloud.md.
 not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
+### Done (2026-09-17, store AST-ok quote() even when gold fails)
+
+**scrape-prices writes `site_price_functions` after retries if AST
+passed**, including gold misses (בארות / תל ערד). AST/static still
+does not store. Report keeps them under Failures as
+`gold failed (stored updated)`.
+
+### Done (2026-09-17, GuestType only on per-person rates)
+
+**Compile prompt:** soldier / Matmon / miluim / student / senior /
+disabled change per-person rates only. Per-unit (חושה, family tent)
+ignores `guest_type` unless that unit has its own identity rows.
+
+### Done (2026-09-17, מעל X is X and up; per-person vs per-unit keys)
+
+**Compile prompt:** "מעל X לנים" / "X ומעלה" → `GROUP_MIN` is X, not
+X+1 (הקסטל used 31). Per-person schedules (tent, group) use `adult` /
+`child`; per-unit (חושה, family tent) use `weekday` / `weekend` and
+must not read `rates["adult"]`.
+
 ### Done (2026-09-17, drop Scrape / Scrape job from Actions)
 
 **Deleted `scrape.yml`** (claims / info / sites / place-ids dropdown).

@@ -1059,14 +1059,19 @@ Hebrew), parse `lodging` / `guest_type` into those members once, and
 compare members after that — not strings. `GuestType` is identity
 tabs only (רגיל, מנוי, חייל, …). The parks.org.il קבוצה tab is **not**
 a GuestType: it is an occupancy override. Compile reads that site's
-threshold from the group-row notes (`GROUP_MIN`, 30 vs 80, …) and, when
+threshold from the group-row notes (`GROUP_MIN`; "מעל X לנים" is X
+people and up, not X+1) and, when
 `adults_num + child_num` meets it for a lodging that has a group
 schedule, **always** uses those rates — Matmon and every other identity
 included. `GuestType.GROUP` / `GuestType("קבוצה")` is a compile failure.
-Rate numbers are baked into named fields (`adult` / `child` /
-`weekday` / `weekend` / `late_exit`); quote() must not scan Hebrew
-labels with `in` or `startswith`. It must reject unknown `lodging` /
-`guest_type` via the enum constructor.
+Rate numbers are baked into named fields: per-person (tent, group)
+`adult` / `child`; per-unit (חושה, bungalow, family tent)
+`weekday` / `weekend` / `late_exit` — a unit dict has no `adult`.
+Soldier / Matmon / miluim and the other identity tabs apply to
+per-person rates only; a unit ignores `guest_type` unless it has its
+own identity rows.
+quote() must not scan Hebrew labels with `in` or `startswith`. It must
+reject unknown `lodging` / `guest_type` via the enum constructor.
 The 235B is the same bar as listing match: this source is shown to users
 as a breakdown, so a wrong merge of Matmon vs regular is worse than a
 missed compile.
@@ -1110,10 +1115,14 @@ most units. Each case records the expected
 price and the arithmetic that produced it (included occupancy, extra
 person, late-checkout surcharge, Matmon, group min). Compile still matches the
 price to two decimal places; the explanation is documentation and the
-failure-message detail, not a string match against the 235B. A pass upserts `site_price_functions` (`source`,
-`sha256`, `tests_passed`). An unchanged hash bumps `scraped_at` only.
-A fail leaves the previous passing row; the planner then keeps using
-that function or `quote_night`. Every compile writes
+failure-message detail, not a string match against the 235B. A compile
+that passes AST upserts `site_price_functions` (`source`, `sha256`,
+`tests_passed`) even when gold still fails after the retry — the
+sandbox should have a quote() rather than last week's. AST / static
+failure still leaves the previous row. An unchanged hash bumps
+`scraped_at` only. Gold misses still print
+`!!! PRICE FUNCTION GOLD FAILED !!!` and the report lists them under
+Failures as `gold failed (stored updated)`. Every compile writes
 `reports/scrape_prices/<timestamp>/<site_id>.py` and
 `<site_id>.prompt.txt` (system + user, gitignored), including the
 latest failure. Each attempt that does not pass is also kept as

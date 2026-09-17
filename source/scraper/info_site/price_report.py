@@ -153,6 +153,8 @@ def _site_section(run: PriceFunctionRun) -> list[str]:
 def _outcome_label(run: PriceFunctionRun) -> str:
     if run.outcome == "stored":
         return run.store_status or "stored"
+    if run.outcome == "gold_failed" and run.store_status:
+        return f"gold failed (stored {run.store_status})"
     labels = {
         "gold_failed": "gold failed",
         "ast_failed": "AST / static failed",

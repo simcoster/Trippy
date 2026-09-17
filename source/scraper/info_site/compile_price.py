@@ -74,16 +74,25 @@ Rules:
   `{{"label", "price"}}` rows, do not write `"מבוגר" in …` / `"ילד" in …`
   / `"תוספת" in …`, do not startswith/endswith. Hebrew lives only as
   enum member values and inside the explanation string.
-- Example shape (invented numbers — copy rates from the user message only):
+- Example shape (invented numbers — copy rates from the user message only).
+  Two kinds of schedule; never mix their keys on one lodging:
+  per-person (לינת שטח, pitch, group) — `adult` / `child`:
   `RATES[Lodging.TENT][GuestType.REGULAR] = {{"adult": 10.0, "child": 8.0}}`
-  `RATES[Lodging.CABIN][GuestType.REGULAR] = {{"weekday": 100.0, "weekend": 120.0, "late_exit": 50.0}}`
-  Then `rates = RATES[lodging][guest_type]`; tent uses `rates["adult"]`
-  and `rates.get("child", rates["adult"])`; a unit uses
+  per-unit (חושה, bungalow, room, family tent, mahal) — `weekday` /
+  `weekend` / `late_exit`, then extras:
+  `RATES[Lodging.CABIN][GuestType.REGULAR] = {{"weekday": 100.0, "weekend": 120.0, "late_exit": 50.0, "extra_adult": 15.0}}`
+  After `rates = RATES[lodging][guest_type]`, a per-person lodging uses
+  `rates["adult"]` and `rates.get("child", rates["adult"])`. A per-unit
+  lodging has no `adult` key — use
   `rates["weekend"] if is_weekend_or_holiday else rates["weekday"]`
-  and adds `rates.get("late_exit")` when the late-exit condition holds.
+  and add `rates.get("late_exit")` when the late-exit condition holds.
+  Do not read `rates["adult"]` on a unit dict.
 - `guest_type` is the rate-card tab (רגיל, מנוי, חייל, …), not adult vs child.
   Adult vs child vs toddler is decided from `adults_num` / `child_num` /
-  `child_ages` using those named fields.
+  `child_ages` using those named fields. Soldier, Matmon, miluim, student,
+  senior, and disabled change **per-person** rates only. Per-unit lodging
+  (חושה, bungalow, family tent, …) ignores `guest_type` unless that unit
+  has its own identity rows.
 - Child ages: under 5 are toddlers (free on tent/person rates unless a row says
   otherwise). Ages 5 up to 14 pay the child rate. 14 and up pay adult.
 - `adults_num` is the adult headcount. `child_num` is the child headcount
@@ -96,8 +105,9 @@ Rules:
   override on a separate schedule in the user message, not a tab the
   caller can pass.
 - Read that site's threshold from the occupancy-override notes and bake
-  it as a number (`GROUP_MIN`). Sites differ; do not assume a threshold
-  from this prompt. Store those numbers as
+  it as a number (`GROUP_MIN`). "מעל X לנים" and "X ומעלה" mean X
+  people and up: `GROUP_MIN` is X, not X+1. Sites differ; do not assume
+  a threshold from this prompt. Store those numbers as
   `GROUP_RATES[lodging] = {{"adult": …, "child": …}}`,
   not under `RATES[lodging][GuestType.GROUP]`.
 - After parsing identity, if `adults_num + child_num >= GROUP_MIN` and
@@ -106,8 +116,12 @@ Rules:
   included. Below the threshold, keep `RATES[lodging][guest_type]`.
 - `is_weekend_or_holiday` selects אמצע שבוע vs סופי שבוע וחגים unit rates.
   Per-person tent rows with no weekday split apply every night.
-- Per-unit lodging (bungalow, room, hut, family tent, mahal) ignores party
-  size except extra-person surcharges (תוספת מבוגר / תוספת ילד / תוספת אדם).
+- Per-person lodging (לינת שטח, pitch) and GROUP_RATES are headcount ×
+  `adult` / `child`. Per-unit lodging (חושה, bungalow, room, hut,
+  family tent, mahal) is one price for the whole unit
+  (`weekday` / `weekend`); party size does not multiply that price,
+  only extra-person surcharges (תוספת מבוגר / תוספת ילד / תוספת אדם).
+  `guest_type` does not apply unless that unit has identity rows.
   Included occupancy is the עד N on that unit's own price row (a family
   tent row "עד N לנים" → N people at the unit price). A תוספת אדם row is
   the N+1st guest, not folded into the unit. A cap in the notes
@@ -145,9 +159,10 @@ A previous attempt used the wrong included occupancy, or priced two
 published sizes as extras on one unit. Included occupancy is the עד N
 on that unit's own price row; a תוספת אדם / תוספת מבוגר / תוספת ילד
 row is the N+1st guest; a cap in the notes is a maximum, not included
-occupancy. Two published sizes are different Lodging members when both
-appear in the Lodging list. Reread the rate-card rows above. Do not
-invent numbers that are not on those rows.
+occupancy. "מעל X לנים" means GROUP_MIN is X, not X+1. Two published
+sizes are different Lodging members when both appear in the Lodging
+list. Reread the rate-card rows above. Do not invent numbers that are
+not on those rows.
 """.strip()
 
 
@@ -485,7 +500,8 @@ def compile_user_prompt(
         )
         parts.append(
             "Occupancy override — not a GuestType. Read GROUP_MIN from the "
-            "notes. When adults_num + child_num >= GROUP_MIN and that lodging "
+            "notes (מעל X לנים means X and up, not X+1). When "
+            "adults_num + child_num >= GROUP_MIN and that lodging "
             "appears here, use these rates and ignore identity (including "
             f"מנוי). Do not put {GROUP_TAB} on GuestType.\n"
             f"{group_block}\n"
