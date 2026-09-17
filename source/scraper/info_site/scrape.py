@@ -14,25 +14,26 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
 
 from db.connect import SCHEMA_ENV, connect, database_url
-from source.price_sandbox.ast_check import compile_quote
 from source.scraper.amenity_enrichment.llm import LlmUsage, record_scrape_cost
 from source.scraper.cli import add_site_argument, site_ids
 from source.scraper.info_site.classify import RateCardClassifier, classify_rows
 from source.scraper.info_site.compile_price import (
+    FIX_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
+    assess_compiled_source,
+    compile_quote_fix,
     compile_quote_source,
     digest_source,
     gather_visitor_info_text,
     gold_cases_for_site,
     match_compile_rows,
-    run_gold_tests,
-    static_compile_hits,
 )
 from source.scraper.info_site.db import (
     UNCERTAIN_BELOW,
@@ -47,6 +48,10 @@ from source.scraper.info_site.parse import (
     parse_rate_table,
     parse_rate_tables,
     parse_wp_post_id,
+)
+from source.scraper.info_site.price_report import (
+    PriceFunctionRun,
+    write_run_report,
 )
 from source.scraper.tls import ssl_context
 
@@ -121,21 +126,65 @@ def fetch_page_html(url: str, *, referer: str = LISTING_URL) -> str:
         return response.text
 
 
-def _dump_quote(site: dict, source: str, *, user_prompt: str = "") -> None:
+def next_fail_stem(directory: Path, site_id: int) -> str:
+    """Next unused `{id}_vN` stem (`13_v1`, then `13_v2`). `{id}.py` is latest."""
+    n = 1
+    while (directory / f"{site_id}_v{n}.py").exists():
+        n += 1
+    return f"{site_id}_v{n}"
+
+
+def _write_quote_files(
+    stem: str,
+    source: str,
+    *,
+    user_prompt: str = "",
+    system: str | None = None,
+) -> tuple[Path, Path]:
     _QUOTE_DIR.mkdir(parents=True, exist_ok=True)
-    dest = _QUOTE_DIR / f"{site['id']}.py"
+    dest = _QUOTE_DIR / f"{stem}.py"
     dest.write_text(source or "", encoding="utf-8")
-    prompt_dest = _QUOTE_DIR / f"{site['id']}.prompt.txt"
+    prompt_dest = _QUOTE_DIR / f"{stem}.prompt.txt"
     prompt_dest.write_text(
         "----- system -----\n"
-        + SYSTEM_PROMPT
+        + (system if system is not None else SYSTEM_PROMPT)
         + "\n\n----- user -----\n"
         + (user_prompt or ""),
         encoding="utf-8",
     )
+    return dest, prompt_dest
+
+
+def _dump_quote(
+    site: dict,
+    source: str,
+    *,
+    user_prompt: str = "",
+    system: str | None = None,
+) -> None:
+    dest, prompt_dest = _write_quote_files(
+        str(site["id"]), source, user_prompt=user_prompt, system=system
+    )
     print(f"    wrote {dest}")
     if user_prompt:
         print(f"    wrote {prompt_dest}")
+
+
+def _dump_failed_quote(
+    site: dict,
+    source: str,
+    *,
+    user_prompt: str = "",
+    system: str | None = None,
+) -> str:
+    stem = next_fail_stem(_QUOTE_DIR, site["id"])
+    dest, prompt_dest = _write_quote_files(
+        stem, source, user_prompt=user_prompt, system=system
+    )
+    print(f"    wrote failed {dest}")
+    if user_prompt:
+        print(f"    wrote failed {prompt_dest}")
+    return stem
 
 
 def _print_ast_failure(kind: str, details: list[str]) -> None:
@@ -164,6 +213,22 @@ def _print_store_ok(status: str, *, n_gold: int, digest: str) -> None:
     print()
 
 
+def _print_compile_verdict(verdict) -> None:
+    if verdict.stage in {"allowlist", "static"}:
+        kind = "allowlist" if verdict.stage == "allowlist" else "static checks"
+        _print_ast_failure(kind, verdict.log_lines)
+        return
+    print("    price function gold failed; keeping previous row")
+    for line in verdict.log_lines:
+        print(f"      {line}")
+
+
+def _verdict_outcome(verdict) -> str:
+    if verdict.stage in {"allowlist", "static"}:
+        return "ast_failed"
+    return "gold_failed"
+
+
 def compile_price_function_for_site(
     conn,
     site: dict,
@@ -171,61 +236,132 @@ def compile_price_function_for_site(
     *,
     usage: LlmUsage | None = None,
     matcher: InfoWebsiteNameMatcher | None = None,
-) -> None:
+) -> PriceFunctionRun:
+    run = PriceFunctionRun(
+        site_id=site["id"], site_name=site["name"], url=site.get("url", "")
+    )
     cases = gold_cases_for_site(url=site["url"])
     if not cases:
         print("    no gold tests for this site; skip price function")
-        return
+        run.outcome = "skipped"
+        run.skip_reason = "no gold tests"
+        return run
+    run.n_gold = len(cases)
     gathered = parse_rate_tables(html)
     if not gathered:
         print("    no rate-card rows; skip price function")
-        return
+        run.outcome = "skipped"
+        run.skip_reason = "no rate-card rows"
+        return run
     names = load_info_website_names(conn, site_id=site["id"])
     if not names:
         print("    no info_website_names; skip price function")
-        return
+        run.outcome = "skipped"
+        run.skip_reason = "no info_website_names"
+        return run
     compile_rows = match_compile_rows(
         gathered, names, matcher=matcher, usage=usage
     )
     if not compile_rows:
         print("    no matched rate rows; skip price function")
-        return
+        run.outcome = "skipped"
+        run.skip_reason = "no matched rate rows"
+        return run
     lodgings = [name for _id, name in names]
     guest_types = list(dict.fromkeys(row.guest_type for row in compile_rows))
     visitor = gather_visitor_info_text(site["url"], html)
+    compile_kwargs = dict(
+        rows=compile_rows,
+        lodgings=lodgings,
+        guest_types=guest_types,
+        visitor_info=visitor,
+        site_name=site["name"],
+        usage=usage,
+    )
     try:
-        draft = compile_quote_source(
-            rows=compile_rows,
-            lodgings=lodgings,
-            guest_types=guest_types,
-            visitor_info=visitor,
-            site_name=site["name"],
-            usage=usage,
-        )
+        draft = compile_quote_source(**compile_kwargs)
     except Exception as exc:
         print(f"    price function compile failed: {exc}")
-        return
-    _dump_quote(site, draft.source, user_prompt=draft.user_prompt)
-    try:
-        compile_quote(draft.source)
-    except Exception as exc:
-        _print_ast_failure("allowlist", [str(exc)])
-        return
-    scans = static_compile_hits(draft.source)
-    if scans:
-        _print_ast_failure("static checks", scans)
-        return
-    failures = run_gold_tests(draft.source, cases)
-    if failures:
-        print("    price function gold failed; keeping previous row")
-        for line in failures:
-            print(f"      {line}")
-        return
+        run.outcome = "compile_error"
+        run.skip_reason = str(exc)
+        return run
+    current_system = SYSTEM_PROMPT
+    _dump_quote(site, draft.source, user_prompt=draft.user_prompt, system=current_system)
+    verdict = assess_compiled_source(draft.source, cases)
+    if not verdict.ok:
+        run.fail_stems.append(
+            _dump_failed_quote(
+                site,
+                draft.source,
+                user_prompt=draft.user_prompt,
+                system=current_system,
+            )
+        )
+        if verdict.retry == "fix":
+            print("    retry: fix the function")
+            for line in verdict.log_lines:
+                print(f"      {line}")
+            run.retry = "fix"
+            try:
+                draft = compile_quote_fix(
+                    draft.source, verdict.retry_errors, usage=usage
+                )
+            except Exception as exc:
+                print(f"    price function compile failed: {exc}")
+                run.outcome = "compile_error"
+                run.skip_reason = str(exc)
+                run.failures = list(verdict.log_lines)
+                return run
+            current_system = FIX_SYSTEM_PROMPT
+        elif verdict.retry == "regen":
+            print("    retry: regenerate occupancy from the rate card")
+            for line in verdict.log_lines:
+                print(f"      {line}")
+            run.retry = "regen"
+            try:
+                draft = compile_quote_source(
+                    **compile_kwargs,
+                    role="price_function_compile_retry",
+                    retry_suffix=verdict.retry_errors[0] if verdict.retry_errors else "",
+                )
+            except Exception as exc:
+                print(f"    price function compile failed: {exc}")
+                run.outcome = "compile_error"
+                run.skip_reason = str(exc)
+                run.failures = list(verdict.log_lines)
+                return run
+            current_system = SYSTEM_PROMPT
+        else:
+            _print_compile_verdict(verdict)
+            run.outcome = _verdict_outcome(verdict)
+            run.failures = list(verdict.log_lines)
+            return run
+        _dump_quote(
+            site, draft.source, user_prompt=draft.user_prompt, system=current_system
+        )
+        verdict = assess_compiled_source(draft.source, cases)
+        if not verdict.ok:
+            run.fail_stems.append(
+                _dump_failed_quote(
+                    site,
+                    draft.source,
+                    user_prompt=draft.user_prompt,
+                    system=current_system,
+                )
+            )
+            _print_compile_verdict(verdict)
+            run.outcome = _verdict_outcome(verdict)
+            run.failures = list(verdict.log_lines)
+            return run
     digest = digest_source(draft.source)
     status = store_price_function(
         conn, site_id=site["id"], source=draft.source, digest=digest
     )
     _print_store_ok(status, n_gold=len(cases), digest=digest)
+    run.outcome = "stored"
+    run.store_status = status
+    run.digest = digest
+    return run
 
 
 def scrape_prices_for_site(
@@ -237,6 +373,7 @@ def scrape_prices_for_site(
     usage: LlmUsage | None = None,
     matcher: InfoWebsiteNameMatcher | None = None,
     unmatched_sink: list[str] | None = None,
+    compile_runs: list[PriceFunctionRun] | None = None,
 ) -> int:
     raw_rows = parse_rate_table(html)
     classified = classify_rows(raw_rows, classifier=classifier, usage=usage)
@@ -260,9 +397,11 @@ def scrape_prices_for_site(
         print(f"    wp post id={post_id}")
     fees = sum(1 for row in classified if row.kind == "fee")
     print(f"    {len(raw_rows)} table rows, {len(lodging)} lodging stored, {fees} fees skipped")
-    compile_price_function_for_site(
+    run = compile_price_function_for_site(
         conn, site, html, usage=usage, matcher=matcher
     )
+    if compile_runs is not None:
+        compile_runs.append(run)
     return len(lodging)
 
 
@@ -323,11 +462,12 @@ def print_flagged_prompts(matcher: InfoWebsiteNameMatcher) -> None:
 
 def run_prices(
     config: dict, *, usage: LlmUsage | None = None, sites: list[int] | None = None
-) -> int:
+) -> tuple[int, list[PriceFunctionRun]]:
     """Scrape rate cards for the configured campsites. Returns rows stored.
 
     `usage` collects every LLM call so the caller can report the run's cost.
     """
+    compile_runs: list[PriceFunctionRun] = []
     campsites = fetch_campsites(config, sites=sites)
     if not campsites:
         print("No campsites found")
@@ -337,7 +477,7 @@ def run_prices(
                 "    experiments.campsites is empty. "
                 "Re-copy with `just setup-experiments copy`."
             )
-        return 0
+        return 0, compile_runs
 
     pause_s = float(config.get("info_site", {}).get("request_pause_seconds", 0.5))
     classifier = RateCardClassifier()
@@ -356,6 +496,15 @@ def run_prices(
                 html = fetch_page_html(site["url"])
             except httpx.HTTPError as exc:
                 print(f"    HTTP error: {exc}")
+                compile_runs.append(
+                    PriceFunctionRun(
+                        site_id=site["id"],
+                        site_name=site["name"],
+                        url=site.get("url", ""),
+                        outcome="http_error",
+                        skip_reason=str(exc),
+                    )
+                )
                 continue
             calls_before = len(matcher.calls)
             saved = scrape_prices_for_site(
@@ -366,6 +515,7 @@ def run_prices(
                 usage=usage,
                 matcher=matcher,
                 unmatched_sink=unmatched,
+                compile_runs=compile_runs,
             )
             for call in matcher.calls[calls_before:]:
                 call.site = site["name"]
@@ -383,7 +533,7 @@ def run_prices(
     print_flagged_prompts(matcher)
     if usage.chat_calls:
         print(usage.summary(prefix="Classify total: "))
-    return total
+    return total, compile_runs
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -398,7 +548,16 @@ def main(argv: list[str] | None = None) -> None:
     if not args.prices:
         parser.error("pass --prices (newsflashes are not wired yet)")
     usage = LlmUsage()
-    run_prices(load_config(), usage=usage, sites=site_ids(args.site))
+    started_at = datetime.now()
+    t0 = time.perf_counter()
+    _total, compile_runs = run_prices(
+        load_config(), usage=usage, sites=site_ids(args.site)
+    )
+    seconds = time.perf_counter() - t0
+    report = write_run_report(
+        compile_runs, usage, started_at=started_at, seconds=seconds
+    )
+    print(f"run report {report}")
     written = record_scrape_cost("scrape-prices", usage)
     if written:
         print(f"cost report appended to {written}")

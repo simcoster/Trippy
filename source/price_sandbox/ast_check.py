@@ -63,6 +63,7 @@ SAFE_METHODS = frozenset(
         "endswith",
         "get",
         "index",
+        "insert",
         "items",
         "join",
         "keys",
@@ -115,6 +116,7 @@ _ALLOWED_NODE_TYPES = frozenset(
         ast.Return,
         ast.If,
         ast.For,
+        ast.While,
         ast.Break,
         ast.Continue,
         ast.Pass,
@@ -341,9 +343,6 @@ class _AllowlistVisitor(ast.NodeVisitor):
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         raise PriceFunctionError("lambda is not allowed")
-
-    def visit_While(self, node: ast.While) -> None:
-        raise PriceFunctionError("while loops are not allowed")
 
     def visit_Try(self, node: ast.Try) -> None:
         raise PriceFunctionError("try/except is not allowed")

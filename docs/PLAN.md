@@ -52,6 +52,37 @@ below. design.md “Where it runs”; cloud.md.
 not. No VM cron. Destructive laptop `scrape-info` / `clear-*` dump
 first unless `TRIPPY_SCHEMA=experiments`. design.md “Where it runs”;
 cloud.md.
+### Done (2026-09-17, scrape-prices run report and versioned fail dumps)
+
+**Each scrape-prices run writes a Markdown report** under
+`reports/scrape_prices/<timestamp>.md` (stored vs failed, retry kind,
+failing gold / AST lines, dump paths, cost by role). Failed compile
+attempts are kept as `reports/price_functions/<id>_vN.py` and
+`<id>_vN.prompt.txt`; `<id>.py` is still the latest attempt. The fix
+turn dumps `FIX_SYSTEM_PROMPT`.
+
+### Done (2026-09-17, compile retries: fix vs occupancy regenerate)
+
+**One retry after a failed price-function compile.** AST / syntax /
+NameError / static → `compile_quote_fix` (the function + error text,
+`price_function_compile_fix`). Gold price misses only → same rate-card
+prompt plus occupancy class, no expected numbers
+(`price_function_compile_retry`). `assess_compiled_source` decides
+which. Supersedes “retry policy … not wired” below.
+
+### Done (2026-09-16, while/insert and occupancy in the compile prompt)
+
+**`while` and `list.insert` are allowlisted** (`ast_check`). Yehudiya
+and Mishmar failed those on the 18-site scrape, not on prices.
+Compile prompt now states included occupancy = עד N on the unit row
+(תוספת is N+1; a notes cap is not included), two published sizes are
+separate Lodging members (Tel Arad 860 vs 3080), and free under-5s
+live in one name (`toddler_count`) — the NameErrors were typos
+(`todder_count` / `toddlers_count`), not prompt variants. Retry policy in design.md (not wired): AST/syntax/NameError is a
+fix-the-function turn; gold occupancy is a regenerate without the
+expected number; not temp>0. Supersedes the “retry is a maybe” note
+below.
+
 ### Done (2026-09-16, gold JSON per campsite)
 
 **Gold is prices in JSON, not Python helpers.** One

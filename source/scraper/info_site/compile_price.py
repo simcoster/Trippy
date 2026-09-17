@@ -8,8 +8,9 @@ from typing import NamedTuple
 
 from openai import OpenAI
 
-from source.price_sandbox.ast_check import source_sha256
-from source.price_sandbox.gold import GoldCase, gold_for_url, run_cases
+from source.price_sandbox.ast_check import compile_quote, source_sha256
+from source.price_sandbox.execute import eval_quote_inprocess
+from source.price_sandbox.gold import GoldCase, gold_for_url, prices_close, run_cases
 from source.price_sandbox.params import strip_type_quotes
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_MODEL,
@@ -103,8 +104,17 @@ Rules:
   included. Below the threshold, keep `RATES[lodging][guest_type]`.
 - `is_weekend_or_holiday` selects אמצע שבוע vs סופי שבוע וחגים unit rates.
   Per-person tent rows with no weekday split apply every night.
-- Per-unit lodging (bungalow, room, חושה) ignores party size except extra-person
-  surcharges (תוספת מבוגר / תוספת ילד / included occupancy).
+- Per-unit lodging (bungalow, room, חושה, family tent, mahal) ignores party
+  size except extra-person surcharges (תוספת מבוגר / תוספת ילד / תוספת אדם).
+  Included occupancy is the עד N on that unit's own price row (family tent
+  "עד 4 לנים" → 4 people at the unit price). A תוספת אדם row is the N+1st
+  guest, not folded into the unit. A cap in the notes ("עד 5 לנים באוהל")
+  is a maximum, not included occupancy.
+- Two published sizes of the same kind of lodging are different Lodging
+  members when both appear in the Lodging list (תל ערד: מאהל עד 10 at 860
+  vs כפול עד 36 at 3080). Quote each member's unit price. Do not price the
+  larger size as extras on the smaller unit.
+- Count free under-5s in one name and reuse it (`toddler_count`).
 - `planned_exit_time` after 12:00 on a weekend: add the matching
   תוספת יציאה מאוחרת row when one exists for that product.
 - Use only the rate rows and visitor-info pricing rules supplied. Do not invent
@@ -113,6 +123,30 @@ Rules:
   imports, no files, no network, no try/except. Build the explanation like:
   "2 adults [76] + 2 children [58] [ages 5,7] + 1 toddler [free] (age 4); Matmon"
 """
+
+FIX_SYSTEM_PROMPT = f"""You fix one Python quote() module for an Israeli campsite.
+
+Output Python only, no markdown fences, no commentary. Keep the same
+quote() signature, Lodging/GuestType enums, and rate numbers already in
+the function. Only repair the listed errors (syntax, undefined names,
+AST/static violations). Do not add tariffs. Do not guess prices.
+
+The module may `import math`, `from enum import Enum` (or StrEnum), and
+must define exactly this function:
+
+{QUOTE_SIGNATURE}
+"""
+
+OCCUPANCY_RETRY_PREAMBLE = """
+A previous attempt used the wrong included occupancy, or priced two
+published sizes as extras on one unit. Included occupancy is the עד N
+on that unit's own price row; a תוספת אדם / תוספת מבוגר / תוספת ילד
+row is the N+1st guest; a cap in the notes is a maximum, not included
+occupancy. Two published sizes are different Lodging members when both
+appear in the Lodging list. Reread the rate-card rows above. Do not
+invent numbers that are not on those rows.
+""".strip()
+
 
 _FENCE_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.S | re.I)
 
@@ -128,6 +162,21 @@ class CompileRateRow(NamedTuple):
 class CompileQuoteDraft(NamedTuple):
     source: str
     user_prompt: str
+
+
+class GoldMiss(NamedTuple):
+    note: str
+    lodging: str
+    kind: str
+    message: str
+
+
+class CompileVerdict(NamedTuple):
+    ok: bool
+    retry: str | None
+    stage: str
+    log_lines: list[str]
+    retry_errors: list[str]
 
 
 _STRING_SCAN_METHODS = frozenset({"startswith", "endswith", "find"})
@@ -216,6 +265,10 @@ def _scan_unreachable_stmt(stmt: ast.stmt, hits: list[str]) -> None:
         _scan_unreachable_body(stmt.orelse, hits)
         return
     if isinstance(stmt, ast.For):
+        _scan_unreachable_body(stmt.body, hits)
+        _scan_unreachable_body(stmt.orelse, hits)
+        return
+    if isinstance(stmt, ast.While):
         _scan_unreachable_body(stmt.body, hits)
         _scan_unreachable_body(stmt.orelse, hits)
         return
@@ -433,6 +486,108 @@ def compile_user_prompt(
     return "\n".join(parts)
 
 
+def _complete_python(
+    *,
+    system: str,
+    user: str,
+    role: str,
+    client: OpenAI | None = None,
+    usage: LlmUsage | None = None,
+    model: str | None = None,
+) -> CompileQuoteDraft:
+    llm = client or make_nebius_openai_client()
+    chosen = model or QWEN_INSTRUCT_MODEL
+    response = llm.chat.completions.create(
+        model=chosen,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0,
+    )
+    if usage is not None:
+        usage.add_chat(response.usage, role=role, model=chosen)
+    source = extract_python_source(response.choices[0].message.content or "")
+    return CompileQuoteDraft(source=source, user_prompt=user)
+
+
+def occupancy_retry_suffix(misses: list[GoldMiss]) -> str:
+    """Rate-card regenerate hint. Lodging + case note only; no prices."""
+    lines = [OCCUPANCY_RETRY_PREAMBLE, "", "Missed cases:"]
+    for miss in misses:
+        lines.append(f"- {miss.note} (lodging={miss.lodging})")
+    return "\n".join(lines)
+
+
+def inspect_gold(source: str, cases: list[GoldCase]) -> list[GoldMiss]:
+    misses: list[GoldMiss] = []
+    for index, case in enumerate(cases, start=1):
+        note = case.note or f"case {index}"
+        lodging = case.params.lodging
+        try:
+            result = eval_quote_inprocess(source, case.params)
+        except Exception as exc:
+            misses.append(
+                GoldMiss(note=note, lodging=lodging, kind="exception", message=str(exc))
+            )
+            continue
+        if not prices_close(result.price, case.expected_price):
+            misses.append(
+                GoldMiss(note=note, lodging=lodging, kind="price", message="")
+            )
+    return misses
+
+
+def assess_compiled_source(source: str, cases: list[GoldCase]) -> CompileVerdict:
+    """AST, static checks, then gold. retry is fix, regen, or None if ok."""
+    try:
+        compile_quote(source)
+    except Exception as exc:
+        text = str(exc)
+        return CompileVerdict(
+            ok=False,
+            retry="fix",
+            stage="allowlist",
+            log_lines=[text],
+            retry_errors=[text],
+        )
+    scans = static_compile_hits(source)
+    if scans:
+        return CompileVerdict(
+            ok=False,
+            retry="fix",
+            stage="static",
+            log_lines=scans,
+            retry_errors=scans,
+        )
+    misses = inspect_gold(source, cases)
+    if not misses:
+        return CompileVerdict(
+            ok=True, retry=None, stage="ok", log_lines=[], retry_errors=[]
+        )
+    log_lines = run_cases(source, cases)
+    if all(miss.kind == "price" for miss in misses):
+        return CompileVerdict(
+            ok=False,
+            retry="regen",
+            stage="gold",
+            log_lines=log_lines,
+            retry_errors=[occupancy_retry_suffix(misses)],
+        )
+    retry_errors = [
+        f"{miss.note}: {miss.message}" if miss.message else miss.note
+        for miss in misses
+        if miss.kind == "exception"
+    ]
+    return CompileVerdict(
+        ok=False,
+        retry="fix",
+        stage="gold",
+        log_lines=log_lines,
+        retry_errors=retry_errors or [miss.note for miss in misses],
+    )
+
+
 def compile_quote_source(
     *,
     rows: list[CompileRateRow],
@@ -443,10 +598,10 @@ def compile_quote_source(
     client: OpenAI | None = None,
     usage: LlmUsage | None = None,
     model: str | None = None,
+    role: str = "price_function_compile",
+    retry_suffix: str = "",
 ) -> CompileQuoteDraft:
     """One 235B call. Returns the model's Python; the caller AST-checks it."""
-    llm = client or make_nebius_openai_client()
-    chosen = model or QWEN_INSTRUCT_MODEL
     user = compile_user_prompt(
         site_name=site_name,
         lodgings=lodgings,
@@ -454,20 +609,37 @@ def compile_quote_source(
         rows=rows,
         visitor_info=visitor_info,
     )
-    response = llm.chat.completions.create(
-        model=chosen,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user},
-        ],
-        temperature=0,
+    if retry_suffix.strip():
+        user = user + "\n" + retry_suffix.strip() + "\n"
+    return _complete_python(
+        system=SYSTEM_PROMPT,
+        user=user,
+        role=role,
+        client=client,
+        usage=usage,
+        model=model,
     )
-    if usage is not None:
-        usage.add_chat(
-            response.usage, role="price_function_compile", model=chosen
-        )
-    source = extract_python_source(response.choices[0].message.content or "")
-    return CompileQuoteDraft(source=source, user_prompt=user)
+
+
+def compile_quote_fix(
+    source: str,
+    errors: list[str],
+    *,
+    client: OpenAI | None = None,
+    usage: LlmUsage | None = None,
+    model: str | None = None,
+) -> CompileQuoteDraft:
+    """Fix-turn: the failed function plus error text, no gold prices."""
+    listed = "\n".join(f"- {line}" for line in errors if line)
+    user = f"Fix this function. Errors were:\n{listed}\n\n{source.strip()}\n"
+    return _complete_python(
+        system=FIX_SYSTEM_PROMPT,
+        user=user,
+        role="price_function_compile_fix",
+        client=client,
+        usage=usage,
+        model=model,
+    )
 
 
 def run_gold_tests(source: str, cases: list[GoldCase]) -> list[str]:

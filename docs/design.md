@@ -1070,11 +1070,19 @@ missed compile.
 
 The reply is AST-checked (`import math` and `from enum import Enum`,
 no dunders, no `open` / `eval`; `map` is allowed — late-exit parses
-`"13:00"` that way). Further static checks, without running
+`"13:00"` that way; `while` and `list.insert` are allowed — Yehudiya
+padded `child_ages` with `while`, Mishmar built the explanation with
+`insert`). Further static checks, without running
 `quote()`, reject string membership on labels, `GuestType.GROUP`, and
 syntactic unreachable code (statements after `return` / `raise`,
-`if False`, both-branch return). This is AST control flow, not
-dataflow: `if lodging is TENT` twice is not flagged. Then gold cases per site
+`if False`, both-branch return; `while` bodies are scanned the same
+way as `for`). This is AST control flow, not
+dataflow: `if lodging is TENT` twice is not flagged. Included occupancy
+is the עד N on that unit row; a תוספת אדם is the N+1st guest (family
+tent notes "עד 5 לנים" are a cap, not included 5 — Yehiam/Tel Arad gold
+438 vs compiled 350). Two published sizes are different Lodging members
+when both are in the catalog (Tel Arad mahal 860 for 10 vs 3080 for the
+כפול 36), not extras on the smaller unit. Then gold cases per site
 (`source/price_sandbox/gold/sites/<slug>.json`, one file per campsite).
 Each file is a list of explicit prices (`expected_price` plus the
 arithmetic in `explanation`); there is no shared `BAND_*` table and no
@@ -1098,12 +1106,26 @@ failure-message detail, not a string match against the 235B. A pass upserts `sit
 A fail leaves the previous passing row; the planner then keeps using
 that function or `quote_night`. Every compile writes
 `reports/price_functions/<site_id>.py` and `<site_id>.prompt.txt`
-(system + user, gitignored), including failures.
+(system + user, gitignored), including the latest failure. Each
+attempt that does not pass is also kept as `<site_id>_vN.py` and
+`<site_id>_vN.prompt.txt` (`13_v1` is the first fail, `13_v2` the
+retry if that also failed). A Markdown report per run lives under
+`reports/scrape_prices/<timestamp>.md`: stored vs failed, retry kind,
+failing gold / AST lines, dump paths, and cost by role.
 
-Compile is one 235B call today. Retrying a failed compile with the AST
-or gold error in a follow-up turn is a **maybe** — revisit if those
-failures stay common after the prompt is settled. Do not retry gold by
-sending the expected numeric price (that hardcodes the gold cases).
+Compile is one 235B call, then at most one retry. AST / syntax /
+NameError / static hits is a **fix** turn (failed function + error
+text, no expected gold price, `role=price_function_compile_fix`). A
+gold occupancy miss regenerates from the same rate-card prompt plus
+the error class (wrong included count, lodging names, no numeric
+expected price, `role=price_function_compile_retry`). Do not bump
+temperature — temp 0 keeps the rate numbers still; a second draw at
+temp>0 repeats the same occupancy bug with different typos. Do not
+retry gold by sending the expected numeric price (that hardcodes the
+gold cases). 2026-09-17 experiments-schema scrape stored 15/18 with
+4 fix retries and 0 occupancy regenerates (experiments.md 2026-09-17
+§1); occupancy regen stays because a price-only miss is still the
+class that must not see `expected 438`.
 
 At quote time a one-shot loader (`just load-price-sandbox`, prod
 `price-sandbox-loader`) reads `site_price_functions` and `POST /load`s

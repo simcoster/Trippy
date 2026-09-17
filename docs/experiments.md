@@ -7,6 +7,33 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-17
+
+### 1. Do fix vs occupancy-regenerate retries recover failed compiles?
+
+**Question.** After allowlisting `while`/`insert` and stating included
+occupancy in the compile prompt, does one AST/NameError **fix** turn
+and one occupancy **regenerate** (no expected gold price) lift the
+9/18 misses from the previous experiments-schema scrape-prices?
+
+**Setup.** `TRIPPY_SCHEMA=experiments` (existing copy; no `public`
+writes). `just on-experiments scrape-prices` on all 18 sites. Temp 0.
+`price_function_compile` then at most one of `price_function_compile_fix`
+or `price_function_compile_retry`. ~17.6 min.
+
+**Result.** 15/18 stored (was 9/18 on the dumps from the prior run).
+4 fix retries, 0 occupancy regenerates. Fix recovered מצדה (`filter`
+not allowed → rewritten). Fix did not recover הבשור (`':' in` time
+parse, still static), תל ערד (`any` then KeyError `weekday` on mahal
+36), בארות (gold lodging names not in the catalog enum). Occupancy
+regen never fired: יחיעם extra 438 passed on the first compile;
+remaining misses were exceptions, not price deltas. 465 calls,
+~$0.106 (`compile` 18 + `fix` 4).
+
+**Decision.** Keep both retry kinds. Gold בארות names and `':' in` /
+`any`/`filter` allowlist are separate follow-ups. design.md
+“Per-site price functions”.
+
 ## 2026-09-14
 
 ### 1. Does a weekday glued to desert drop the landscape?
