@@ -54,7 +54,9 @@ jobs:
             if [ "${BACKUP}" = "true" ] || [ "${BACKUP}" = "True" ]; then
               export TRIPPY_ROOT
               export TRIPPY_COMPOSE_FILE=docker-compose.prod.yml
-              export TRIPPY_BACKUP_DIR=/var/lib/trippy/backups
+              export TRIPPY_BACKUP_DIR="${HOME}/.trippy-backups"
+              export TRIPPY_BACKUP_REQUIRE_S3=1
+              export BACKUP_REPORT_PATH="${HOME}/.trippy-backups/last.md"
               sh scripts/cloud/backup.sh
             fi
             REPORT_DIR="${HOME}/.trippy-scrape"

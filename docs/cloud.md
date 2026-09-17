@@ -15,7 +15,7 @@ GitHub Actions ──SSH──► docker compose run scrape
                                               ▼
                                     Postgres (compose network only)
                                               │
-     14:00 IDT  pg_dump -n public ──► /var/lib/trippy/backups
+     14:00 IDT  pg_dump -n public ──► ~/.trippy-backups
                                  └──► Object Storage (trippy-backups)
 ```
 
@@ -68,7 +68,8 @@ In [console.nebius.com](https://console.nebius.com), project you already have:
 
 1. Region **`me-west1`** (Israel). Platform **`cpu-d3`**, preset **`4vcpu-16gb`**.
 2. Ubuntu 24.04, 50 GiB boot **network SSD**, Docker later via bootstrap.
-3. Optional second 50 GiB disk mounted at `/var/lib/trippy/backups`.
+3. Optional second 50 GiB disk mounted at `/var/lib/trippy/backups`
+   (only if you dump as root; Actions writes `~/.trippy-backups`).
 4. SSH key. Security group: **22** reachable from the internet (GitHub-hosted
    runners have no stable IP list worth allowlisting). Key-only, no passwords.
    Do not open 5432 or 8501. Use a **static** public IP — GitHub stores it as
@@ -82,10 +83,11 @@ In [console.nebius.com](https://console.nebius.com), project you already have:
 3. Endpoint `https://storage.me-west1.nebius.cloud` (adjust if you picked another region).
 4. Lifecycle: expire prefix `postgres/` after **30 days**.
 5. Put `BACKUP_S3_BUCKET`, `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`,
-   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` in the VM `.env` (and
-   laptop `.env` if `just backup` should upload). If `BACKUP_S3_BUCKET`
-   is unset, dumps stay on disk only. If it is set, a failed upload
-   fails the dump.
+   `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION` **uncommented** in the
+   VM `.env`. `backup.yml` requires an upload; a dump that stays on
+   disk only fails the job. Laptop `just backup` still skips S3 if
+   those are unset. The Actions Summary is `Backup was written to
+   s3://…` after a successful upload.
 
 `pg_dump -n public -Fc` only. `experiments` and `extensions` stay out.
 On-disk `trippy` is tens of MB (indexes + a copy in `experiments`); the
@@ -101,7 +103,8 @@ compose cp; do not redirect `pg_dump` in PowerShell). Destructive
 `TRIPPY_SCHEMA=experiments`. VM: one GitHub Actions dump at 14:00 IDT
 ([`backup.yml`](../.github/workflows/backup.yml)), not cron and not
 tied to a scrape. [`scripts/cloud/backup.sh`](../scripts/cloud/backup.sh)
-writes under `/var/lib/trippy/backups` (7 days) and `s3://…/postgres/`.
+writes under `~/.trippy-backups` (7 days; `gh-actions` cannot write
+`/var/lib/trippy/backups`) and `s3://…/postgres/`.
 Restore: `just restore backups/…` or `s3://trippy-backups/postgres/…`.
 
 ### 3. Cloudflare Tunnel
