@@ -33,6 +33,8 @@ class PriceFunctionRun:
     failures: list[str] = field(default_factory=list)
     fail_stems: list[str] = field(default_factory=list)
     store_status: str = ""
+    scraped_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 def run_folder(started_at: datetime, directory: Path | None = None) -> Path:
@@ -120,6 +122,12 @@ def render_run_report(
     return "\n".join(lines) + "\n"
 
 
+def stamp(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    return value.isoformat(timespec="seconds")
+
+
 def _site_section(run: PriceFunctionRun) -> list[str]:
     lines = [f"### {run.site_id}. {run.site_name}", ""]
     lines.append(f"- outcome: {_outcome_label(run)}")
@@ -129,6 +137,10 @@ def _site_section(run: PriceFunctionRun) -> list[str]:
         lines.append(f"- gold cases: {run.n_gold}")
     if run.digest:
         lines.append(f"- sha256: `{run.digest[:12]}`")
+    if run.scraped_at is not None:
+        lines.append(f"- scraped_at: {stamp(run.scraped_at)}")
+    if run.updated_at is not None:
+        lines.append(f"- updated_at: {stamp(run.updated_at)}")
     if run.skip_reason:
         lines.append(f"- reason: {run.skip_reason}")
     dumps: list[str] = []

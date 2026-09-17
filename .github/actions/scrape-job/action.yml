@@ -64,8 +64,12 @@ runs:
               -e PRICES_REPORT_PATH=/reports/prices.md \
               scrape "${JOB}"
           fi
-          docker compose -f docker-compose.prod.yml --env-file .env \
-            --profile load run --rm price-sandbox-loader
+          if grep -q '^  price-sandbox-loader:' docker-compose.prod.yml; then
+            docker compose -f docker-compose.prod.yml --env-file .env \
+              --profile load run --rm price-sandbox-loader
+          else
+            echo "price-sandbox-loader not in compose on this VM; skip reload"
+          fi
 
     - name: Job summary
       if: always()
