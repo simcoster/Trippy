@@ -12,8 +12,10 @@ esac
 
 if [ -n "${TRIPPY_BACKUP_DIR:-}" ]; then
   BACKUP_DIR="$TRIPPY_BACKUP_DIR"
-elif [ -d /var/lib/trippy/backups ]; then
+elif [ -d /var/lib/trippy/backups ] && [ -w /var/lib/trippy/backups ]; then
   BACKUP_DIR=/var/lib/trippy/backups
+elif [ -n "${HOME:-}" ]; then
+  BACKUP_DIR="${HOME}/.trippy-backups"
 else
   BACKUP_DIR="${ROOT}/backups"
 fi
@@ -37,6 +39,10 @@ if [ -f "${ROOT}/.env" ]; then
 fi
 
 mkdir -p "${BACKUP_DIR}"
+if [ ! -w "${BACKUP_DIR}" ]; then
+  echo "backup.sh: cannot write ${BACKUP_DIR} (gh-actions is not root; use \$HOME/.trippy-backups)" >&2
+  exit 1
+fi
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 name="trippy-${stamp}.dump"
 remote="/tmp/${name}"

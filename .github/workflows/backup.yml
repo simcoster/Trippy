@@ -35,5 +35,5 @@ jobs:
             cd "${TRIPPY_ROOT}"
             export TRIPPY_ROOT
             export TRIPPY_COMPOSE_FILE=docker-compose.prod.yml
-            export TRIPPY_BACKUP_DIR=/var/lib/trippy/backups
+            export TRIPPY_BACKUP_DIR="${HOME}/.trippy-backups"
             sh scripts/cloud/backup.sh

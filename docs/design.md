@@ -1128,7 +1128,7 @@ an SSH `-L 8501` to the VM does not steal `localhost:8501`. Ingest is the same i
 Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
 reviews at 09:00 IDT (`scrape-reviews.yml`). Both call `scrape-job.yml`.
 One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n public -Fc`
-to `/var/lib/trippy/backups` and Nebius object storage. Scrapes do not
+to `~/.trippy-backups` and Nebius object storage. Scrapes do not
 dump. No VM cron. WAL-G is unused: the catalog dump is a few megabytes.
 After each availability fetch the scraper stores
 `booking_page_hashes`: `html_sha256` of the raw BE_Results body (ASP.NET
