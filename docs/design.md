@@ -1161,7 +1161,9 @@ At quote time a one-shot loader (`just load-price-sandbox`, prod
 into the `price-sandbox` container (cap 30), then exits. Streamlit /
 the planner only send params (`POST /quote`). The sandbox has no
 Postgres, no `.env`, no internet (internal `quote` network in prod;
-laptop publishes `127.0.0.1:8503`). Re-run the loader after
+laptop also joins a non-internal `quote-host` network so Docker
+publishes `127.0.0.1:8503` — an internal-only network drops the
+host bind). Re-run the loader after
 `scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
 other) front end does not own this.
 Each quote runs in a short-lived child with a memory cap and a
@@ -1338,11 +1340,16 @@ official rules the 235B received; **outputs** are `relevant_claims`,
 `satisfies`, `satisfy_by`, and `reason`. The model does not label each
 rule; `satisfy_by` is the rule-side verdict. Worker threads
 `copy_context()` so those tool runs stay under the Streamlit turn.
-Vacancy SQL (`search_open_slots`), query embeddings (`embed_query`
+Vacancy SQL (`search_open_slots`), price-jail quotes
+(`price_sandbox_quote`, one child span: each campsite’s params,
+price, and explanation, or why it skipped / fell back; POSTs are
+chunked at the sandbox `MAX_BATCH` of 30 and memoized by site +
+lodging + party + weekday/weekend for that user request only), query embeddings (`embed_query`
 StructuredTool, one per phrase, nested under `embed_queries`), and
 retrieve (`retrieve`, plus `search_review_claims` /
 `search_campsite_rules` / amenity SQL) are `@traceable` **tools** under
-the planner. Embed worker threads `copy_context()` like the judge.
+the planner. Local Streamlit also expands **Price sandbox** in the
+turn trace. Embed worker threads `copy_context()` like the judge.
 `embed_query` Inputs are the phrase; the vector is the output.
 about the longest call, not the sum, and sits inside the planner bar.
 Scrape containers force `LANGSMITH_TRACING=false` in

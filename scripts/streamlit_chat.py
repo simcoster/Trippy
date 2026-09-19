@@ -492,6 +492,18 @@ def _install_tool_hooks() -> None:
                     last = getattr(agent_search, "_LAST_OPEN_SLOTS_QUERY", None)
                     if isinstance(last, dict):
                         params.update(last)
+                    sandbox = params.pop("sandbox", None)
+                    if isinstance(sandbox, dict):
+                        _current_trace.append(
+                            {
+                                "kind": "sandbox",
+                                "name": "price_sandbox_quote",
+                                "url": sandbox.get("url"),
+                                "skipped": sandbox.get("skipped"),
+                                "calls": sandbox.get("calls") or [],
+                                "latency_ms": sandbox.get("latency_ms"),
+                            }
+                        )
                 elif name == "search_availability":
                     params = {
                         "hotel_id": args[0] if args else kwargs.get("hotel_id"),
@@ -951,6 +963,18 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
                     _truncate(_content_to_str(event.get("response"))),
                     language=None,
                 )
+        elif kind == "sandbox":
+            calls = event.get("calls") or []
+            latency = _format_latency(event.get("latency_ms"))
+            skipped = event.get("skipped")
+            title = f"{i + 1}. Price sandbox · {len(calls)} call(s) · {latency}"
+            if skipped:
+                title += f" · skipped ({skipped})"
+            with st.expander(title, expanded=True):
+                st.markdown(f"**URL** `{event.get('url') or '(unset)'}`")
+                if skipped:
+                    st.warning(skipped)
+                _json_block(calls)
         elif kind == "tool":
             latency = _format_latency(event.get("latency_ms"))
             with st.expander(

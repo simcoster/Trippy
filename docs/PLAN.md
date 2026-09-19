@@ -6,6 +6,53 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, quote cache per request)
+
+**Quote memo is per user request, not process-wide.**
+`planner_fits_payload` opens `price_quote_cache()` around the date
+windows so four Fridays still share one jail POST, and the next
+chat turn starts empty. Supersedes the process-lifetime cache in
+the entry below.
+
+### Done (2026-09-19, quote cache)
+
+**Jail quotes are memoized by site + lodging + party + weekday/weekend.**
+The planner calls `search_open_slots` once per date window, so four
+Fridays used to POST the same campsite four times. Hits skip the
+sandbox (`cached: true` on the Streamlit/LangSmith row). List-price
+fallback is memoized the same way. `clear_price_quote_cache` after a
+sandbox reload.
+
+### Done (2026-09-19, sandbox quote batch)
+
+**Jail quotes over 30 were all `no_function`.** The sandbox
+`MAX_BATCH` is 30; `search_open_slots` can send 80 unique
+site+lodging keys in one POST, the server rejects the batch, and
+the client dropped `ok: false` rows. `quote_replies` now chunks and
+keeps the real price or jail error on the LangSmith/Streamlit row.
+
+### Done (2026-09-19, sandbox quote trace)
+
+**Jail quotes show in Streamlit and LangSmith.** `POST /quote` lived
+inside `search_open_slots` with no span, so a load miss looked like
+`quote_night`. `price_sandbox_quote` is a `@traceable` tool (one row
+per campsite: params, price, explanation, or skip/error). Streamlit
+expands **Price sandbox** on the turn.
+
+### Done (2026-09-19, availability_with_names)
+
+**`availability_with_names` view.** Same job as
+`campsite_rules_with_names`: campsite name and accommodation type
+name next to each vacancy row. Alembic `041`.
+
+### Done (2026-09-19, laptop sandbox port)
+
+**Laptop `price-sandbox` was healthy but not on `127.0.0.1:8503`.**
+The container was only on the internal `quote` network, so Compose
+did not publish the host bind. It now also joins `quote-host` (not
+`default` — that would give the jail a route to Postgres). Loader
+and host Streamlit can reach `http://127.0.0.1:8503`.
+
 ### Done (2026-09-19, uv trampoline)
 
 **`just streamlit` died after the loader on Windows:**

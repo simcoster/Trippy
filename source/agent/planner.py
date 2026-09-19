@@ -422,26 +422,27 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
 
     slots: list[dict] = []
     query_records: list[Any] = []
-    for window in windows:
-        part = search.search_open_slots(
-            date_range=window,
-            site_id=site_id,
-            party_size=party_size_from_numeric(numeric),
-            numeric_constraints=numeric,
-        )
-        record = search._LAST_OPEN_SLOTS_QUERY
-        if not isinstance(record, dict):
-            record = {"date_range": window}
-        else:
-            record = {**record, "date_range": record.get("date_range") or window}
-        query_records.append(record)
-        if part and part[0].get("error"):
-            payload["error"] = part[0]["error"]
-            payload["open_slots_query"] = (
-                query_records[0] if len(query_records) == 1 else query_records
+    with search.price_quote_cache():
+        for window in windows:
+            part = search.search_open_slots(
+                date_range=window,
+                site_id=site_id,
+                party_size=party_size_from_numeric(numeric),
+                numeric_constraints=numeric,
             )
-            return payload
-        slots.extend(part)
+            record = search._LAST_OPEN_SLOTS_QUERY
+            if not isinstance(record, dict):
+                record = {"date_range": window}
+            else:
+                record = {**record, "date_range": record.get("date_range") or window}
+            query_records.append(record)
+            if part and part[0].get("error"):
+                payload["error"] = part[0]["error"]
+                payload["open_slots_query"] = (
+                    query_records[0] if len(query_records) == 1 else query_records
+                )
+                return payload
+            slots.extend(part)
     payload["open_slots_query"] = (
         query_records[0] if len(query_records) == 1 else query_records
     )

@@ -20,7 +20,9 @@ services:
       - default
 
   # Quote jail. Empty until `just load-price-sandbox` (or `just streamlit`,
-  # which loads if this container is up). No Postgres on this network.
+  # which loads if this container is up). `quote` stays isolated from
+  # Postgres. `quote-host` is non-internal so Docker will publish
+  # 127.0.0.1:8503 (an internal-only network drops host port bindings).
   price-sandbox:
     build:
       context: .
@@ -42,6 +44,7 @@ services:
       - "127.0.0.1:8503:8503"
     networks:
       - quote
+      - quote-host
     healthcheck:
       test:
         [
@@ -61,3 +64,5 @@ networks:
   quote:
     driver: bridge
     internal: true
+  quote-host:
+    driver: bridge

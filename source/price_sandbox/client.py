@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urljoin
 
 from .params import QuoteParams, QuoteResult
+from .server import MAX_BATCH
 
 DEFAULT_TIMEOUT_S = 5.0
 
@@ -32,6 +33,15 @@ class QuoteRequest:
     request_id: str
     site_id: int
     params: QuoteParams
+
+
+@dataclass(frozen=True)
+class QuoteReply:
+    request_id: str
+    ok: bool
+    price: float | None = None
+    explanation: str = ""
+    error: str | None = None
 
 
 def _post(url: str, payload: dict[str, Any], *, timeout_s: float) -> dict[str, Any]:
@@ -75,6 +85,78 @@ def load_into_sandbox(
     )
 
 
+def _replies_from_payload(
+    requests: list[QuoteRequest], payload: dict[str, Any]
+) -> list[QuoteReply]:
+    if not payload.get("ok") and payload.get("error"):
+        err = str(payload["error"])
+        return [
+            QuoteReply(request_id=item.request_id, ok=False, error=err)
+            for item in requests
+        ]
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in payload.get("results") or []:
+        if isinstance(row, dict) and row.get("id") is not None:
+            by_id[str(row["id"])] = row
+    out: list[QuoteReply] = []
+    for item in requests:
+        row = by_id.get(item.request_id)
+        if row is None:
+            out.append(
+                QuoteReply(request_id=item.request_id, ok=False, error="no_result")
+            )
+        elif row.get("ok"):
+            out.append(
+                QuoteReply(
+                    request_id=item.request_id,
+                    ok=True,
+                    price=float(row["price"]),
+                    explanation=str(row.get("explanation") or ""),
+                )
+            )
+        else:
+            out.append(
+                QuoteReply(
+                    request_id=item.request_id,
+                    ok=False,
+                    error=str(row.get("error") or "quote_failed"),
+                )
+            )
+    return out
+
+
+def quote_replies(
+    requests: list[QuoteRequest],
+    *,
+    base_url: str | None = None,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+) -> list[QuoteReply]:
+    """Every request in order, including jail errors. Chunks at MAX_BATCH."""
+    url = (base_url or sandbox_url() or "").rstrip("/")
+    if not url:
+        raise RuntimeError("PRICE_SANDBOX_URL is not set")
+    endpoint = urljoin(url + "/", "quote")
+    out: list[QuoteReply] = []
+    for start in range(0, len(requests), MAX_BATCH):
+        chunk = requests[start : start + MAX_BATCH]
+        payload = _post(
+            endpoint,
+            {
+                "quotes": [
+                    {
+                        "id": item.request_id,
+                        "site_id": item.site_id,
+                        "params": item.params.to_json(),
+                    }
+                    for item in chunk
+                ]
+            },
+            timeout_s=timeout_s,
+        )
+        out.extend(_replies_from_payload(chunk, payload))
+    return out
+
+
 def quote_via_sandbox(
     requests: list[QuoteRequest],
     *,
@@ -82,34 +164,14 @@ def quote_via_sandbox(
     timeout_s: float = DEFAULT_TIMEOUT_S,
 ) -> dict[str, QuoteResult]:
     """Return successful quotes keyed by request_id. Connection errors raise."""
-    url = (base_url or sandbox_url() or "").rstrip("/")
-    if not url:
-        raise RuntimeError("PRICE_SANDBOX_URL is not set")
-    payload = _post(
-        urljoin(url + "/", "quote"),
-        {
-            "quotes": [
-                {
-                    "id": item.request_id,
-                    "site_id": item.site_id,
-                    "params": item.params.to_json(),
-                }
-                for item in requests
-            ]
-        },
-        timeout_s=timeout_s,
-    )
     out: dict[str, QuoteResult] = {}
-    for row in payload.get("results") or []:
-        if not isinstance(row, dict) or not row.get("ok"):
-            continue
-        request_id = str(row.get("id") or "")
-        if not request_id:
-            continue
-        out[request_id] = QuoteResult(
-            price=float(row["price"]),
-            explanation=str(row.get("explanation") or ""),
-        )
+    for reply in quote_replies(
+        requests, base_url=base_url, timeout_s=timeout_s
+    ):
+        if reply.ok and reply.price is not None:
+            out[reply.request_id] = QuoteResult(
+                price=reply.price, explanation=reply.explanation
+            )
     return out
 
 
