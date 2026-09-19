@@ -909,6 +909,11 @@ The claim retrieve gate is **−0.6** (`CLAIM_MATCH_MAX_DISTANCE`), top 5
 hits per site. That is recall: campfires match `"desert"`, “pets not
 allowed” matches `"pet friendly"`. Precision is a 235B call per
 (query, campsite) in `planner_node` (`source/agent/claim_judge.py`).
+Retrieve is unique on campsite + accommodation type; the judge is
+unique on campsite + query. The planner emits **one fit per unit**
+across date windows — nights live on `dates` (each with its price
+and booking URL). `start` / `end` stay the first night so the
+recommender stay key is unchanged.
 
 The planner retrieve embeds each distinct semantic query statement
 (up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search.py`)
@@ -1178,7 +1183,9 @@ published occupancy notes, and when the threshold is met it overrides
 identity rates (including Matmon). `is_weekend_or_holiday` stays a caller flag
 (the night is or is not a weekend).
 Fits carry `price_explanation` so the recommender cites the breakdown
-instead of summing.
+instead of summing. A unit that is vacant on several windows is one
+fit with `dates`, not one fit per night, so retrieve, judge, and
+the recommender pack run once for that site+type.
 
 ## Recommender
 

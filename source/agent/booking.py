@@ -117,3 +117,14 @@ def attach_booking_urls(
             fit["booking_url"] = url
             if hotel:
                 fit["booking_hotel_id"] = hotel
+        for night in fit.get("dates") or []:
+            if not isinstance(night, dict):
+                continue
+            night_url = booking_results_url(
+                hotel or None,
+                night.get("start"),
+                night.get("end"),
+                adults=adults,
+            )
+            if night_url:
+                night["booking_url"] = night_url

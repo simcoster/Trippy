@@ -386,6 +386,7 @@ _FIT_KEYS = (
     "price_per_night",
     "price_explanation",
     "booking_url",
+    "dates",
 )
 
 

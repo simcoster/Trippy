@@ -6,6 +6,22 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, date-window tests match unit fits)
+
+**`test_planner_loops_date_windows` and `test_planner_caps_windows_at_four`
+assert one fit and the nights on `dates`.** Vacancy search is still
+one `search_open_slots` per window. Supersedes the “two date-resolve
+tests still expect one fit per window” note below.
+
+### Done (2026-09-19, one fit per site+type)
+
+**Same unit across date windows is one fit.** Retrieve already keyed
+on campsite + accommodation type; the judge already keyed on
+campsite + query. The planner still emitted one fit per night, so
+the recommender saw four copies of the same tent. Fits now carry
+`dates` (each night’s price and stay). `start` / `end` stay the
+first night. Two date-resolve tests still expect one fit per window.
+
 ### Done (2026-09-19, quote cache per request)
 
 **Quote memo is per user request, not process-wide.**
