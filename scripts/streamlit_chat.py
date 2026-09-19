@@ -7,7 +7,7 @@ Also records a per-turn LangGraph trace: nodes, LLM prompts/responses,
 tool calls (params + returns), token cost, and latency.
 
 Run from repo root:
-  uv run streamlit run scripts/streamlit_chat.py
+  uv run python -m streamlit run scripts/streamlit_chat.py
 
 `TRIPPY_PUBLIC_UI=1` hides traces, MCP, and the heavy-path selector (cloud).
 
@@ -33,6 +33,9 @@ from uuid import UUID, uuid4
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+
+# Patch ssl.create_default_context before LangChain imports (Windows OpenSSL).
+import source.scraper.tls as _tls  # noqa: F401
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)

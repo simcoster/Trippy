@@ -16,15 +16,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from langchain_openai import ChatOpenAI
 from openai import APIConnectionError, APITimeoutError, OpenAI
 
 from source.scraper.tls import ssl_context
 
 from .schemas import AccommodationExtract
+
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
 
 NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
 # Shared instruct model for amenity extract + most agent nodes
@@ -475,6 +477,8 @@ class AgentChatClient:
 
     def as_langchain(self) -> ChatOpenAI:
         """LangChain `ChatOpenAI` bound to Nebius + Qwen instruct."""
+        from langchain_openai import ChatOpenAI
+
         api_key = os.environ.get("NEBIUS_API_KEY")
         if not api_key:
             raise RuntimeError("NEBIUS_API_KEY is required")

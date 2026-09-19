@@ -6,6 +6,35 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, uv trampoline)
+
+**`just streamlit` died after the loader on Windows:**
+`uv trampoline failed to canonicalize script path`. `uv run streamlit`
+goes through `.venv/Scripts/streamlit.exe`; `uv run python -m streamlit`
+does not. Same change for `just update-tables` (`alembic`).
+
+### Done (2026-09-19, OPENSSL_Applink is SSLKEYLOGFILE)
+
+**`just streamlit` died in `load-price-sandbox`.** Norton sets
+`SSLKEYLOGFILE=\\.\nllMonFltProxy\…`. `urllib.request.urlopen` builds
+an HTTPS handler even for `http://127.0.0.1:8503/health`, and that
+calls `ssl._create_default_https_context` — still the stdlib helper
+after the earlier `create_default_context` patch. OpenSSL then
+`fopen`s the device and aborts (`OPENSSL_Applink`). `tls.py` now
+drops `SSLKEYLOGFILE` on win32 and replaces both helpers. The
+OPENSSLDIR leftover in the entry below was the wrong cause.
+Supersedes “Windows OPENSSL_Applink” below for the crash itself.
+
+### Done (2026-09-19, Windows OPENSSL_Applink)
+
+**`ssl.create_default_context()` crashes uv Python 3.14 on Windows**
+when OpenSSL-Win64 leftover OPENSSLDIR is
+`C:\\Program Files\\Common Files\\SSL` (`OPENSSL_Applink`).
+`source/scraper/tls.py` now builds via `SSLContext` + certifi and
+replaces `ssl.create_default_context` so LangChain's import survives.
+Import tls before `langchain_openai`. Same certifi /
+`TLS_TRUST_OS_STORE` policy as the 2026-09-04 TLS note.
+
 ### Done (2026-09-19, keepalive per session)
 
 **Session `hi` is per browser tab; the 4-minute loop is per process.**

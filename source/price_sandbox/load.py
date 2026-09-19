@@ -21,6 +21,7 @@ from source.price_sandbox.client import (
     sandbox_reachable,
     sandbox_url,
 )
+from source.scraper import tls as _tls  # noqa: F401
 from source.scraper.info_site.db import load_price_functions
 
 DEFAULT_WAIT_S = 20.0

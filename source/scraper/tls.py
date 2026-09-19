@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import ssl
+import sys
 
 import certifi
 
@@ -19,11 +20,54 @@ import certifi
 TRUST_OS_STORE_ENV = "TLS_TRUST_OS_STORE"
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+_ORIG_CREATE_DEFAULT_CONTEXT = ssl.create_default_context
+
+
+def _suppress_windows_keylog() -> None:
+    """Drop Norton/Avast SSLKEYLOGFILE before OpenSSL opens it.
+
+    Those products set SSLKEYLOGFILE to a device path
+    (``\\\\.\\nllMonFltProxy\\…``). Python 3.14 + OpenSSL 3.5 then dies
+    with OPENSSL_Applink when ``create_default_context()`` assigns
+    ``context.keylog_filename``. A normal file path crashes the same
+    uv Windows build, so the variable is removed entirely on win32.
+    """
+    if sys.platform == "win32":
+        os.environ.pop("SSLKEYLOGFILE", None)
+
+
+_suppress_windows_keylog()
 
 
 def trust_os_store() -> bool:
     """Whether this machine opted into trusting its own certificate store."""
     return os.environ.get(TRUST_OS_STORE_ENV, "").strip().lower() in _TRUTHY
+
+
+def _create_default_context(purpose=ssl.Purpose.SERVER_AUTH, **kwargs):
+    """certifi via SSLContext; skip OPENSSLDIR and SSLKEYLOGFILE.
+
+    Python 3.14 (OpenSSL 3.5.6) on Windows dies with OPENSSL_Applink when
+    the stdlib helper loads OpenSSL's compiled-in OPENSSLDIR or assigns
+    ``context.keylog_filename`` from SSLKEYLOGFILE (Norton/Avast device
+    path). ``SSLContext`` + ``load_verify_locations`` does not. LangChain
+    and ``urllib.request.urlopen`` (even for http://) call the stdlib
+    helpers, so this module replaces both.
+    """
+    _suppress_windows_keylog()
+    if purpose != ssl.Purpose.SERVER_AUTH:
+        return _ORIG_CREATE_DEFAULT_CONTEXT(purpose, **kwargs)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.load_verify_locations(
+        cafile=kwargs.get("cafile") or certifi.where(),
+        capath=kwargs.get("capath"),
+        cadata=kwargs.get("cadata"),
+    )
+    return ctx
+
+
+ssl.create_default_context = _create_default_context
+ssl._create_default_https_context = _create_default_context
 
 
 def ssl_context() -> ssl.SSLContext:
@@ -45,7 +89,8 @@ def ssl_context() -> ssl.SSLContext:
     The environment is read on every call, so `load_dotenv()` only has to run
     before the first request -- not before this module is imported.
     """
-    ctx = ssl.create_default_context(cafile=certifi.where())
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.load_verify_locations(cafile=certifi.where())
     if trust_os_store():
         ctx.load_default_certs(ssl.Purpose.SERVER_AUTH)
         if hasattr(ssl, "VERIFY_X509_STRICT"):
