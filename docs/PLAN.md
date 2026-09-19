@@ -6,6 +6,155 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, skip warm embed keepalive)
+
+**Embed keepalive no-ops if retrieve (or a ping) just used
+`Qwen3-Embedding-8B`.** A 4s interval ping after a planner embed was
+a second cold replica, not a useful keep-warm. A second
+`model-keepalive` thread after a Streamlit rerun is also refused.
+
+### Done (2026-09-19, Streamlit Ctrl+C is not clear-cache)
+
+**`client.toolbarMode=viewer`.** Streamlit’s “c” shortcut opened
+Clear cache on Ctrl+C in the page. Developer menu items (rerun,
+clear cache) stay in the hamburger’s absence; refresh still reruns.
+
+### Done (2026-09-19, keepalive one ping per model)
+
+**Keepalive is per Nebius endpoint, not per role.** Light and
+extractor share the 235B so they were pinged twice. The embedder
+(`Qwen3-Embedding-8B`) is in the same round.
+
+### Done (2026-09-19, retry attempts on scrape cost)
+
+**Timed-out Nebius chat attempts are added to `LlmUsage`.**
+`nebius_chat_create` records each try (real tokens on success,
+chars/4 prompt estimate on connect/timeout). The OpenAI client
+`max_retries` is 0 so the SDK cannot bill a retry the report never
+sees. Compile fix/regen turns were already counted.
+
+### Done (2026-09-19, date-window tests match unit fits)
+
+**`test_planner_loops_date_windows` and `test_planner_caps_windows_at_four`
+assert one fit and the nights on `dates`.** Vacancy search is still
+one `search_open_slots` per window. Supersedes the “two date-resolve
+tests still expect one fit per window” note below.
+
+### Done (2026-09-19, one fit per site+type)
+
+**Same unit across date windows is one fit.** Retrieve already keyed
+on campsite + accommodation type; the judge already keyed on
+campsite + query. The planner still emitted one fit per night, so
+the recommender saw four copies of the same tent. Fits now carry
+`dates` (each night’s price and stay). `start` / `end` stay the
+first night. Two date-resolve tests still expect one fit per window.
+
+### Done (2026-09-19, quote cache per request)
+
+**Quote memo is per user request, not process-wide.**
+`planner_fits_payload` opens `price_quote_cache()` around the date
+windows so four Fridays still share one jail POST, and the next
+chat turn starts empty. Supersedes the process-lifetime cache in
+the entry below.
+
+### Done (2026-09-19, quote cache)
+
+**Jail quotes are memoized by site + lodging + party + weekday/weekend.**
+The planner calls `search_open_slots` once per date window, so four
+Fridays used to POST the same campsite four times. Hits skip the
+sandbox (`cached: true` on the Streamlit/LangSmith row). List-price
+fallback is memoized the same way. `clear_price_quote_cache` after a
+sandbox reload.
+
+### Done (2026-09-19, sandbox quote batch)
+
+**Jail quotes over 30 were all `no_function`.** The sandbox
+`MAX_BATCH` is 30; `search_open_slots` can send 80 unique
+site+lodging keys in one POST, the server rejects the batch, and
+the client dropped `ok: false` rows. `quote_replies` now chunks and
+keeps the real price or jail error on the LangSmith/Streamlit row.
+
+### Done (2026-09-19, sandbox quote trace)
+
+**Jail quotes show in Streamlit and LangSmith.** `POST /quote` lived
+inside `search_open_slots` with no span, so a load miss looked like
+`quote_night`. `price_sandbox_quote` is a `@traceable` tool (one row
+per campsite: params, price, explanation, or skip/error). Streamlit
+expands **Price sandbox** on the turn.
+
+### Done (2026-09-19, availability_with_names)
+
+**`availability_with_names` view.** Same job as
+`campsite_rules_with_names`: campsite name and accommodation type
+name next to each vacancy row. Alembic `041`.
+
+### Done (2026-09-19, laptop sandbox port)
+
+**Laptop `price-sandbox` was healthy but not on `127.0.0.1:8503`.**
+The container was only on the internal `quote` network, so Compose
+did not publish the host bind. It now also joins `quote-host` (not
+`default` — that would give the jail a route to Postgres). Loader
+and host Streamlit can reach `http://127.0.0.1:8503`.
+
+### Done (2026-09-19, uv trampoline)
+
+**`just streamlit` died after the loader on Windows:**
+`uv trampoline failed to canonicalize script path`. `uv run streamlit`
+goes through `.venv/Scripts/streamlit.exe`; `uv run python -m streamlit`
+does not. Same change for `just update-tables` (`alembic`).
+
+### Done (2026-09-19, OPENSSL_Applink is SSLKEYLOGFILE)
+
+**`just streamlit` died in `load-price-sandbox`.** Norton sets
+`SSLKEYLOGFILE=\\.\nllMonFltProxy\…`. `urllib.request.urlopen` builds
+an HTTPS handler even for `http://127.0.0.1:8503/health`, and that
+calls `ssl._create_default_https_context` — still the stdlib helper
+after the earlier `create_default_context` patch. OpenSSL then
+`fopen`s the device and aborts (`OPENSSL_Applink`). `tls.py` now
+drops `SSLKEYLOGFILE` on win32 and replaces both helpers. The
+OPENSSLDIR leftover in the entry below was the wrong cause.
+Supersedes “Windows OPENSSL_Applink” below for the crash itself.
+
+### Done (2026-09-19, Windows OPENSSL_Applink)
+
+**`ssl.create_default_context()` crashes uv Python 3.14 on Windows**
+when OpenSSL-Win64 leftover OPENSSLDIR is
+`C:\\Program Files\\Common Files\\SSL` (`OPENSSL_Applink`).
+`source/scraper/tls.py` now builds via `SSLContext` + certifi and
+replaces `ssl.create_default_context` so LangChain's import survives.
+Import tls before `langchain_openai`. Same certifi /
+`TLS_TRUST_OS_STORE` policy as the 2026-09-04 TLS note.
+
+### Done (2026-09-19, keepalive per session)
+
+**Session `hi` is per browser tab; the 4-minute loop is per process.**
+`ping_new_session(st.session_state)` on Streamlit session init; Reset
+does not re-ping. `start_model_keepalive` only starts the interval
+thread (first ping after 240 s, not immediately). LangSmith run names
+`model-keepalive-session` vs `model-keepalive-interval`.
+
+### Done (2026-09-19, keepalive 4 min)
+
+**Keepalive stays at 4 minutes.** ~$1.20/month for three `hi` pings
+is cheap enough. Supersedes the hourly default in the entry below.
+
+### Done (2026-09-19, keepalive hourly)
+
+**Keepalive interval is 1 hour, not 240 s.** Default
+`TRIPPY_KEEPALIVE_INTERVAL_SEC=3600`. Same three `hi` pings. Supersedes
+the 240 s cadence in the entry below.
+
+### Done (2026-09-19, model keepalive)
+
+**Streamlit keeps recommender, light, and extractor warm.** Nebius
+was going cold after idle; the old one-shot Kimi `hi` never showed
+on LangSmith (background invoke, no run name) and never pinged 235B.
+On first load a daemon thread now pings all three with `hi`
+(`max_tokens=5`) and repeats every 240 s. LangSmith: tag `keepalive`,
+run name `model-keepalive`. `TRIPPY_KEEPALIVE_INTERVAL_SEC` overrides
+the interval. Supersedes the 2026-09-12 Streamlit Kimi warmup for the
+chat path; `warmup_recommender` remains for its unit test.
+
 ### Done (2026-09-17, eu-north1)
 
 **VM and object store are both Finland (`eu-north1`).** Not

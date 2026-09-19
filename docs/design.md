@@ -909,6 +909,11 @@ The claim retrieve gate is **−0.6** (`CLAIM_MATCH_MAX_DISTANCE`), top 5
 hits per site. That is recall: campfires match `"desert"`, “pets not
 allowed” matches `"pet friendly"`. Precision is a 235B call per
 (query, campsite) in `planner_node` (`source/agent/claim_judge.py`).
+Retrieve is unique on campsite + accommodation type; the judge is
+unique on campsite + query. The planner emits **one fit per unit**
+across date windows — nights live on `dates` (each with its price
+and booking URL). `start` / `end` stay the first night so the
+recommender stay key is unchanged.
 
 The planner retrieve embeds each distinct semantic query statement
 (up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search.py`)
@@ -1130,7 +1135,10 @@ latest failure. Each attempt that does not pass is also kept as
 fail, `13_v2` the retry if that also failed). The Markdown report is
 `reports/scrape_prices/<timestamp>/report.md` in that same folder:
 stored vs failed, retry kind, failing gold / AST lines, dump names,
-and cost by role. The report is written in `finally`, so Ctrl+C still
+and cost by role. HTTP connect/timeout retries are billed onto the
+same role (estimated prompt tokens when Nebius never returns
+`usage`); the OpenAI client does not retry on its own, so those
+attempts are not invisible. The report is written in `finally`, so Ctrl+C still
 leaves the folder for sites that finished. A gold miss prints `!!! PRICE FUNCTION GOLD FAILED !!!`
 (same fat banner as AST). 2026-09-17 3-site re-run stored הבשור on
 the first compile; occupancy regen fired on תל ערד (3096 vs 3080)
@@ -1161,7 +1169,9 @@ At quote time a one-shot loader (`just load-price-sandbox`, prod
 into the `price-sandbox` container (cap 30), then exits. Streamlit /
 the planner only send params (`POST /quote`). The sandbox has no
 Postgres, no `.env`, no internet (internal `quote` network in prod;
-laptop publishes `127.0.0.1:8503`). Re-run the loader after
+laptop also joins a non-internal `quote-host` network so Docker
+publishes `127.0.0.1:8503` — an internal-only network drops the
+host bind). Re-run the loader after
 `scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
 other) front end does not own this.
 Each quote runs in a short-lived child with a memory cap and a
@@ -1176,7 +1186,9 @@ published occupancy notes, and when the threshold is met it overrides
 identity rates (including Matmon). `is_weekend_or_holiday` stays a caller flag
 (the night is or is not a weekend).
 Fits carry `price_explanation` so the recommender cites the breakdown
-instead of summing.
+instead of summing. A unit that is vacant on several windows is one
+fit with `dates`, not one fit per night, so retrieve, judge, and
+the recommender pack run once for that site+type.
 
 ## Recommender
 
@@ -1248,10 +1260,23 @@ is not silent 235B. The recommend
 call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
 match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
-stay identity or `empty` — not the raw JSON. On first load it also
-sends a one-token `hi` to the recommender (Kimi) in a background
-thread so the first real rec is not a cold replica, and prints that
-ping plus Kimi's reply. Usage is `role="recommend"`.
+stay identity or `empty` — not the raw JSON. Recommend usage is
+`role="recommend"`. `client.toolbarMode` is `viewer` so Ctrl+C in the page copies
+instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
+On first load Streamlit starts
+`start_model_keepalive` (`source/agent/keepalive.py`): one
+process-lifetime thread that pings every 240 s
+(`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle timeout).
+Each new browser session also sends a 5-token `hi` once per **model
+endpoint** (`ping_new_session`; Reset does not): Kimi, the 235B
+(light and extractor share it), and `Qwen3-Embedding-8B`.
+A retrieve embed already counts as that ping; the interval skip
+does not call Nebius again while the last embed is still inside
+`TRIPPY_KEEPALIVE_INTERVAL_SEC`. LangSmith: tag `keepalive`, run names `model-keepalive-session`
+and `model-keepalive-interval`, children `keepalive-{role}`. Stdout
+prints the ping and the reply (or `keepalive failed`). The one-shot
+`warmup_recommender` helper is still there for tests; Streamlit no
+longer uses it.
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
 (experiments.md 2026-09-10 §7). Each recommend dump stores
@@ -1320,7 +1345,9 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 (`source/agent/tracing.py`). One browser tab is one thread until Reset.
 Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
 tool to the terminal and a caption under Thinking while the turn runs.
-Project defaults to `trippy` (`LANGSMITH_PROJECT`). Traces include the
+Project defaults to `trippy` (`LANGSMITH_PROJECT`). Filter tag
+`keepalive` (`model-keepalive-session` / `model-keepalive-interval`)
+for the idle pings; they are not graph turns. Traces include the
 full query. The planner invokes `claim_judge_tool` (`StructuredTool`,
 same pattern as `resolve_dates`) once per (campsite, request). LangSmith
 shows that tool under the planner node: **inputs** are the claims and
@@ -1328,11 +1355,16 @@ official rules the 235B received; **outputs** are `relevant_claims`,
 `satisfies`, `satisfy_by`, and `reason`. The model does not label each
 rule; `satisfy_by` is the rule-side verdict. Worker threads
 `copy_context()` so those tool runs stay under the Streamlit turn.
-Vacancy SQL (`search_open_slots`), query embeddings (`embed_query`
+Vacancy SQL (`search_open_slots`), price-jail quotes
+(`price_sandbox_quote`, one child span: each campsite’s params,
+price, and explanation, or why it skipped / fell back; POSTs are
+chunked at the sandbox `MAX_BATCH` of 30 and memoized by site +
+lodging + party + weekday/weekend for that user request only), query embeddings (`embed_query`
 StructuredTool, one per phrase, nested under `embed_queries`), and
 retrieve (`retrieve`, plus `search_review_claims` /
 `search_campsite_rules` / amenity SQL) are `@traceable` **tools** under
-the planner. Embed worker threads `copy_context()` like the judge.
+the planner. Local Streamlit also expands **Price sandbox** in the
+turn trace. Embed worker threads `copy_context()` like the judge.
 `embed_query` Inputs are the phrase; the vector is the output.
 about the longest call, not the sum, and sits inside the planner bar.
 Scrape containers force `LANGSMITH_TRACING=false` in

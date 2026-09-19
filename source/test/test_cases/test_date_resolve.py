@@ -162,8 +162,12 @@ def test_planner_loops_date_windows(db_searches: SimpleNamespace):
     ranges = [c.kwargs["date_range"] for c in db_searches.slots.call_args_list]
     assert ranges == [w1, w2]
     payload = _fits_payload(result)
-    starts = [f["start"] for f in payload["fits"]]
-    assert starts == ["2026-09-04", "2026-09-11"]
+    assert len(payload["fits"]) == 1
+    assert payload["fits"][0]["start"] == "2026-09-04"
+    assert [d["start"] for d in payload["fits"][0]["dates"]] == [
+        "2026-09-04",
+        "2026-09-11",
+    ]
     assert isinstance(payload["open_slots_query"], list)
     assert len(payload["open_slots_query"]) == 2
 
@@ -191,7 +195,10 @@ def test_planner_caps_windows_at_four(db_searches: SimpleNamespace):
     assert db_searches.slots.call_count == MAX_DATE_WINDOWS
     payload = _fits_payload(result)
     assert payload["date_notice"] == DATE_TRUNCATED_NOTICE
-    assert len(payload["fits"]) == MAX_DATE_WINDOWS
+    assert len(payload["fits"]) == 1
+    assert [d["start"] for d in payload["fits"][0]["dates"]] == [
+        w["start"] for w in windows[:MAX_DATE_WINDOWS]
+    ]
 
 
 def test_extractor_calls_resolve_dates_tool(monkeypatch: pytest.MonkeyPatch):

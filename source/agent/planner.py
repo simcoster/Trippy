@@ -48,6 +48,29 @@ def _slot_key(slot: dict) -> _SlotKey:
     )
 
 
+def _slots_by_unit(slots: list[dict]) -> list[tuple[_SlotKey, list[dict]]]:
+    """Group vacant nights by site + accommodation type, first-seen order."""
+    groups: dict[_SlotKey, list[dict]] = {}
+    order: list[_SlotKey] = []
+    for slot in slots:
+        key = _slot_key(slot)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(slot)
+    return [(key, groups[key]) for key in order]
+
+
+def _night_fields(slot: dict) -> dict[str, Any]:
+    return {
+        "start": slot["start"],
+        "end": slot["end"],
+        "room_count": slot.get("room_count"),
+        "price_per_night": slot.get("price_per_night"),
+        "price_explanation": slot.get("price_explanation"),
+    }
+
+
 @dataclass
 class _SemanticWhy:
     """Retrieve result for vacant slots: who matched, who missed, evidence."""
@@ -422,26 +445,27 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
 
     slots: list[dict] = []
     query_records: list[Any] = []
-    for window in windows:
-        part = search.search_open_slots(
-            date_range=window,
-            site_id=site_id,
-            party_size=party_size_from_numeric(numeric),
-            numeric_constraints=numeric,
-        )
-        record = search._LAST_OPEN_SLOTS_QUERY
-        if not isinstance(record, dict):
-            record = {"date_range": window}
-        else:
-            record = {**record, "date_range": record.get("date_range") or window}
-        query_records.append(record)
-        if part and part[0].get("error"):
-            payload["error"] = part[0]["error"]
-            payload["open_slots_query"] = (
-                query_records[0] if len(query_records) == 1 else query_records
+    with search.price_quote_cache():
+        for window in windows:
+            part = search.search_open_slots(
+                date_range=window,
+                site_id=site_id,
+                party_size=party_size_from_numeric(numeric),
+                numeric_constraints=numeric,
             )
-            return payload
-        slots.extend(part)
+            record = search._LAST_OPEN_SLOTS_QUERY
+            if not isinstance(record, dict):
+                record = {"date_range": window}
+            else:
+                record = {**record, "date_range": record.get("date_range") or window}
+            query_records.append(record)
+            if part and part[0].get("error"):
+                payload["error"] = part[0]["error"]
+                payload["open_slots_query"] = (
+                    query_records[0] if len(query_records) == 1 else query_records
+                )
+                return payload
+            slots.extend(part)
     payload["open_slots_query"] = (
         query_records[0] if len(query_records) == 1 else query_records
     )
@@ -450,7 +474,10 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
     fits: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
-    def _slot_row(slot: dict, why: list[dict[str, Any]]) -> dict[str, Any]:
+    def _unit_row(
+        nights: list[dict], why: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        slot = nights[0]
         return {
             "campsite_id": slot["campsite_id"],
             "campsite": slot["campsite"],
@@ -458,6 +485,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             "accommodation_type": slot["accommodation_type"],
             "start": slot["start"],
             "end": slot["end"],
+            "dates": [_night_fields(night) for night in nights],
             "room_count": slot.get("room_count"),
             "max_occupancy": slot.get("max_occupancy"),
             "occupancy_unknown": slot.get("occupancy_unknown"),
@@ -466,14 +494,13 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             "why": why,
         }
 
-    for slot in slots:
-        key = _slot_key(slot)
+    for key, nights in _slots_by_unit(slots):
         if key in found.why_by_slot:
-            fits.append(_slot_row(slot, found.why_by_slot[key]))
+            fits.append(_unit_row(nights, found.why_by_slot[key]))
         else:
             rejected.append(
-                _slot_row(
-                    slot,
+                _unit_row(
+                    nights,
                     found.reject_why_by_slot.get(key)
                     or [{"reason": "semantic_mismatch"}],
                 )

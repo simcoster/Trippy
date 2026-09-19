@@ -16,15 +16,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from langchain_openai import ChatOpenAI
 from openai import APIConnectionError, APITimeoutError, OpenAI
 
 from source.scraper.tls import ssl_context
 
 from .schemas import AccommodationExtract
+
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
 
 NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
 # Shared instruct model for amenity extract + most agent nodes
@@ -142,26 +144,80 @@ def make_nebius_openai_client() -> OpenAI:
         base_url=NEBIUS_BASE_URL,
         api_key=api_key,
         http_client=httpx.Client(verify=ssl_context(), timeout=120.0),
-        max_retries=6,
+        # Our loop in `nebius_chat_create` is the only retry. The SDK's
+        # default (2) or a high max_retries can hit Nebius and leave no
+        # `usage` on the timed-out attempt, so the scrape report undercounts.
+        max_retries=0,
     )
 
 
 LLM_CONNECT_RETRY_DELAYS = (2.0, 8.0, 20.0)
 
 
-def nebius_chat_create(client: OpenAI, **kwargs: Any) -> Any:
+def _estimated_prompt_tokens(kwargs: dict[str, Any]) -> int:
+    """Chars/4 from the messages we sent. Used when a retry never returns usage."""
+    messages = kwargs.get("messages") or []
+    chars = 0
+    for msg in messages:
+        content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", None)
+        if isinstance(content, str):
+            chars += len(content)
+        elif content is not None:
+            chars += len(str(content))
+    return max(1, chars // 4) if chars else 0
+
+
+def _chat_usage_or_estimate(raw: Any, kwargs: dict[str, Any]) -> Any:
+    prompt = int(getattr(raw, "prompt_tokens", 0) or 0)
+    completion = int(getattr(raw, "completion_tokens", 0) or 0)
+    if prompt or completion:
+        return raw
+    return SimpleNamespace(
+        prompt_tokens=_estimated_prompt_tokens(kwargs),
+        completion_tokens=0,
+    )
+
+
+def nebius_chat_create(
+    client: OpenAI,
+    *,
+    usage: LlmUsage | None = None,
+    role: str = "chat",
+    **kwargs: Any,
+) -> Any:
     """One chat completion. Connection/timeouts retry with backoff.
 
     DNS blips (`getaddrinfo failed`) and dropped TLS should not abort a
     multi-site scrape. 4xx answers are not retried.
+
+    Each attempt that may have reached Nebius is added to `usage` (real
+    tokens on success, estimated prompt tokens on timeout/connect fail)
+    so a scrape-prices report is not missing billed retries.
     """
     attempts = len(LLM_CONNECT_RETRY_DELAYS) + 1
     last: BaseException | None = None
+    model = kwargs.get("model")
     for attempt in range(1, attempts + 1):
         try:
-            return client.chat.completions.create(**kwargs)
+            response = client.chat.completions.create(**kwargs)
+            if usage is not None:
+                usage.add_chat(
+                    _chat_usage_or_estimate(getattr(response, "usage", None), kwargs),
+                    role=role,
+                    model=model if isinstance(model, str) else None,
+                )
+            return response
         except (APIConnectionError, APITimeoutError) as exc:
             last = exc
+            if usage is not None:
+                usage.add_chat(
+                    SimpleNamespace(
+                        prompt_tokens=_estimated_prompt_tokens(kwargs),
+                        completion_tokens=0,
+                    ),
+                    role=role,
+                    model=model if isinstance(model, str) else None,
+                )
             if attempt == attempts:
                 break
             wait = LLM_CONNECT_RETRY_DELAYS[attempt - 1]
@@ -475,6 +531,8 @@ class AgentChatClient:
 
     def as_langchain(self) -> ChatOpenAI:
         """LangChain `ChatOpenAI` bound to Nebius + Qwen instruct."""
+        from langchain_openai import ChatOpenAI
+
         api_key = os.environ.get("NEBIUS_API_KEY")
         if not api_key:
             raise RuntimeError("NEBIUS_API_KEY is required")
@@ -686,6 +744,9 @@ class EmbeddingLLMClient:
         if sink is not None:
             sink.add_embed(resp.usage, role="embed", model=self.MODEL)
         by_index = {item.index: item.embedding for item in resp.data}
+        from source.agent.keepalive import note_model_used
+
+        note_model_used(self.MODEL)
         return [by_index[i] for i in range(len(texts))]
 
 

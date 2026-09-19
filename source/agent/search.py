@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import contextvars
 import os
+import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any, NamedTuple
@@ -25,7 +27,7 @@ from source.agent.timing import stage
 from source.agent.tracing import tracing_env_on
 from source.price_sandbox.client import (
     QuoteRequest,
-    quote_via_sandbox,
+    quote_replies,
     sandbox_reachable,
     sandbox_url,
 )
@@ -42,6 +44,46 @@ class _SandboxQuoteKey(NamedTuple):
     lodging: str
     adults_num: int
     weekend: bool
+
+
+class _SandboxQuoteBatch(NamedTuple):
+    by_key: dict[_SandboxQuoteKey, QuoteResult]
+    report: dict[str, Any]
+
+
+class _ListPriceQuoteKey(NamedTuple):
+    accommodation_type_id: int
+    adults_num: int
+    weekend: bool
+
+
+class _QuoteCaches(NamedTuple):
+    sandbox: dict[_SandboxQuoteKey, QuoteResult]
+    list_price: dict[_ListPriceQuoteKey, float | None]
+
+
+_quote_caches: contextvars.ContextVar[_QuoteCaches | None] = contextvars.ContextVar(
+    "trippy_price_quote_caches", default=None
+)
+
+
+@contextmanager
+def price_quote_cache() -> Any:
+    """One jail/list-price memo for this user request. Next request starts empty."""
+    token = _quote_caches.set(_QuoteCaches(sandbox={}, list_price={}))
+    try:
+        yield
+    finally:
+        _quote_caches.reset(token)
+
+
+def clear_price_quote_cache() -> None:
+    """Empty the current request cache, if a request is open."""
+    caches = _quote_caches.get()
+    if caches is None:
+        return
+    caches.sandbox.clear()
+    caches.list_price.clear()
 
 _claims_embedder = ClaimsEmbeddingLLMClient()
 QUERY_EMBED_CONCURRENCY = 5
@@ -281,14 +323,75 @@ def _quote_slot_price(
     *,
     party_size: int | None,
     rate_period: RatePeriod,
+    accommodation_type_id: int | None = None,
 ) -> float | None:
-    if not rates:
-        return None
     adults = party_size if party_size and party_size > 0 else 1
+    weekend = rate_period == "weekend_holiday"
+    cache_key: _ListPriceQuoteKey | None = None
+    if accommodation_type_id is not None:
+        cache_key = _ListPriceQuoteKey(
+            accommodation_type_id=accommodation_type_id,
+            adults_num=adults,
+            weekend=weekend,
+        )
+        caches = _quote_caches.get()
+        if caches is not None and cache_key in caches.list_price:
+            return caches.list_price[cache_key]
+    if not rates:
+        price: float | None = None
+    else:
+        try:
+            price = float(quote_night(rates, adults=adults, rate_period=rate_period))
+        except ValueError:
+            price = None
+    caches = _quote_caches.get()
+    if cache_key is not None and caches is not None:
+        caches.list_price[cache_key] = price
+    return price
+
+
+@traceable(name="price_sandbox_quote", run_type="tool")
+def _quote_sandbox_batch(
+    *,
+    url: str | None,
+    calls: list[dict[str, Any]],
+    skip: str | None = None,
+) -> list[dict[str, Any]]:
+    """POST /quote. LangSmith inputs/outputs are the per-campsite rows."""
+    if skip:
+        return [{"skipped": skip}] if not calls else [
+            {**call, "ok": False, "error": skip} for call in calls
+        ]
+    requests = [
+        QuoteRequest(
+            request_id=str(call["request_id"]),
+            site_id=int(call["campsite_id"]),
+            params=QuoteParams(
+                lodging=str(call["lodging"]),
+                adults_num=int(call["adults_num"]),
+                is_weekend_or_holiday=bool(call["is_weekend_or_holiday"]),
+            ),
+        )
+        for call in calls
+    ]
     try:
-        return float(quote_night(rates, adults=adults, rate_period=rate_period))
-    except ValueError:
-        return None
+        replies = quote_replies(requests, base_url=url)
+    except Exception as exc:
+        return [{**call, "ok": False, "error": str(exc)} for call in calls]
+    out: list[dict[str, Any]] = []
+    for call, reply in zip(calls, replies):
+        if reply.ok:
+            out.append(
+                {
+                    **call,
+                    "ok": True,
+                    "price": reply.price,
+                    "explanation": reply.explanation,
+                }
+            )
+            continue
+        out.append({**call, "ok": False, "error": reply.error or "quote_failed"})
+    return out
 
 
 def _sandbox_quotes_for_slots(
@@ -296,11 +399,11 @@ def _sandbox_quotes_for_slots(
     *,
     party_size: int | None,
     rate_period: RatePeriod,
-) -> dict[_SandboxQuoteKey, QuoteResult]:
-    if not slots or not sandbox_url() or not sandbox_reachable():
-        return {}
+) -> _SandboxQuoteBatch:
+    url = sandbox_url()
     adults = party_size if party_size and party_size > 0 else 1
     weekend = rate_period == "weekend_holiday"
+    calls: list[dict[str, Any]] = []
     keys: list[_SandboxQuoteKey] = []
     seen: set[_SandboxQuoteKey] = set()
     for slot in slots:
@@ -314,30 +417,74 @@ def _sandbox_quotes_for_slots(
             continue
         seen.add(key)
         keys.append(key)
-    if not keys:
-        return {}
-    requests = [
-        QuoteRequest(
-            request_id=f"{key.campsite_id}:{key.lodging}:{key.adults_num}:{int(key.weekend)}",
-            site_id=key.campsite_id,
-            params=QuoteParams(
-                lodging=key.lodging,
-                adults_num=key.adults_num,
-                is_weekend_or_holiday=key.weekend,
-            ),
+        calls.append(
+            {
+                "request_id": (
+                    f"{key.campsite_id}:{key.lodging}:{key.adults_num}:"
+                    f"{int(key.weekend)}"
+                ),
+                "campsite_id": key.campsite_id,
+                "campsite": slot.get("campsite"),
+                "lodging": key.lodging,
+                "adults_num": key.adults_num,
+                "is_weekend_or_holiday": key.weekend,
+            }
         )
-        for key in keys
-    ]
-    try:
-        by_id = quote_via_sandbox(requests)
-    except Exception:
-        return {}
-    out: dict[_SandboxQuoteKey, QuoteResult] = {}
-    for key, request in zip(keys, requests):
-        result = by_id.get(request.request_id)
-        if result is not None:
-            out[key] = result
-    return out
+    by_key: dict[_SandboxQuoteKey, QuoteResult] = {}
+    fresh_keys: list[_SandboxQuoteKey] = []
+    fresh_calls: list[dict[str, Any]] = []
+    cached_rows: list[dict[str, Any]] = []
+    sandbox_cache = None
+    caches = _quote_caches.get()
+    if caches is not None:
+        sandbox_cache = caches.sandbox
+    for key, call in zip(keys, calls):
+        hit = sandbox_cache.get(key) if sandbox_cache is not None else None
+        if hit is not None:
+            by_key[key] = hit
+            cached_rows.append(
+                {
+                    **call,
+                    "ok": True,
+                    "price": hit.price,
+                    "explanation": hit.explanation,
+                    "cached": True,
+                }
+            )
+            continue
+        fresh_keys.append(key)
+        fresh_calls.append(call)
+    skip: str | None = None
+    if not slots:
+        skip = "no_slots"
+    elif fresh_calls and not url:
+        skip = "PRICE_SANDBOX_URL unset"
+    elif fresh_calls and not sandbox_reachable(base_url=url):
+        skip = "sandbox not reachable"
+    started = time.perf_counter()
+    if skip:
+        rows = _quote_sandbox_batch(url=url, calls=fresh_calls, skip=skip)
+    elif fresh_calls:
+        rows = _quote_sandbox_batch(url=url, calls=fresh_calls)
+        for key, row in zip(fresh_keys, rows):
+            if row.get("ok"):
+                result = QuoteResult(
+                    price=float(row["price"]),
+                    explanation=str(row.get("explanation") or ""),
+                )
+                if sandbox_cache is not None:
+                    sandbox_cache[key] = result
+                by_key[key] = result
+    else:
+        rows = []
+    report = {
+        "url": url,
+        "skipped": skip,
+        "calls": cached_rows + rows,
+        "cached": len(cached_rows),
+        "latency_ms": (time.perf_counter() - started) * 1000,
+    }
+    return _SandboxQuoteBatch(by_key=by_key, report=report)
 
 
 @traceable(name="search_open_slots", run_type="tool")
@@ -413,10 +560,17 @@ def search_open_slots(
     prices = _load_list_prices(type_ids)
     rate_period = _rate_period_for_stay(date_range)
     price_constraint = _price_per_night_constraint(numeric_constraints)
-    sandbox_quotes = _sandbox_quotes_for_slots(
+    sandbox_batch = _sandbox_quotes_for_slots(
         slots, party_size=party_size, rate_period=rate_period
     )
+    query_record["sandbox"] = sandbox_batch.report
+    sandbox_quotes = sandbox_batch.by_key
     adults = party_size if party_size and party_size > 0 else 1
+    calls_by_id = {
+        str(row["request_id"]): row
+        for row in sandbox_batch.report.get("calls") or []
+        if isinstance(row, dict) and row.get("request_id") is not None
+    }
     quoted: list[dict] = []
     for slot in slots:
         key = _SandboxQuoteKey(
@@ -429,12 +583,22 @@ def search_open_slots(
         if sandbox is not None:
             price: float | None = float(sandbox.price)
             slot["price_explanation"] = sandbox.explanation
+            source = "sandbox"
         else:
             price = _quote_slot_price(
                 prices.get(int(slot["accommodation_type_id"])) or [],
                 party_size=party_size,
                 rate_period=rate_period,
+                accommodation_type_id=int(slot["accommodation_type_id"]),
             )
+            source = "quote_night"
+        traced = calls_by_id.get(
+            f"{key.campsite_id}:{key.lodging}:{key.adults_num}:{int(key.weekend)}"
+        )
+        if traced is not None:
+            traced["source"] = source
+            if price is not None:
+                traced["price"] = price
         if not _price_matches(price, price_constraint):
             continue
         slot["price_per_night"] = price

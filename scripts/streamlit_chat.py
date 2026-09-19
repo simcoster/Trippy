@@ -7,7 +7,7 @@ Also records a per-turn LangGraph trace: nodes, LLM prompts/responses,
 tool calls (params + returns), token cost, and latency.
 
 Run from repo root:
-  uv run streamlit run scripts/streamlit_chat.py
+  uv run python -m streamlit run scripts/streamlit_chat.py
 
 `TRIPPY_PUBLIC_UI=1` hides traces, MCP, and the heavy-path selector (cloud).
 
@@ -33,6 +33,9 @@ from uuid import UUID, uuid4
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+
+# Patch ssl.create_default_context before LangChain imports (Windows OpenSSL).
+import source.scraper.tls as _tls  # noqa: F401
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
@@ -95,11 +98,8 @@ if not hasattr(_recommender_mod, "last_recommend_timing"):
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.recommender import (
-    last_recommend_timing,
-    listen_recommend_text,
-    warmup_recommender,
-)
+from source.agent.keepalive import ping_new_session, start_model_keepalive
+from source.agent.recommender import last_recommend_timing, listen_recommend_text
 from source.agent.timing import collect_stages, format_stages
 from source.agent.tracing import (
     agent_run_config,
@@ -125,8 +125,11 @@ st.set_page_config(
     page_icon="⛺",
     layout="wide",
 )
+# Streamlit binds "c" to Clear cache; Ctrl+C in the browser opens that dialog.
+st.set_option("client.toolbarMode", "viewer")
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
+start_model_keepalive()
 
 _USER_ERROR = "Something went wrong."
 logger = logging.getLogger("trippy.streamlit")
@@ -151,8 +154,6 @@ def _cached_postgres_error() -> str:
 
 
 _db_error = _cached_postgres_error()
-if not _db_error:
-    warmup_recommender()
 
 # Active turn trace (set while invoke_agent runs)
 _current_trace: list[dict[str, Any]] | None = None
@@ -493,6 +494,18 @@ def _install_tool_hooks() -> None:
                     last = getattr(agent_search, "_LAST_OPEN_SLOTS_QUERY", None)
                     if isinstance(last, dict):
                         params.update(last)
+                    sandbox = params.pop("sandbox", None)
+                    if isinstance(sandbox, dict):
+                        _current_trace.append(
+                            {
+                                "kind": "sandbox",
+                                "name": "price_sandbox_quote",
+                                "url": sandbox.get("url"),
+                                "skipped": sandbox.get("skipped"),
+                                "calls": sandbox.get("calls") or [],
+                                "latency_ms": sandbox.get("latency_ms"),
+                            }
+                        )
                 elif name == "search_availability":
                     params = {
                         "hotel_id": args[0] if args else kwargs.get("hotel_id"),
@@ -636,6 +649,7 @@ def _init_session() -> None:
         st.session_state.heavy_path = "extractor"
     if "langsmith_thread_id" not in st.session_state:
         st.session_state.langsmith_thread_id = str(uuid4())
+    ping_new_session(st.session_state)
 
 
 def _reset_conversation() -> None:
@@ -951,6 +965,18 @@ def _render_trace(trace: list[dict[str, Any]]) -> None:
                     _truncate(_content_to_str(event.get("response"))),
                     language=None,
                 )
+        elif kind == "sandbox":
+            calls = event.get("calls") or []
+            latency = _format_latency(event.get("latency_ms"))
+            skipped = event.get("skipped")
+            title = f"{i + 1}. Price sandbox · {len(calls)} call(s) · {latency}"
+            if skipped:
+                title += f" · skipped ({skipped})"
+            with st.expander(title, expanded=True):
+                st.markdown(f"**URL** `{event.get('url') or '(unset)'}`")
+                if skipped:
+                    st.warning(skipped)
+                _json_block(calls)
         elif kind == "tool":
             latency = _format_latency(event.get("latency_ms"))
             with st.expander(

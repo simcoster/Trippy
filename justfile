@@ -152,7 +152,7 @@ clear-rules *args:
 
 # Apply pending Alembic migrations
 update-tables:
-    uv run alembic upgrade head
+    uv run python -m alembic upgrade head
 
 # Dump public schema (custom format). Uploads to Nebius if BACKUP_S3_BUCKET is set.
 [windows]
@@ -195,7 +195,7 @@ scrape-all:
 # Loads quote() into the sandbox if compose is up; otherwise quote_night.
 streamlit:
     just load-price-sandbox -- --if-up --wait-s 3
-    uv run streamlit run scripts/streamlit_chat.py --server.port 8502
+    uv run python -m streamlit run scripts/streamlit_chat.py --server.port 8502
 
 # VM: long-running db + streamlit + tunnel, then fill the sandbox
 [unix]
