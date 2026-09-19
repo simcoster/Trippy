@@ -1325,8 +1325,9 @@ and the 30B `unit_match`; the GET still happens. A skip bumps `scraped_at`
 only (`updated_at` stays the last vacancy change). Each run also deletes
 availability (and page hashes) with `start_date` before Israel today, so
 nights that have already passed do not linger in search. The scrape always
-asks INPA for 1 adult; `availability` has no `adults_no` column (party size
-is `max_occupancy`). The vacancy change
+asks INPA for 2 adults so a 1-person tent vacancy does not land in
+`availability` (those searches return empty for a pair). `availability`
+has no `adults_no` column (planner party size is `max_occupancy`). The vacancy change
 report is the Actions run **Summary** tab, not Streamlit and not
 LangSmith. Reviews have their own workflow and Summary tab
 (`# scrape-reviews`: new rows, already stored, skipped sites, Google
