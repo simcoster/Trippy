@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, keepalive 10 min)
+
+**Keepalive interval is 10 minutes, not 4.** Default
+`DEFAULT_INTERVAL_SEC=600`. Same skip-if-just-used window.
+`TRIPPY_KEEPALIVE_INTERVAL_SEC` still overrides.
+`test_default_keepalive_interval_is_ten_minutes`. Supersedes the
+4-minute default below.
+
 ### Done (2026-09-19, why availability is 2 adults)
 
 **A 1-adult INPA search returns tent vacancies that only fit one

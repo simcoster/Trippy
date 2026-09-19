@@ -1265,7 +1265,7 @@ stay identity or `empty` — not the raw JSON. Recommend usage is
 instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
 On first load Streamlit starts
 `start_model_keepalive` (`source/agent/keepalive.py`): one
-process-lifetime thread that pings every 240 s
+process-lifetime thread that pings every 600 s (10 min)
 (`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle timeout).
 Each new browser session also sends a 5-token `hi` once per **model
 endpoint** (`ping_new_session`; Reset does not): Kimi, the 235B

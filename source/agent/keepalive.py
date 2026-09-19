@@ -16,7 +16,7 @@ from source.agent.tracing import bind_to_current_trace, tracing_configured
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INTERVAL_SEC = 240.0
+DEFAULT_INTERVAL_SEC = 600.0
 _PING = "hi"
 _MAX_TOKENS = 5
 _ROLES = ("recommender", "light", "extractor", "embed")
