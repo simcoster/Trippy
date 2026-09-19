@@ -1135,7 +1135,10 @@ latest failure. Each attempt that does not pass is also kept as
 fail, `13_v2` the retry if that also failed). The Markdown report is
 `reports/scrape_prices/<timestamp>/report.md` in that same folder:
 stored vs failed, retry kind, failing gold / AST lines, dump names,
-and cost by role. The report is written in `finally`, so Ctrl+C still
+and cost by role. HTTP connect/timeout retries are billed onto the
+same role (estimated prompt tokens when Nebius never returns
+`usage`); the OpenAI client does not retry on its own, so those
+attempts are not invisible. The report is written in `finally`, so Ctrl+C still
 leaves the folder for sites that finished. A gold miss prints `!!! PRICE FUNCTION GOLD FAILED !!!`
 (same fat banner as AST). 2026-09-17 3-site re-run stored הבשור on
 the first compile; occupancy regen fired on תל ערד (3096 vs 3080)

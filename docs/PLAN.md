@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, retry attempts on scrape cost)
+
+**Timed-out Nebius chat attempts are added to `LlmUsage`.**
+`nebius_chat_create` records each try (real tokens on success,
+chars/4 prompt estimate on connect/timeout). The OpenAI client
+`max_retries` is 0 so the SDK cannot bill a retry the report never
+sees. Compile fix/regen turns were already counted.
+
 ### Done (2026-09-19, date-window tests match unit fits)
 
 **`test_planner_loops_date_windows` and `test_planner_caps_windows_at_four`

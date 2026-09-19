@@ -241,6 +241,8 @@ class InfoWebsiteNameMatcher:
         user_message = f"Name: {booking_name}\nCandidates:\n{numbered}"
         response = nebius_chat_create(
             self.client,
+            usage=usage,
+            role=self.role,
             model=self.model,
             messages=[
                 {"role": "system", "content": self.system_prompt},
@@ -248,8 +250,6 @@ class InfoWebsiteNameMatcher:
             ],
             temperature=self.TEMPERATURE,
         )
-        if usage is not None:
-            usage.add_chat(response.usage, role=self.role, model=self.model)
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
         picked = data.get("name")
@@ -303,6 +303,8 @@ class InfoWebsiteNameMatcher:
         user_message = f"Name: {booking_name}\nCandidates:\n{numbered}"
         response = nebius_chat_create(
             self.client,
+            usage=usage,
+            role=f"{self.role}_rescue",
             model=self.model,
             messages=[
                 {"role": "system", "content": MULTI_MATCH_PROMPT},
@@ -310,8 +312,6 @@ class InfoWebsiteNameMatcher:
             ],
             temperature=self.TEMPERATURE,
         )
-        if usage is not None:
-            usage.add_chat(response.usage, role=f"{self.role}_rescue", model=self.model)
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
         raw = data.get("names")
@@ -376,6 +376,8 @@ class InfoWebsiteNameMatcher:
         )
         response = nebius_chat_create(
             self.client,
+            usage=usage,
+            role=f"{self.role}_collision",
             model=self.model,
             messages=[
                 {"role": "system", "content": COLLISION_PROMPT},
@@ -383,10 +385,6 @@ class InfoWebsiteNameMatcher:
             ],
             temperature=self.TEMPERATURE,
         )
-        if usage is not None:
-            usage.add_chat(
-                response.usage, role=f"{self.role}_collision", model=self.model
-            )
         content = response.choices[0].message.content or ""
         data = _parse_json_payload(content)
         first = str(data.get("first") or "").strip() or None

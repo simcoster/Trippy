@@ -526,6 +526,8 @@ def _complete_python(
     chosen = model or QWEN_INSTRUCT_MODEL
     response = nebius_chat_create(
         llm,
+        usage=usage,
+        role=role,
         model=chosen,
         messages=[
             {"role": "system", "content": system},
@@ -533,8 +535,6 @@ def _complete_python(
         ],
         temperature=0,
     )
-    if usage is not None:
-        usage.add_chat(response.usage, role=role, model=chosen)
     source = extract_python_source(response.choices[0].message.content or "")
     return CompileQuoteDraft(source=source, user_prompt=user)
 
