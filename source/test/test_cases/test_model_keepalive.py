@@ -1,11 +1,14 @@
 """Streamlit pings recommender, light, and extractor so Nebius stays warm."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from langchain_core.messages import HumanMessage
 
 from source.agent import keepalive as keepalive_mod
 from source.agent.keepalive import ping_models, start_model_keepalive
+
+_ROOT = Path(__file__).resolve().parents[3]
 
 
 class _Chat:
@@ -27,6 +30,15 @@ class _Chat:
             }
         )
         return SimpleNamespace(content="ok")
+
+
+class _Boom(_Chat):
+    def invoke(self, messages, config=None):
+        raise RuntimeError("nebius down")
+
+
+class _StopLoop(Exception):
+    """End a blocking keepalive loop after N sleeps."""
 
 
 def test_ping_models_sends_hi_to_recommender_light_extractor():
@@ -54,6 +66,20 @@ def test_ping_models_sends_hi_to_recommender_light_extractor():
         assert "keepalive" in row["config"]["tags"]
 
 
+def test_failed_role_does_not_skip_others():
+    seen: list[dict] = []
+    binds: list[tuple] = []
+    ping_models(
+        chats={
+            "recommender": _Boom("kimi", seen, binds),
+            "light": _Chat("qwen-light", seen, binds),
+            "extractor": _Chat("qwen-extract", seen, binds),
+        }
+    )
+    roles = {row["config"]["metadata"]["role"] for row in seen}
+    assert roles == {"light", "extractor"}
+
+
 def test_start_blocking_zero_interval_pings_once(monkeypatch):
     monkeypatch.setattr(keepalive_mod, "_started", False)
     seen: list[dict] = []
@@ -62,6 +88,27 @@ def test_start_blocking_zero_interval_pings_once(monkeypatch):
     start_model_keepalive(chats=chats, interval_sec=0, blocking=True)
     assert len(seen) == 1
     assert seen[0]["messages"][0].content == "hi"
+
+
+def test_start_keepalive_repeats_after_interval(monkeypatch):
+    monkeypatch.setattr(keepalive_mod, "_started", False)
+    seen: list[dict] = []
+    binds: list[tuple] = []
+    chats = {"recommender": _Chat("kimi", seen, binds)}
+    sleeps: list[float] = []
+
+    def _sleep(sec):
+        sleeps.append(sec)
+        if len(sleeps) >= 2:
+            raise _StopLoop
+
+    monkeypatch.setattr(keepalive_mod.time, "sleep", _sleep)
+    try:
+        start_model_keepalive(chats=chats, interval_sec=240, blocking=True)
+    except _StopLoop:
+        pass
+    assert sleeps == [240, 240]
+    assert len(seen) == 2
 
 
 def test_start_model_keepalive_starts_once(monkeypatch):
@@ -82,8 +129,20 @@ def test_start_model_keepalive_starts_once(monkeypatch):
     assert threads == ["model-keepalive"]
 
 
+def test_default_keepalive_interval_is_four_minutes(monkeypatch):
+    monkeypatch.delenv("TRIPPY_KEEPALIVE_INTERVAL_SEC", raising=False)
+    assert keepalive_mod.DEFAULT_INTERVAL_SEC == 240.0
+    assert keepalive_mod.keepalive_interval_sec() == 240.0
+
+
 def test_keepalive_interval_sec_reads_env(monkeypatch):
     monkeypatch.setenv("TRIPPY_KEEPALIVE_INTERVAL_SEC", "90")
     assert keepalive_mod.keepalive_interval_sec() == 90.0
     monkeypatch.setenv("TRIPPY_KEEPALIVE_INTERVAL_SEC", "nope")
     assert keepalive_mod.keepalive_interval_sec() == keepalive_mod.DEFAULT_INTERVAL_SEC
+
+
+def test_streamlit_chat_starts_keepalive():
+    text = (_ROOT / "scripts" / "streamlit_chat.py").read_text(encoding="utf-8")
+    assert "from source.agent.keepalive import start_model_keepalive" in text
+    assert "start_model_keepalive()" in text
