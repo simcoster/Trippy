@@ -1248,10 +1248,17 @@ is not silent 235B. The recommend
 call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
 match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
-stay identity or `empty` — not the raw JSON. On first load it also
-sends a one-token `hi` to the recommender (Kimi) in a background
-thread so the first real rec is not a cold replica, and prints that
-ping plus Kimi's reply. Usage is `role="recommend"`.
+stay identity or `empty` — not the raw JSON. Recommend usage is
+`role="recommend"`. On first load Streamlit starts
+`start_model_keepalive` (`source/agent/keepalive.py`): a
+process-lifetime thread that immediately sends a 5-token `hi` to the
+recommender (Kimi), light, and extractor (235B), then repeats every
+240 s (`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle
+timeout) so replicas do not go cold. Each ping is a LangSmith root
+`model-keepalive` with child runs named `keepalive-{role}` and tag
+`keepalive`. Stdout prints the ping and the reply (or `keepalive
+failed`). The one-shot `warmup_recommender` helper is still there for
+tests; Streamlit no longer uses it.
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
 (experiments.md 2026-09-10 §7). Each recommend dump stores
@@ -1320,7 +1327,9 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 (`source/agent/tracing.py`). One browser tab is one thread until Reset.
 Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
 tool to the terminal and a caption under Thinking while the turn runs.
-Project defaults to `trippy` (`LANGSMITH_PROJECT`). Traces include the
+Project defaults to `trippy` (`LANGSMITH_PROJECT`). Filter tag
+`keepalive` (run name `model-keepalive`) for the idle pings; they are
+not graph turns. Traces include the
 full query. The planner invokes `claim_judge_tool` (`StructuredTool`,
 same pattern as `resolve_dates`) once per (campsite, request). LangSmith
 shows that tool under the planner node: **inputs** are the claims and

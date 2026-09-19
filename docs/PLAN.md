@@ -6,6 +6,28 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, keepalive 4 min)
+
+**Keepalive stays at 4 minutes.** ~$1.20/month for three `hi` pings
+is cheap enough. Supersedes the hourly default in the entry below.
+
+### Done (2026-09-19, keepalive hourly)
+
+**Keepalive interval is 1 hour, not 240 s.** Default
+`TRIPPY_KEEPALIVE_INTERVAL_SEC=3600`. Same three `hi` pings. Supersedes
+the 240 s cadence in the entry below.
+
+### Done (2026-09-19, model keepalive)
+
+**Streamlit keeps recommender, light, and extractor warm.** Nebius
+was going cold after idle; the old one-shot Kimi `hi` never showed
+on LangSmith (background invoke, no run name) and never pinged 235B.
+On first load a daemon thread now pings all three with `hi`
+(`max_tokens=5`) and repeats every 240 s. LangSmith: tag `keepalive`,
+run name `model-keepalive`. `TRIPPY_KEEPALIVE_INTERVAL_SEC` overrides
+the interval. Supersedes the 2026-09-12 Streamlit Kimi warmup for the
+chat path; `warmup_recommender` remains for its unit test.
+
 ### Done (2026-09-17, eu-north1)
 
 **VM and object store are both Finland (`eu-north1`).** Not

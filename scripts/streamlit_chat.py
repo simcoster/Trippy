@@ -95,11 +95,8 @@ if not hasattr(_recommender_mod, "last_recommend_timing"):
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.recommender import (
-    last_recommend_timing,
-    listen_recommend_text,
-    warmup_recommender,
-)
+from source.agent.keepalive import start_model_keepalive
+from source.agent.recommender import last_recommend_timing, listen_recommend_text
 from source.agent.timing import collect_stages, format_stages
 from source.agent.tracing import (
     agent_run_config,
@@ -127,6 +124,7 @@ st.set_page_config(
 )
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
+start_model_keepalive()
 
 _USER_ERROR = "Something went wrong."
 logger = logging.getLogger("trippy.streamlit")
@@ -151,8 +149,6 @@ def _cached_postgres_error() -> str:
 
 
 _db_error = _cached_postgres_error()
-if not _db_error:
-    warmup_recommender()
 
 # Active turn trace (set while invoke_agent runs)
 _current_trace: list[dict[str, Any]] | None = None
