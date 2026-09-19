@@ -125,6 +125,8 @@ st.set_page_config(
     page_icon="⛺",
     layout="wide",
 )
+# Streamlit binds "c" to Clear cache; Ctrl+C in the browser opens that dialog.
+st.set_option("client.toolbarMode", "viewer")
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
 start_model_keepalive()

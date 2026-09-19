@@ -1261,13 +1261,18 @@ call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
 match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
 stay identity or `empty` — not the raw JSON. Recommend usage is
-`role="recommend"`. On first load Streamlit starts
+`role="recommend"`. `client.toolbarMode` is `viewer` so Ctrl+C in the page copies
+instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
+On first load Streamlit starts
 `start_model_keepalive` (`source/agent/keepalive.py`): one
 process-lifetime thread that pings every 240 s
 (`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle timeout).
-Each new browser session also sends a 5-token `hi` to the recommender
-(Kimi), light, and extractor (235B) (`ping_new_session`; Reset does
-not). LangSmith: tag `keepalive`, run names `model-keepalive-session`
+Each new browser session also sends a 5-token `hi` once per **model
+endpoint** (`ping_new_session`; Reset does not): Kimi, the 235B
+(light and extractor share it), and `Qwen3-Embedding-8B`.
+A retrieve embed already counts as that ping; the interval skip
+does not call Nebius again while the last embed is still inside
+`TRIPPY_KEEPALIVE_INTERVAL_SEC`. LangSmith: tag `keepalive`, run names `model-keepalive-session`
 and `model-keepalive-interval`, children `keepalive-{role}`. Stdout
 prints the ping and the reply (or `keepalive failed`). The one-shot
 `warmup_recommender` helper is still there for tests; Streamlit no

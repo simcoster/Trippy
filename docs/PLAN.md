@@ -6,6 +6,25 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, skip warm embed keepalive)
+
+**Embed keepalive no-ops if retrieve (or a ping) just used
+`Qwen3-Embedding-8B`.** A 4s interval ping after a planner embed was
+a second cold replica, not a useful keep-warm. A second
+`model-keepalive` thread after a Streamlit rerun is also refused.
+
+### Done (2026-09-19, Streamlit Ctrl+C is not clear-cache)
+
+**`client.toolbarMode=viewer`.** Streamlit’s “c” shortcut opened
+Clear cache on Ctrl+C in the page. Developer menu items (rerun,
+clear cache) stay in the hamburger’s absence; refresh still reruns.
+
+### Done (2026-09-19, keepalive one ping per model)
+
+**Keepalive is per Nebius endpoint, not per role.** Light and
+extractor share the 235B so they were pinged twice. The embedder
+(`Qwen3-Embedding-8B`) is in the same round.
+
 ### Done (2026-09-19, retry attempts on scrape cost)
 
 **Timed-out Nebius chat attempts are added to `LlmUsage`.**

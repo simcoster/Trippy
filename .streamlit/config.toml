@@ -1,0 +1,4 @@
+[client]
+# "c" is Streamlit's clear-cache shortcut. Ctrl+C in the page fires it.
+# viewer hides that developer action so copy works.
+toolbarMode = "viewer"

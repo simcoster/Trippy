@@ -744,6 +744,9 @@ class EmbeddingLLMClient:
         if sink is not None:
             sink.add_embed(resp.usage, role="embed", model=self.MODEL)
         by_index = {item.index: item.embedding for item in resp.data}
+        from source.agent.keepalive import note_model_used
+
+        note_model_used(self.MODEL)
         return [by_index[i] for i in range(len(texts))]
 
 
