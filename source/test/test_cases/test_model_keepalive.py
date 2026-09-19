@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from langchain_core.messages import HumanMessage
 
 from source.agent import keepalive as keepalive_mod
-from source.agent.keepalive import ping_models, start_model_keepalive
+from source.agent.keepalive import ping_models, ping_new_session, start_model_keepalive
 
 _ROOT = Path(__file__).resolve().parents[3]
 
@@ -108,7 +108,24 @@ def test_start_keepalive_repeats_after_interval(monkeypatch):
     except _StopLoop:
         pass
     assert sleeps == [240, 240]
-    assert len(seen) == 2
+    assert len(seen) == 1
+
+
+def test_process_loop_sleeps_before_first_ping(monkeypatch):
+    monkeypatch.setattr(keepalive_mod, "_started", False)
+    seen: list[dict] = []
+    binds: list[tuple] = []
+    chats = {"recommender": _Chat("kimi", seen, binds)}
+
+    def _sleep(sec):
+        raise _StopLoop
+
+    monkeypatch.setattr(keepalive_mod.time, "sleep", _sleep)
+    try:
+        start_model_keepalive(chats=chats, interval_sec=240, blocking=True)
+    except _StopLoop:
+        pass
+    assert seen == []
 
 
 def test_start_model_keepalive_starts_once(monkeypatch):
@@ -142,7 +159,20 @@ def test_keepalive_interval_sec_reads_env(monkeypatch):
     assert keepalive_mod.keepalive_interval_sec() == keepalive_mod.DEFAULT_INTERVAL_SEC
 
 
+def test_ping_new_session_once_per_session():
+    seen: list[dict] = []
+    binds: list[tuple] = []
+    chats = {"recommender": _Chat("kimi", seen, binds)}
+    session: dict = {}
+    assert ping_new_session(session, chats=chats, blocking=True) is True
+    assert ping_new_session(session, chats=chats, blocking=True) is False
+    assert len(seen) == 1
+    assert ping_new_session({}, chats=chats, blocking=True) is True
+    assert len(seen) == 2
+
+
 def test_streamlit_chat_starts_keepalive():
     text = (_ROOT / "scripts" / "streamlit_chat.py").read_text(encoding="utf-8")
-    assert "from source.agent.keepalive import start_model_keepalive" in text
+    assert "from source.agent.keepalive import ping_new_session, start_model_keepalive" in text
     assert "start_model_keepalive()" in text
+    assert "ping_new_session(st.session_state)" in text

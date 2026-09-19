@@ -1250,15 +1250,16 @@ match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
 stay identity or `empty` — not the raw JSON. Recommend usage is
 `role="recommend"`. On first load Streamlit starts
-`start_model_keepalive` (`source/agent/keepalive.py`): a
-process-lifetime thread that immediately sends a 5-token `hi` to the
-recommender (Kimi), light, and extractor (235B), then repeats every
-240 s (`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle
-timeout) so replicas do not go cold. Each ping is a LangSmith root
-`model-keepalive` with child runs named `keepalive-{role}` and tag
-`keepalive`. Stdout prints the ping and the reply (or `keepalive
-failed`). The one-shot `warmup_recommender` helper is still there for
-tests; Streamlit no longer uses it.
+`start_model_keepalive` (`source/agent/keepalive.py`): one
+process-lifetime thread that pings every 240 s
+(`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle timeout).
+Each new browser session also sends a 5-token `hi` to the recommender
+(Kimi), light, and extractor (235B) (`ping_new_session`; Reset does
+not). LangSmith: tag `keepalive`, run names `model-keepalive-session`
+and `model-keepalive-interval`, children `keepalive-{role}`. Stdout
+prints the ping and the reply (or `keepalive failed`). The one-shot
+`warmup_recommender` helper is still there for tests; Streamlit no
+longer uses it.
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
 (experiments.md 2026-09-10 §7). Each recommend dump stores
@@ -1328,8 +1329,8 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
 tool to the terminal and a caption under Thinking while the turn runs.
 Project defaults to `trippy` (`LANGSMITH_PROJECT`). Filter tag
-`keepalive` (run name `model-keepalive`) for the idle pings; they are
-not graph turns. Traces include the
+`keepalive` (`model-keepalive-session` / `model-keepalive-interval`)
+for the idle pings; they are not graph turns. Traces include the
 full query. The planner invokes `claim_judge_tool` (`StructuredTool`,
 same pattern as `resolve_dates`) once per (campsite, request). LangSmith
 shows that tool under the planner node: **inputs** are the claims and

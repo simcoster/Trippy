@@ -6,7 +6,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, NamedTuple
 
@@ -23,6 +23,7 @@ _ROLES = ("recommender", "light", "extractor")
 
 _lock = threading.Lock()
 _started = False
+_SESSION_PINGED_KEY = "model_keepalive_pinged"
 
 
 class KeepaliveTarget(NamedTuple):
@@ -125,12 +126,17 @@ def _ping_round(targets: tuple[KeepaliveTarget, ...]) -> None:
         list(pool.map(ping, targets))
 
 
-def ping_models(*, chats: Mapping[str, Any] | None = None) -> None:
+def ping_models(
+    *,
+    chats: Mapping[str, Any] | None = None,
+    reason: str = "interval",
+) -> None:
     """One `hi` round (max 5 tokens) to each chat client. Traced as `model-keepalive`."""
     targets = _targets(chats)
     for target in targets:
         scheduled = (
-            f"keepalive ping={_PING} role={target.role} model={target.model}"
+            f"keepalive ping={_PING} role={target.role} "
+            f"model={target.model} reason={reason}"
         )
         print(scheduled, flush=True)
         logger.info(scheduled)
@@ -143,11 +149,11 @@ def ping_models(*, chats: Mapping[str, Any] | None = None) -> None:
             from langsmith import trace
 
             with trace(
-                name="model-keepalive",
+                name=f"model-keepalive-{reason}",
                 run_type="chain",
-                inputs={"roles": [target.role for target in targets]},
-                tags=["keepalive"],
-                metadata={"keepalive": True},
+                inputs={"roles": [target.role for target in targets], "reason": reason},
+                tags=["keepalive", reason],
+                metadata={"keepalive": True, "reason": reason},
             ):
                 _run()
             return
@@ -156,13 +162,36 @@ def ping_models(*, chats: Mapping[str, Any] | None = None) -> None:
     _run()
 
 
+def ping_new_session(
+    session: MutableMapping[str, Any],
+    *,
+    chats: Mapping[str, Any] | None = None,
+    blocking: bool = False,
+) -> bool:
+    """One `hi` round for a new Streamlit session. Returns True if a ping started."""
+    if _SESSION_PINGED_KEY in session:
+        return False
+    session[_SESSION_PINGED_KEY] = True
+
+    def _run() -> None:
+        ping_models(chats=chats, reason="session")
+
+    if blocking:
+        _run()
+        return True
+    threading.Thread(
+        target=_run, daemon=True, name="model-keepalive-session"
+    ).start()
+    return True
+
+
 def start_model_keepalive(
     *,
     chats: Mapping[str, Any] | None = None,
     interval_sec: float | None = None,
     blocking: bool = False,
 ) -> None:
-    """Ping recommender / light / extractor now, then every interval, once per process."""
+    """Start the interval loop once per process. First ping waits for the interval."""
     global _started
     with _lock:
         if _started:
@@ -181,14 +210,15 @@ def start_model_keepalive(
 
     def _loop() -> None:
         while True:
+            if interval > 0:
+                time.sleep(interval)
             try:
-                ping_models(chats=chats)
+                ping_models(chats=chats, reason="interval")
             except Exception:
                 print("keepalive round failed", flush=True)
                 logger.warning("keepalive round failed", exc_info=True)
             if interval <= 0:
                 return
-            time.sleep(interval)
 
     if blocking:
         _loop()

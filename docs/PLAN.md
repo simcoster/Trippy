@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, keepalive per session)
+
+**Session `hi` is per browser tab; the 4-minute loop is per process.**
+`ping_new_session(st.session_state)` on Streamlit session init; Reset
+does not re-ping. `start_model_keepalive` only starts the interval
+thread (first ping after 240 s, not immediately). LangSmith run names
+`model-keepalive-session` vs `model-keepalive-interval`.
+
 ### Done (2026-09-19, keepalive 4 min)
 
 **Keepalive stays at 4 minutes.** ~$1.20/month for three `hi` pings

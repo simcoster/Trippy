@@ -95,7 +95,7 @@ if not hasattr(_recommender_mod, "last_recommend_timing"):
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.keepalive import start_model_keepalive
+from source.agent.keepalive import ping_new_session, start_model_keepalive
 from source.agent.recommender import last_recommend_timing, listen_recommend_text
 from source.agent.timing import collect_stages, format_stages
 from source.agent.tracing import (
@@ -632,6 +632,7 @@ def _init_session() -> None:
         st.session_state.heavy_path = "extractor"
     if "langsmith_thread_id" not in st.session_state:
         st.session_state.langsmith_thread_id = str(uuid4())
+    ping_new_session(st.session_state)
 
 
 def _reset_conversation() -> None:
