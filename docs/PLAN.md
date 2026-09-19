@@ -6,6 +6,30 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-19, keepalive 10 min)
+
+**Keepalive interval is 10 minutes, not 4.** Default
+`DEFAULT_INTERVAL_SEC=600`. Same skip-if-just-used window.
+`TRIPPY_KEEPALIVE_INTERVAL_SEC` still overrides.
+`test_default_keepalive_interval_is_ten_minutes`. Supersedes the
+4-minute default below.
+
+### Done (2026-09-19, why availability is 2 adults)
+
+**A 1-adult INPA search returns tent vacancies that only fit one
+person; the same stay is empty for two.** That is treated as a
+booking-engine bug, so the scrape always asks for 2 adults and those
+singleton pitches never enter `availability`. Planner party size is
+still `max_occupancy`. `test_config_and_search_url_use_two_adults`.
+Supersedes the entry below.
+
+### Done (2026-09-19, scrape availability as 2 adults)
+
+**`scrape-availability` GETs INPA as 2 adults.** Config
+`availability.adults` and `search_url` / scrape fallbacks are 2.
+Planner party size is still `max_occupancy`; `availability` still has
+no `adults_no`. Supersedes the “scrape is 1 adult” notes below.
+
 ### Done (2026-09-19, skip warm embed keepalive)
 
 **Embed keepalive no-ops if retrieve (or a ping) just used

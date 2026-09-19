@@ -1,4 +1,4 @@
-"""Availability scraper: 1-adult search and booking-to-info-site name match."""
+"""Availability scraper: 2-adult search and booking-to-info-site name match."""
 
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ from populate_availability import (  # noqa: E402
 )
 
 
-def test_config_and_search_url_use_one_adult():
+def test_config_and_search_url_use_two_adults():
     config = load_config()
-    assert int(config["availability"]["adults"]) == 1
+    assert int(config["availability"]["adults"]) == 2
     url = search_url("9_1", date(2026, 9, 1), date(2026, 9, 2))
-    assert "ad1=1" in url
-    assert "ad1=2" not in url
+    assert "ad1=2" in url
+    assert "ad1=1" not in url
 
 
 def test_match_exact_normalized_name():

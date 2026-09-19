@@ -216,7 +216,7 @@ def search_url(
     check_out: date,
     *,
     rooms: int = 1,
-    adults: int = 1,
+    adults: int = 2,
     children: int = 0,
     infants: int = 0,
     lang: str = "heb",
@@ -665,7 +665,7 @@ def main(argv: list[str] | None = None) -> None:
     avail = config.get("availability", {})
 
     nights = int(avail.get("nights", 14))
-    adults = int(avail.get("adults", 1))
+    adults = int(avail.get("adults", 2))
     children = int(avail.get("children", 0))
     infants = int(avail.get("infants", 0))
     rooms_count = int(avail.get("rooms", 1))

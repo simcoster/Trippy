@@ -146,10 +146,10 @@ def test_start_model_keepalive_starts_once(monkeypatch):
     assert threads == ["model-keepalive"]
 
 
-def test_default_keepalive_interval_is_four_minutes(monkeypatch):
+def test_default_keepalive_interval_is_ten_minutes(monkeypatch):
     monkeypatch.delenv("TRIPPY_KEEPALIVE_INTERVAL_SEC", raising=False)
-    assert keepalive_mod.DEFAULT_INTERVAL_SEC == 240.0
-    assert keepalive_mod.keepalive_interval_sec() == 240.0
+    assert keepalive_mod.DEFAULT_INTERVAL_SEC == 600.0
+    assert keepalive_mod.keepalive_interval_sec() == 600.0
 
 
 def test_keepalive_interval_sec_reads_env(monkeypatch):
