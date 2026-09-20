@@ -38,7 +38,7 @@ def test_insert_returns_both_timestamps(conn):
 
 
 def test_new_hash_updates_both_timestamps(conn):
-    first = store_price_function(
+    store_price_function(
         conn, site_id=SITE_ID, source="def quote():\n    return 1\n", digest="aaa"
     )
     with conn.cursor() as cur:
@@ -48,15 +48,17 @@ def test_new_hash_updates_both_timestamps(conn):
             SET scraped_at = now() - interval '1 hour',
                 updated_at = now() - interval '1 hour'
             WHERE site_id = %s
+            RETURNING scraped_at, updated_at
             """,
             (SITE_ID,),
         )
+        old_scraped, old_updated = cur.fetchone()
     second = store_price_function(
         conn, site_id=SITE_ID, source="def quote():\n    return 2\n", digest="bbb"
     )
     assert second.status == "updated"
-    assert second.scraped_at > first.scraped_at
-    assert second.updated_at > first.updated_at
+    assert second.scraped_at > old_scraped
+    assert second.updated_at > old_updated
 
 
 def test_same_hash_bumps_scraped_at_only(conn):
