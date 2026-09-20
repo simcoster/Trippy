@@ -6,6 +6,20 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-20, jail → prices sandbox)
+
+**Comments and design say prices sandbox, not jail.** Compose
+`price-sandbox`, package `source.price_sandbox`. PLAN.md entries that
+said jail are left as written. design.md “Where it runs”.
+
+### Done (2026-09-20, sandbox loader is required)
+
+**GitHub Actions always runs `price-sandbox-loader` after a scrape.**
+Skipping when the compose service was missing left Streamlit on last
+week's `quote()` (or `quote_night`) with a green job. `no such
+service` fails the run. `--if-up` stays laptop-only (`just streamlit`
+when Compose is down). design.md “Where it runs”.
+
 ### Done (2026-09-19, keepalive 10 min)
 
 **Keepalive interval is 10 minutes, not 4.** Default

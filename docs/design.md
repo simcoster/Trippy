@@ -1301,7 +1301,7 @@ Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
 an SSH `-L 8501` to the VM does not steal `localhost:8501`. The
 `price-sandbox` container evaluates compiled `quote()` functions.
 A one-shot loader (`price-sandbox-loader` / `just load-price-sandbox`)
-pushes stored sources in, then exits. Prod Streamlit reaches the jail
+pushes stored sources in, then exits. Prod Streamlit reaches the prices sandbox
 only on the internal `quote` network
 (`PRICE_SANDBOX_URL=http://price-sandbox:8503`). Laptop Streamlit uses
 `http://127.0.0.1:8503`. Ingest is the same image with
@@ -1311,9 +1311,10 @@ Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
 reviews at 09:00 IDT (`scrape-reviews.yml`). Prices is
 `workflow_dispatch` (`scrape-prices.yml`; extra args `--site 2`).
 SSH is `.github/actions/scrape-job` (not a workflow, so it does not
-show in Actions). After prices (and after every other
-scrape) the VM runs `price-sandbox-loader` so Streamlit sees the new
-`quote()` sources. The prices Actions Summary is `report.md` (stored vs
+show in Actions). After every scrape the VM **must** run
+`price-sandbox-loader` so Streamlit sees the new `quote()` sources.
+A missing compose service fails the job; there is no skip. `--if-up`
+is laptop Streamlit only, when Compose is not up. The prices Actions Summary is `report.md` (stored vs
 failed, gold/AST lines); dumps stay in `~/.trippy-scrape/<timestamp>/`
 on the VM. One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n
 public -Fc` to `~/.trippy-backups` and Nebius object storage

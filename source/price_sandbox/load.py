@@ -3,7 +3,7 @@
 The sandbox has no Postgres. This process is the trusted loader: it reads
 approved sources from the DB, POST /load, and dies. Streamlit / FastAPI
 only quote. Re-run after scrape-prices, a sandbox restart, or compose up.
-The jail server must not import this module.
+The prices sandbox server must not import this module.
 """
 
 from __future__ import annotations

@@ -49,7 +49,9 @@ are GitHub-hosted runners that **SSH into the VM** as `gh-actions` and run
 that `compose run`. The SSH steps live in
 [`.github/actions/scrape-job`](../.github/actions/scrape-job/action.yml)
 (a composite action, so it does not appear in the Actions list).
-The scrape itself (INPA HTTP, LLM, Postgres writes)
+After the scrape the same SSH session **always** runs
+`price-sandbox-loader`. If that service is missing from compose, the
+job fails (`no such service`). Do not skip the reload. The scrape itself (INPA HTTP, LLM, Postgres writes)
 happens on Nebius, not on GitHub. Daily availability at **08:00 IDT**
 (`cron: 0 5 * * *`; 07:00 in winter IST); daily reviews at **09:00 IDT**
 (`cron: 0 6 * * *`; 08:00 in winter IST). One dump per day at **14:00 IDT**
