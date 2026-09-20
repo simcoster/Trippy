@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-20, availability scrape is 4 weeks)
+
+**`scrape-availability` walks 28 nights, not 14.**
+`config.json` `availability.nights` and the populate fallback.
+design.md “Where it runs”.
+
 ### Done (2026-09-20, jail → prices sandbox)
 
 **Comments and design say prices sandbox, not jail.** Compose

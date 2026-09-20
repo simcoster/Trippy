@@ -1,7 +1,7 @@
 """
 Fetch vacancies from the INPA booking engine for campsites in Postgres.
 
-Iterates the next N nights (default 14, one night each) and upserts into
+Iterates the next N nights (default 28, one night each) and upserts into
 `availability`. Creates accommodation_types from INPA names and links each
 to an info_website_names row (exact name, else Qwen 30B).
 """
@@ -664,7 +664,7 @@ def main(argv: list[str] | None = None) -> None:
     config = load_config()
     avail = config.get("availability", {})
 
-    nights = int(avail.get("nights", 14))
+    nights = int(avail.get("nights", 28))
     adults = int(avail.get("adults", 2))
     children = int(avail.get("children", 0))
     infants = int(avail.get("infants", 0))
