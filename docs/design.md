@@ -1307,7 +1307,8 @@ only on the internal `quote` network
 `http://127.0.0.1:8503`. Ingest is the same image with
 `scripts/cloud/job.sh`, triggered from GitHub Actions over SSH as
 `gh-actions` (`TRIPPY_VM_HOST` / `TRIPPY_SSH_USER` / `TRIPPY_SSH_KEY`).
-Daily availability at 08:00 IDT (`scrape-availability.yml`). Daily
+Daily availability at 08:00 IDT (`scrape-availability.yml`) covers the
+next **28 nights** (`config.json` `availability.nights`). Daily
 reviews at 09:00 IDT (`scrape-reviews.yml`). Prices is
 `workflow_dispatch` (`scrape-prices.yml`; extra args `--site 2`).
 SSH is `.github/actions/scrape-job` (not a workflow, so it does not
