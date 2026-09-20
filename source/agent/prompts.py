@@ -94,6 +94,7 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
         "nights": 1
       }} | null,
       "campsite": "Horashat Tal" | null,
+      "planned_entry_time": "19:00" | null,
       "numeric_constraints": [
         {{"field": "price_per_night", "operator": "<=", "value": 500}},
         {{"field": "party_size", "operator": ">=", "value": 3}}
@@ -142,7 +143,8 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        - nights: stay length ("לילה אחד" → 1, "ל2 לילות" → 2). Weekend
          defaults to 1 if omitted. Never put stay length in semantic_constraints.
        Do NOT put dates in numeric_constraints or semantic_constraints.
-    3. numeric_constraints: price, party size, distance (km), rating only — never dates.
+    3. numeric_constraints: price, party size, distance (km), rating only — never dates
+       and never clock hours (those are planned_entry_time).
        Party size ("for 3 people", "3 adults", "ל3 אנשים"):
        {{"field": "party_size", "operator": ">=", "value": 3}}.
        That means occupancy >= N — the listing must fit the party. Never use
@@ -165,8 +167,11 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        Each other item: {{"query": "..."}}.
        Prefer English labels: "hot showers", "running water", "near the sea".
        Do not emit an "amenities" key.
-       Do not put check-in time / "arrive Saturday afternoon" / arrival
-       policy in semantic_constraints (omit those until a policy field exists).
+       Arrival / check-in clock ("אפשר להיכנס אחרי 19", "arrive after 19",
+       "להגיע בשבת בצהריים") is planned_entry_time as "HH:MM", never a
+       date and never semantic_constraints. "אחרי 19" is 19:00 (an hour,
+       not the 19th). Afternoon / צהריים → "12:00". Evening / ערב →
+       "18:00". Omit planned_entry_time when they did not say a time.
        Every item carries a "locus":
        - "room" when the feature must be inside the booked unit / private:
          "מקרר בחדר", "fridge in the room", "private shower", "מקלחת פרטית",
@@ -210,10 +215,26 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     {{
       "date_intent": {{"kind": "weekday", "weekday": "saturday", "when": "this", "nights": 1}},
       "campsite": null,
+      "planned_entry_time": "12:00",
       "numeric_constraints": [],
       "semantic_constraints": [
         {{"query": "nice summer weather", "locus": "site"}},
         {{"query": "stargazing", "locus": "site"}}
+      ]
+    }}
+
+    Example:
+    Input: "מקום ל4 אנשים עם בריכות לילדים ואפשר להיכנס אחרי 19"
+    Output:
+    {{
+      "date_intent": null,
+      "campsite": null,
+      "planned_entry_time": "19:00",
+      "numeric_constraints": [
+        {{"field": "party_size", "operator": ">=", "value": 4}}
+      ],
+      "semantic_constraints": [
+        {{"query": "pools for children", "locus": "site"}}
       ]
     }}
 

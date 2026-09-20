@@ -26,6 +26,17 @@ week's `quote()` (or `quote_night`) with a green job. `no such
 service` fails the run. `--if-up` stays laptop-only (`just streamlit`
 when Compose is down). design.md “Where it runs”.
 
+### Done (2026-09-19, planned_entry_time)
+
+**“אפשר להיכנס אחרי 19” is `planned_entry_time`, not dropped.** The
+extractor prompt used to omit arrival / check-in until a policy field
+existed, and the summer-stargazing few-shot demonstrated dropping
+Saturday afternoon. Schema field `planned_entry_time` (`HH:MM`); still
+not semantic RAG. Normalize accepts `19` / `19:00`. Planner passes it
+to sandbox quotes. Sites are not yet filtered on gate hours.
+`test_planned_entry_time.py`, `test_extractor_late_entry.py`.
+Supersedes the “no extractor field or planner path yet” note below.
+
 ### Done (2026-09-19, keepalive 10 min)
 
 **Keepalive interval is 10 minutes, not 4.** Default

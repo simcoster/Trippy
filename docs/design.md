@@ -887,6 +887,15 @@ the desert on a packed Hebrew ask until a few-shot of `לשבוע הבא בחמ�
 במדבר` plus an explicit “never drop a location pref” rule
 (experiments.md 2026-09-14 §1).
 
+Arrival is `planned_entry_time` (`HH:MM`), not a date and not a semantic
+query. “אפשר להיכנס אחרי 19” is `19:00` (an hour, not the 19th). Putting
+it in `semantic_constraints` would AND-filter amenities and drop sites
+that never advertise late check-in. The planner passes the clock to
+sandbox `QuoteParams.planned_entry_time` so late-arrival fees apply. It
+does not yet reject sites whose gate / check-in window closes earlier
+(that still needs a policy match, not RAG). The summer-stargazing few-shot
+used to omit Saturday-afternoon arrival; it now emits `12:00`.
+
 ## Named campsite lookup
 
 The extractor may emit English (`Achziv`, `Horashat Tal`) or a Hebrew
@@ -1181,7 +1190,8 @@ Each quote runs in a short-lived child with a memory cap and a
 sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
 `quote_night`. Planner party size is still `adults_num`; `child_num`,
 child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
-off until the extractor grows those fields. `child_num` is an explicit
+off until the extractor grows those fields. `planned_entry_time` is
+the extractor clock (`HH:MM`) when they said when they will arrive. `child_num` is an explicit
 child headcount (toddlers included); `child_ages` only splits toddler /
 child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
 קבוצה is deduced from `adults_num + child_num` against that site's
