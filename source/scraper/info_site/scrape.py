@@ -38,6 +38,7 @@ from source.scraper.info_site.compile_price import (
 )
 from source.scraper.info_site.db import (
     UNCERTAIN_BELOW,
+    PriceFunctionStore,
     load_info_website_names,
     maybe_fill_booking_hotel_id,
     snapshot_list_prices,
@@ -53,6 +54,7 @@ from source.scraper.info_site.parse import (
 from source.scraper.info_site.price_report import (
     PriceFunctionRun,
     run_folder,
+    stamp,
     write_run_report,
 )
 from source.scraper.tls import ssl_context
@@ -224,17 +226,22 @@ def _print_ast_failure(kind: str, details: list[str]) -> None:
 
 
 def _print_store_ok(
-    status: str, *, n_gold: int, digest: str, gold_ok: bool = True
+    stored: PriceFunctionStore, *, n_gold: int, digest: str, gold_ok: bool = True
 ) -> None:
-    if status == "inserted":
+    if stored.status == "inserted":
         headline = "PRICE FUNCTION ADDED TO DB"
-    elif status == "updated":
+    elif stored.status == "updated":
         headline = "PRICE FUNCTION UPDATED IN DB"
     else:
         headline = "PRICE FUNCTION UNCHANGED IN DB (hash match)"
     print(flush=True)
     print("=" * 60, flush=True)
     print(f"*** {headline} ***", flush=True)
+    print(
+        f"*** scraped_at={stamp(stored.scraped_at)}  "
+        f"updated_at={stamp(stored.updated_at)}",
+        flush=True,
+    )
     if not gold_ok:
         print("*** gold still failing; stored anyway ***", flush=True)
     print(f"*** {n_gold} gold tests  sha256={digest[:12]}", flush=True)
@@ -269,17 +276,19 @@ def _store_compiled(conn, site: dict, source: str, cases, verdict, run: PriceFun
             run.failures = list(verdict.log_lines)
         return run
     digest = digest_source(source)
-    status = store_price_function(
+    stored = store_price_function(
         conn, site_id=site["id"], source=source, digest=digest
     )
-    run.store_status = status
+    run.store_status = stored.status
+    run.scraped_at = stored.scraped_at
+    run.updated_at = stored.updated_at
     run.digest = digest
     if verdict.ok:
-        _print_store_ok(status, n_gold=len(cases), digest=digest)
+        _print_store_ok(stored, n_gold=len(cases), digest=digest)
         run.outcome = "stored"
         return run
     _print_compile_verdict(verdict)
-    _print_store_ok(status, n_gold=len(cases), digest=digest, gold_ok=False)
+    _print_store_ok(stored, n_gold=len(cases), digest=digest, gold_ok=False)
     run.outcome = "gold_failed"
     if not run.failures:
         run.failures = list(verdict.log_lines)
@@ -471,7 +480,13 @@ def scrape_prices_for_site(
     status = run.store_status or run.outcome
     if run.outcome == "gold_failed" and run.store_status:
         status = f"gold_failed (stored {run.store_status})"
-    print(f"    compile: {status}", flush=True)
+    times = ""
+    if run.scraped_at is not None:
+        times = (
+            f"  scraped_at={stamp(run.scraped_at)}"
+            f"  updated_at={stamp(run.updated_at)}"
+        )
+    print(f"    compile: {status}{times}", flush=True)
     return len(lodging)
 
 
@@ -683,6 +698,14 @@ def main(argv: list[str] | None = None) -> None:
             if run.outcome in {"gold_failed", "ast_failed", "compile_error"}
         )
         print(f"run report {report}  ({len(compile_runs)} sites, {failed} failed)")
+        for run in compile_runs:
+            if run.scraped_at is None:
+                continue
+            print(
+                f"    site_price_functions site {run.site_id}: {run.store_status}"
+                f"  scraped_at={stamp(run.scraped_at)}"
+                f"  updated_at={stamp(run.updated_at)}"
+            )
         written = record_scrape_cost("scrape-prices", usage)
         if written:
             print(f"cost report appended to {written}")
