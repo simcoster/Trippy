@@ -16,6 +16,7 @@ source. Each file is imported here; edit the rule there, not in this file.
 @.cursor/rules/name-matches-what-file-does.mdc
 @.cursor/rules/named-records-not-tuples.mdc
 @.cursor/rules/ask-before-string-vocabularies.mdc
+@.cursor/rules/keep-modules-short.mdc
 
 ## Orientation
 
