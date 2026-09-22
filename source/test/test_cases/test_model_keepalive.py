@@ -171,8 +171,8 @@ def test_ping_new_session_once_per_session():
     assert len(seen) == 2
 
 
-def test_streamlit_chat_starts_keepalive():
+def test_streamlit_chat_pings_a_new_session_only():
     text = (_ROOT / "scripts" / "streamlit_chat.py").read_text(encoding="utf-8")
-    assert "from source.agent.keepalive import ping_new_session, start_model_keepalive" in text
-    assert "start_model_keepalive()" in text
+    assert "from source.agent.keepalive import ping_new_session" in text
+    assert "start_model_keepalive()" not in text
     assert "ping_new_session(st.session_state)" in text

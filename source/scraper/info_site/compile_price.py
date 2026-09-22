@@ -98,8 +98,8 @@ Rules:
 - `adults_num` is the adult headcount. `child_num` is the child headcount
   (toddlers included). Do not deduce `child_num` from `len(child_ages)`.
 - Occupancy, extra-person, and group-threshold counts use
-  `adults_num + child_num`. If an age is missing, treat that child as a
-  paying child (5–14).
+  `adults_num + child_num`. If an age is missing, treat that child as
+  age 10 (a paying child, 5–14).
 - GuestType is identity only (רגיל, מנוי, חייל, …). Never define
   GuestType.GROUP, never `GuestType("קבוצה")`. קבוצה is an occupancy
   override on a separate schedule in the user message, not a tab the

@@ -7,6 +7,40 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-22
+
+### 1. Does claim-judge concurrency 10 beat 5 on one repeated job?
+
+**Question.** Live judges run 5 at a time. On one fridge payload
+copied 10 times, does a cap of 10 cut the wall, or does Nebius
+slow each call enough that the second wave was free?
+
+**Setup.** Same job both widths: query `fridge`, Mamshit night-camp
+(חניון לילה גן לאומי ממשית – החאן הנבטי), 3 positive fridge claims,
+5 granting rules (refrigerator ×2, freezers, field_kitchen, coolers).
+Live compact 235B path (`_invoke_claim_judge_tool`, one shared
+client, temperature 0). One warmup call, then two waves of 10 jobs
+at cap 5 and two at cap 10. No DB writes. 41 calls. Dump
+`temp/judge_concurrency_10_2026-09-22_161205.json`. **$0.02**.
+
+**Result.** 41/41 `satisfies=true`, `satisfy_by=both`, 3 relevant
+claims. 0 errors. Wording of `reason` varied; the decision did not.
+
+| cap | repeat | wall | call median | call max |
+|---|---|---|---|---|
+| 1 | warmup | 7.8s | 7.8s | 7.8s |
+| 5 | 1 | 13.1s | 5.3s | 7.6s |
+| 10 | 1 | **9.9s** | 8.4s | 9.9s |
+| 5 | 2 | 21.3s | 8.9s | 12.4s |
+| 10 | 2 | **11.7s** | 10.9s | 11.5s |
+
+At 5 the second wave started at ~4s and ~9s. At 10 every call
+started together. Each call ran longer under the wider fan-out
+(median 5.3→8.4s, 8.9→10.9s), so the wall did not halve, and it
+still dropped.
+
+**Decision.** Live default 5 → 10. design.md "Planner claim/rule judge".
+
 ## 2026-09-21
 
 ### 1. Does "for tomorrow" stop resolving as today?

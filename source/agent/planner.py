@@ -25,6 +25,11 @@ from source.agent.search import (
     rules,
     sandbox,
 )
+from source.agent.turn_status import (
+    SEARCHING,
+    found_candidates_line,
+    report_turn_status,
+)
 
 AMENITY_MATCH_MAX_DISTANCE = -0.7
 # Claims are whole sentences, so they sit further from a short query than a
@@ -49,6 +54,15 @@ class _SlotKey(NamedTuple):
 
     campsite_id: str
     accommodation_type_id: int
+
+
+class _NightKey(NamedTuple):
+    """One vacant night of one unit."""
+
+    campsite_id: str
+    accommodation_type_id: int
+    start: str
+    end: str
 
 
 def _slot_key(slot: dict) -> _SlotKey:
@@ -410,6 +424,134 @@ def _named_site_ids(name: str) -> tuple[list[int], dict[str, Any] | None]:
     return ids, None
 
 
+def _night_key(slot: dict) -> _NightKey:
+    return _NightKey(
+        campsite_id=str(slot["campsite_id"]),
+        accommodation_type_id=int(slot["accommodation_type_id"]),
+        start=str(slot["start"]),
+        end=str(slot["end"]),
+    )
+
+
+def _campsite_ids(rows: list[dict]) -> set[int]:
+    ids: set[int] = set()
+    for row in rows:
+        cid = row.get("campsite_id")
+        if cid is None:
+            continue
+        ids.add(int(cid))
+    return ids
+
+
+def _query_label(value: Any) -> str:
+    if isinstance(value, list):
+        return " / ".join(str(item).strip() for item in value if str(item).strip())
+    return str(value or "").strip()
+
+
+def _missed_queries_by_site(rejected: list[dict]) -> dict[int, set[str]]:
+    missed: dict[int, set[str]] = {}
+    for row in rejected:
+        cid = row.get("campsite_id")
+        if cid is None:
+            continue
+        labels = missed.setdefault(int(cid), set())
+        for entry in row.get("why") or []:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("reason") not in {
+                "missing_stated_amenity",
+                "missing_room_amenity",
+                "semantic_mismatch",
+            }:
+                continue
+            label = _query_label(entry.get("query"))
+            if label:
+                labels.add(label)
+    return missed
+
+
+def _site_names(ids: set[int], rows: list[dict]) -> list[str]:
+    """Campsite names for `ids`, in the order `rows` first mentions them."""
+    names: list[str] = []
+    seen: set[int] = set()
+    for row in rows:
+        cid = row.get("campsite_id")
+        if cid is None:
+            continue
+        cid = int(cid)
+        if cid not in ids or cid in seen:
+            continue
+        seen.add(cid)
+        name = str(row.get("campsite") or "").strip() or str(cid)
+        names.append(name)
+    return names
+
+
+def _why_not_steps(
+    *,
+    open_slots: list[dict],
+    priced_slots: list[dict],
+    fits: list[dict],
+    semantic_rejected: list[dict],
+    semantic: list,
+    price_queried: bool,
+) -> list[dict[str, Any]]:
+    """Other available campsites, named, grouped by why they were left out."""
+    available = _campsite_ids(open_slots)
+    in_price = _campsite_ids(priced_slots)
+    fit_sites = _campsite_ids(fits)
+    missed = _missed_queries_by_site(semantic_rejected)
+    steps: list[dict[str, Any]] = []
+    if price_queried and len(in_price) < len(available):
+        outside = available - in_price
+        names = _site_names(outside, open_slots)
+        if names:
+            steps.append(
+                {"stage": "price", "count": len(names), "sites": names}
+            )
+    remaining = set(in_price)
+    for group in semantic_locus_groups(semantic):
+        label = _query_label(group.get("label"))
+        if not label:
+            continue
+        failed = {
+            cid
+            for cid in remaining
+            if cid not in fit_sites and label in missed.get(cid, set())
+        }
+        if not failed:
+            continue
+        names = _site_names(failed, semantic_rejected)
+        if names:
+            steps.append(
+                {
+                    "stage": "missing",
+                    "count": len(names),
+                    "query": label,
+                    "sites": names,
+                }
+            )
+        remaining -= failed
+    return steps
+
+
+def _price_rejected_slots(
+    open_slots: list[dict],
+    priced_slots: list[dict],
+    record: dict[str, Any] | None,
+) -> list[dict]:
+    """Nights the quote dropped. Prefer the quote's copies, they carry the price."""
+    kept = {_night_key(slot) for slot in priced_slots}
+    dropped = [slot for slot in open_slots if _night_key(slot) not in kept]
+    richer: dict[_NightKey, dict] = {}
+    if isinstance(record, dict):
+        for row in record.pop("price_rejected", []) or []:
+            if isinstance(row, dict) and row.get("campsite_id") is not None:
+                richer[_night_key(row)] = row
+    return [richer.get(_night_key(slot), slot) for slot in dropped]
+
+
 def _stay_windows(constraints_json: dict) -> list[dict]:
     """Stay ranges to search, capped at MAX_DATE_WINDOWS."""
     raw = constraints_json.get("date_windows")
@@ -462,6 +604,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
     if constraints_json.get("planned_exit_time"):
         child_kwargs["planned_exit_time"] = constraints_json["planned_exit_time"]
     party_size = party_size_from_numeric(numeric)
+    report_turn_status(SEARCHING)
     with sandbox.price_quote_cache():
         slots = availability.search_open_slots(
             date_windows=windows,
@@ -476,6 +619,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         if slots and slots[0].get("error"):
             payload["error"] = slots[0]["error"]
             return payload
+        report_turn_status(found_candidates_line(len(_slots_by_unit(slots))))
 
         ctx = contextvars.copy_context()
         quoted: dict[str, Any] = {}
@@ -502,7 +646,9 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             thread.join()
         if "error" in quoted:
             raise quoted["error"]
+        open_slots = list(slots)
         slots = quoted["slots"]
+        price_constraint = availability._price_per_night_constraint(numeric)
     fits: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
@@ -552,9 +698,26 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
     fits.sort(key=lambda f: f["score"], reverse=True)
     attach_booking_urls(fits, constraints_json)
 
+    why_not = _why_not_steps(
+        open_slots=open_slots,
+        priced_slots=slots,
+        fits=fits,
+        semantic_rejected=rejected,
+        semantic=semantic,
+        price_queried=price_constraint is not None,
+    )
+    price_rows: list[dict[str, Any]] = []
+    if price_constraint is not None:
+        for _key, nights in _slots_by_unit(
+            _price_rejected_slots(open_slots, slots, record)
+        ):
+            price_rows.append(_unit_row(nights, [{"reason": "price"}]))
+
     payload["fits"] = fits
-    payload["rejected"] = rejected[:REJECTED_SAMPLE_LIMIT]
-    payload["rejected_count"] = len(rejected)
+    payload["rejected"] = price_rows + rejected[:REJECTED_SAMPLE_LIMIT]
+    payload["rejected_count"] = len(price_rows) + len(rejected)
+    if why_not:
+        payload["why_not"] = why_not
     return payload
 
 

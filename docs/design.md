@@ -960,7 +960,8 @@ calls was not needed):
   the compact suffix (experiments.md 2026-09-10 §6). Full eval
   `2026-09-10_131406` was compact ×5 (23/26). Quoted output is
   `TRIPPY_JUDGE_COMPACT=0` / `--no-judge-compact`. Live judge calls
-run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5).
+run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5). The
+10-wide default made live turns slower, so the width is 5 again.
 A single batched `judgements[]` call still drops E03 tent vs
 `tent_pitch` on this 235B (16/20). With thinking off and
 `max_tokens=2000`, Qwen3.5-397B and GLM-5.2 both hit 78/80 and
@@ -1220,7 +1221,7 @@ loaded. Streamlit, local and prod, exits unless that `/health` is ok.
 during a run that already started. The extractor emits `child_num` and `child_ages` (the
 `QuoteParams` fields) when the user names children; the planner passes
 them into the sandbox quote and subtracts `child_num` from `party_size`
-so those children are not also priced as adults. `guest_type` (the
+so those children are not also priced as adults. A child with no stated age is quoted as 10 (`quote_party`). `guest_type` (the
 rate-card tab; default `רגיל`) stays off. `planned_entry_time` is
 the extractor clock (`HH:MM`) when they said when they will arrive;
 `planned_exit_time` is the same for when they will leave. `child_num` is an explicit
@@ -1234,7 +1235,14 @@ is Friday or Saturday only; Sunday is a weekday.
 Fits carry `price_explanation` so the recommender cites the breakdown
 instead of summing. A unit that is vacant on several windows is one
 fit with `dates`, not one fit per night, so retrieve, judge, and
-the recommender pack run once for that site+type.
+the recommender pack run once for that site+type. A price limit
+removes those nights from `fits` and keeps them on `rejected` with
+`reason: price` (every such unit, not only the five-row semantic
+sample). `why_not` names the other campsites that had a vacancy and
+were left out, grouped by price or by the amenity they miss. Sites the judge then drops are added too: a missing amenity, or a
+polarity-false rule for that ask. The model
+does not see `why_not` or `rejected`; render writes that sentence in
+the query's language.
 
 ## Recommender
 
@@ -1246,20 +1254,39 @@ list. Extractor, light, and judge stay 235B.
 
 The node does not dump raw LangGraph messages. It packs the original
 query, the extractor JSON (`constraints`), and compact `fits`: stay
-identity, `why`, `review_claims` (the judge’s relevant set, including
-nos), retrieved official rules as they are, and `claim_judge`. `score`
-and `rejected` stay out of the model input. The prompt tells it to
-cite a listing row only when that row is about the ask — retrieved
-rules are still unsifted nearest neighbors (tent-as-desert,
-stove-as-electricity). `relevant_rules` is not a judge field.
+identity, `why` (stated amenities on the unit), `review_claims` (the judge’s relevant set, including
+nos), official rules the judge named in `relevant_rules`, and `claim_judge`. `score`
+and `rejected` stay out of the model input. Rules on the fit are the
+subjects the judge named in `relevant_rules`. A reply from a judge that
+omits that field still carries the retrieved rows.
 
-Output is JSON: 1 stay, or 2 when they are distinct useful options
-(prefer two campsites over two types at the same site), each with a
-`why` in one language — Hebrew only if the query is mostly Hebrew,
-English only if it is mostly English. Two picks also set `intro`:
-note that there is more than one option, name them, and compare them
-somewhat. Phrasing is free; render puts that above the numbered list.
-`intro` is null for a single stay.
+Output is JSON: the top 2 or 3 stays (3 when a third is another
+useful option; the one fit when that is all there is; never more
+than 3). Prefer different campsites over two types at the same site.
+If the model names only one stay and more fits exist, the reply still
+lists the next best fits up to three; those extras have no model `why`.
+Each `why` is one language. The pack sets `reply_language` from the
+query (Hebrew when it has more Hebrew letters than Latin, otherwise
+English). why, intro, and empty follow that field. Campsite names stay
+as stored. More than one pick
+also sets `intro`: note that there is more than one option, name
+them, and compare them somewhat. When the party includes children, that
+note (or the single why, when there is one stay) says once that some
+lodging is priced differently depending on age. Phrasing is free; render puts that
+above the numbered list. `intro` is null for a single stay.
+A fit's `dates` are all shown. Several check-ins collapse to ranges
+(`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site. After the picks, render appends
+`why_not` in the query's language: other available sites by name, and
+why they were left out. Three or more campsites are a count only
+(`3 campsites don't have an indication of pools (by review or the stated info)`).
+One or two are named
+(`2 campsites [A and B] don't have an indication of pools (by review or the stated info)`).
+A price miss quotes the limit they asked for
+(`3 campsite slots are outside the price range (up to 300 NIS)`).
+Stated amenities and rules are one account in `why`: the model does not
+label which row a fact came from. It does name a miss — a rule or claim
+that says the thing is absent, a polarity-false forbid (no dogs), or a
+limit that misses the ask (last entry 20:00 when they want 21:00).
 `why` leads with the matching facts, not a recap of the query,
 dates, or party (those are on the stay line). If listing and reviews
 agree the asked thing exists, say it once — reviews add quality or
@@ -1286,7 +1313,10 @@ from-planner bake ranked **Kimi-K3 then GLM-5.2** above 397B and
 Kimi is the default. If Kimi sends no stream token in 10 s
 (`TRIPPY_KIMI_TTFT_SEC`; 0 disables), the same pack is retried on
 Nemotron Super 120B-A12B (`source/agent/recommender/fallback.py`).
-The first-token deadline lives in `recommender/stream.py`. Model
+The first-token deadline lives in `recommender/stream.py`. That wait
+runs the stream on another thread and copies the caller context, so
+LangSmith still logs the model call (the packed prompt) under the
+recommender node. Model
 thinking-off flags live in `recommender/models.py`; TTFT logging
 lives in `recommender/timing.py`. A caller-injected `chat` does not fall back
 (tests). `TRIPPY_RECOMMENDER_MODEL=super` or `235B`
@@ -1300,7 +1330,9 @@ dropped. Empty `fits` become an honest follow-up.
 After vacancies and the judge, each surviving fit gets a
 `booking_url`: `BE_Results.aspx` with `campsites.booking_hotel_id`
 (the parent’s id when the row is a subcamp), the stay dates, and
-`ad1` from extractor party size (`source/agent/booking.py`). That is
+`ad1` and `ch1` from the party (`source/agent/booking.py`). Party size
+counts everyone; stated children are `ch1`, and the adults are the
+remainder, so 2 adults and 2 children is `ad1=2&ch1=2`. That is
 the public search GET the availability scraper already uses — not
 the parks.org.il iframe session. The recommender is told to copy
 `booking_url` from the fit; render looks up the chosen stay and
@@ -1312,21 +1344,28 @@ is not silent 235B. The recommend
 call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
 match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
-stay identity or `empty` — not the raw JSON. Recommend usage is
+stay identity or `empty` — not the raw JSON. While that runs, the
+assistant bubble shows Searching, then `Found N candidates, filtering`
+once availability returns (N is distinct site + unit type), then
+Ranking when recommend is called. Recommend usage is
 `role="recommend"`. `client.toolbarMode` is `viewer` so Ctrl+C in the page copies
 instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
-On first load Streamlit starts
-`start_model_keepalive` (`source/agent/keepalive.py`): one
-process-lifetime thread that pings every 600 s (10 min)
-(`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle timeout).
-Each new browser session also sends a 5-token `hi` once per **model
-endpoint** (`ping_new_session`; Reset does not): Kimi, the 235B
-(light and extractor share it), and `Qwen3-Embedding-8B`.
-A retrieve embed already counts as that ping; the interval skip
-does not call Nebius again while the last embed is still inside
-`TRIPPY_KEEPALIVE_INTERVAL_SEC`. LangSmith: tag `keepalive`, run names `model-keepalive-session`
-and `model-keepalive-interval`, children `keepalive-{role}`. Stdout
-prints the ping and the reply (or `keepalive failed`).
+Streamlit does not start the interval keepalive. Each new browser
+session sends a 5-token `hi` once per **model endpoint**
+(`ping_new_session`; Reset does not): Kimi, the 235B (light and
+extractor share it), and `Qwen3-Embedding-8B`. The same round also
+sends the claim-judge system prompt alone, so that prefix is hot.
+A retrieve embed
+already counts as that ping. `start_model_keepalive` still exists
+for an explicit interval (`TRIPPY_KEEPALIVE_INTERVAL_SEC`, default
+600 s; not a measured Nebius idle timeout) but nothing starts it.
+LangSmith: tag `keepalive`, run name `model-keepalive-session`,
+children `keepalive-{role}`. The session round runs those calls on
+worker threads and copies the trace context onto each one, so the
+replies hang off that parent the way `model-keepalive-interval`
+already does. The claim-judge system-prompt ping is raw HTTP, so its
+reply is written as a `keepalive-claim_judge` child. Stdout prints the ping and the reply
+(or `keepalive failed`).
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
 (experiments.md 2026-09-10 §7). Each recommend dump stores
@@ -1401,10 +1440,10 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 `metadata.channel` on each `stream`
 (`source/agent/tracing.py`). One browser tab is one thread until Reset.
 Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
-tool to the terminal and a caption under Thinking while the turn runs.
+tool to the terminal and a caption under the phase line while the turn runs.
 Project defaults to `trippy` (`LANGSMITH_PROJECT`). Filter tag
-`keepalive` (`model-keepalive-session` / `model-keepalive-interval`)
-for the idle pings; they are not graph turns. Traces include the
+`keepalive` (`model-keepalive-session`) for the one ping a new
+session sends; it is not a graph turn. Traces include the
 full query. The planner invokes `claim_judge_tool` (`StructuredTool`,
 same pattern as `resolve_dates`) once per (campsite, request). LangSmith
 shows that tool under the planner node: **inputs** are the claims and

@@ -6,6 +6,144 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, chat paragraphs follow the reply's direction)
+
+**Streamlit chat text uses `unicode-bidi: plaintext`.** Each paragraph
+and list item in a chat bubble takes its direction from its first
+strong letter, so a Hebrew reply starts on the right and an English
+one stays on the left. The Markdown is unchanged.
+
+### Done (2026-09-22, why-not does not say the campsites say)
+
+**Why-not states the miss directly.** A price line is campsite slots
+outside the range they asked for. An amenity line is no indication
+in reviews or the stated info. Hebrew matches.
+
+### Done (2026-09-22, claim-judge keepalive reply is posted)
+
+**The session judge ping is posted as its own run.** `emit_child_span`
+ended the child in memory and never sent it, so `keepalive-claim_judge`
+was missing while the Kimi and light runs, which post themselves,
+showed up.
+
+### Done (2026-09-22, session keepalive replies nest like the interval)
+
+**Session pings copy the LangSmith context onto their worker threads.**
+Interval traces already showed `keepalive-light` and
+`keepalive-recommender` under the parent. Session traces left those
+same calls as separate roots, and the claim-judge reply was absent.
+The judge reply is now a child too.
+
+### Done (2026-09-22, recommender model call is on the trace)
+
+**The Kimi stream keeps the caller’s LangSmith context.** The
+first-token thread was dropping the model run, so the recommender
+node input was the only thing on the trace. The packed prompt is now
+a child of that node.
+
+### Done (2026-09-22, unstated children are age 10)
+
+**A child with no stated age is quoted as 10.** The recommender says
+once that some lodging is priced differently by age. The booking link
+no longer adds “Adjust the date on the booking page.”
+
+### Done (2026-09-22, why does not split rules from amenities)
+
+**The recommender writes amenities and rules as one account.** It still
+names a miss: a rule or claim that says the thing is absent, an
+explicit no, or a limit that misses the ask (entry at 20:00 vs 21:00).
+Prompt only.
+
+### Done (2026-09-22, why is stated amenities; rules follow the judge)
+
+**`why` is only stated amenities on the unit.** Campsite rules stay
+only when the judge names them in `relevant_rules`. Why-not names
+campsites when there are one or two, and only a count from three up.
+Supersedes leaving retrieved rules and embedding claims on `why`.
+
+### Done (2026-09-22, why keeps only judge-relevant claims)
+
+**A claim in `why` stays only if the judge named it in `relevant_claims`.**
+The embedding hit that sent the site to the judge is not left on the
+fit when the judge left that sentence out. Supersedes treating that
+pre-judge claim as a pass.
+
+### Done (2026-09-22, judge width 5 and a session warmup)
+
+**Live claim judges run 5 at a time again.** Ten-wide made real turns
+slower. A new Streamlit session also sends the claim-judge system
+prompt alone, beside the model `hi` pings. Supersedes the
+concurrency-10 default below.
+
+### Done (2026-09-22, why-not splits rules from missing amenities)
+
+**A polarity-false rule is its own why-not line.** Judge drops with no
+such rule stay on the missing-amenity line. Price misses stay on the
+quote's price line. Supersedes folding every judge drop into "missing".
+
+### Done (2026-09-22, why-not keeps judge drops)
+
+**Sites the claim judge rejects stay on the why-not line.** The line was
+built before the judge, so a query whose amenity hits all went into fits
+and then were dropped showed no why-not. Supersedes “why_not is only the
+pre-judge funnel” in design.md.
+
+### Done (2026-09-22, prod just recipes on Windows)
+
+**`just prod-up`, `prod-load-sandbox`, and `prod-scrape` are no longer Unix-only.** They were hidden on Windows. The bodies are `docker compose`, so they run from the laptop too.
+
+### Done (2026-09-22, search phase line)
+
+**The assistant bubble names the phase.** Searching, then how many
+candidates availability returned, then Ranking when recommend runs.
+Supersedes the Thinking spinner in design.md.
+
+### Done (2026-09-22, no periodic keepalive)
+
+**Streamlit no longer starts the 10-minute model ping.** A new browser
+session still sends one `hi` per model endpoint. Supersedes the
+interval thread in design.md; `start_model_keepalive` remains for an
+explicit call.
+
+### Done (2026-09-22, reply language follows the query)
+
+**An English query gets English why and intro.** The pack sets
+`reply_language` from the query, and the prompt obeys that field.
+Hebrew campsite names stay as stored. Supersedes “the model picks the
+language” in the recommender section of design.md.
+
+### Done (2026-09-22, why-not names the other sites)
+
+**The why-not line names the other available campsites and the reason.**
+In the query's language: "3 other sites have availability [A, B, C] but
+they don't have pools." Price misses are the same shape. Supersedes the
+count funnel in the recommender entry below.
+
+### Done (2026-09-22, date ranges and booking party)
+
+**Several fitting dates render as ranges, with one booking link.**
+Check-ins collapse to `21–28.9`, then `11.10–15.10` for a later cluster. The link
+is once per site, with a note to change the date. `ad1` is adults only;
+stated children are `ch1`, so 2+2 is not four adults. Supersedes the
+per-night link in the recommender entry below.
+
+### Done (2026-09-22, recommender lists every date, top 3, and why not)
+
+**The reply shows 2–3 stays, every fitting night, and a filter funnel.**
+Consecutive one-night windows render as one check-in span. Price misses
+stay on `rejected` (`reason: price`). `why_not` counts campsites with a
+vacancy, inside the price range when the user set one, and missing each
+requested amenity. The model still does not see `rejected`. Supersedes
+“pick 1 or 2” in the recommender section of design.md.
+
+### Done (2026-09-22, claim-judge concurrency 10)
+
+**Live claim judges run 10 at a time.** Ten copies of one fridge job
+were 9.9s and 11.7s at that width, against 13.1s and 21.3s at 5;
+all 41 calls agreed and none errored. Each call slowed, and the
+second wave disappeared. Supersedes the concurrency-5 default in
+the 2026-09-10 compact-judge entry below.
+
 ### Open (2026-09-22, graph container)
 
 **TODO: run the graph in its own container; Streamlit talks to it over HTTP.** Today `scripts/streamlit_chat.py` imports the graph, calls `build_graph`, and patches nodes and search functions in-process. The chat client should post a turn and read the reply, not host the agent.

@@ -8,11 +8,16 @@ the same shape `populate_availability.search_url` already scrapes.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import urlencode
 
 from db.connect import connect
-from source.agent.constraints import party_size_from_numeric
+from source.agent.constraints import (
+    parse_child_ages,
+    parse_child_num,
+    party_size_from_numeric,
+    quote_party,
+)
 from source.agent.dates import iso_day
 
 RESULTS_PATH = "https://secure-hotels.net/INPA/BE_Results.aspx"
@@ -56,12 +61,25 @@ def booking_results_url(
     return f"{RESULTS_PATH}?{urlencode(params)}"
 
 
-def booking_adults(constraints: dict[str, Any] | None) -> int:
-    numeric = (constraints or {}).get("numeric_constraints") or []
-    size = party_size_from_numeric(numeric)
-    if size is not None and size > 0:
-        return size
-    return 1
+class _BookingParty(NamedTuple):
+    adults: int
+    children: int
+
+
+def booking_party(constraints: dict[str, Any] | None) -> _BookingParty:
+    """Adults and children for the booking URL.
+
+    `party_size` counts everyone. Stated children come off that total,
+    so 2 adults and 2 children is `ad1=2` and `ch1=2`.
+    """
+    data = constraints or {}
+    party = quote_party(
+        party_size=party_size_from_numeric(data.get("numeric_constraints") or []),
+        child_num=parse_child_num(data.get("child_num")),
+        child_ages=parse_child_ages(data.get("child_ages")),
+    )
+    adults = party.adults_num if party.adults_num > 0 else 1
+    return _BookingParty(adults=adults, children=party.child_num)
 
 
 def booking_hotel_ids_for_sites(site_ids: list[int]) -> dict[int, str]:
@@ -91,7 +109,7 @@ def attach_booking_urls(
     hotel_ids: dict[int, str] | None = None,
 ) -> None:
     """Set `booking_url` on each fit that has a hotel id and stay dates."""
-    adults = booking_adults(constraints)
+    party = booking_party(constraints)
     missing = [
         int(fit["campsite_id"])
         for fit in fits
@@ -111,7 +129,8 @@ def attach_booking_urls(
             hotel or None,
             fit.get("start"),
             fit.get("end"),
-            adults=adults,
+            adults=party.adults,
+            children=party.children,
         )
         if url:
             fit["booking_url"] = url
@@ -124,7 +143,8 @@ def attach_booking_urls(
                 hotel or None,
                 night.get("start"),
                 night.get("end"),
-                adults=adults,
+                adults=party.adults,
+                children=party.children,
             )
             if night_url:
                 night["booking_url"] = night_url

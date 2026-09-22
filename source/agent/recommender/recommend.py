@@ -1,4 +1,4 @@
-"""Pick 1–2 planner fits and write a cited Hebrew recommendation."""
+"""Pick 2–3 planner fits and write a cited Hebrew recommendation."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
 )
-from langchain_core.utils.json import parse_partial_json
 
 from source.agent.constraints import latest_constraints_json
 from source.agent.messages import latest_user_text, message_text
@@ -26,10 +25,23 @@ from source.agent.recommender.fallback import (
     primary_recommend_call,
     recommend_with_fallback,
 )
+from source.agent.recommender.json_text import (
+    drop_invalid_json_escapes,
+    json_object_prefix,
+    parse_stream_json,
+)
 from source.agent.recommender.models import prepare_model, recommender_model
+from source.agent.recommender.stay_dates import (
+    StayWindow,
+    booking_lines,
+    stay_date_label,
+    windows_from_dates,
+)
 from source.agent.recommender.stream import chunk_text, chunk_thinking, iter_chat_chunks
 from source.agent.recommender.timing import RecommendClock, record_recommend
+from source.agent.recommender.why_not import query_is_hebrew, render_why_not
 from source.agent.timing import stage
+from source.agent.turn_status import RANKING, report_turn_status
 from source.scraper.amenity_enrichment.llm import (
     _parse_json_payload,
     langchain_chat_usage,
@@ -46,13 +58,16 @@ when those were given). Recommend only from fits. Never invent a campsite,
 type, date, price, amenity, or rule. When a fit includes price_explanation,
 cite that breakdown; do not recompute the sum.
 
-Pick 1 stay, or 2 when they are genuinely different useful options
-(prefer two campsites over two types at the same site). Never more than 2.
-When you pick 2, set intro to a short spoken note: there is more than
-one option, what they are, and how they differ (tent vs staff room,
-north vs south, cheaper vs closer). Phrase it however sounds natural;
-do not use a fixed template. Each why is only about that stay; do not
-repeat the intro there. intro is null when you pick 1.
+Pick the top 2 or 3 stays (fits is best-first). If only one fit
+exists, pick that one. Never more than 3. Prefer different campsites
+over two types at the same site. When you pick more than one, set
+intro to a short spoken note: there is more than one option, what
+they are, and how they differ (tent vs staff room, north vs south,
+cheaper vs closer). Phrase it however sounds natural; do not use a
+fixed template. Each why is only about that stay; do not repeat the
+intro there. intro is null when you pick 1. A fit's dates list is
+every night that unit is free; the reply lists those nights, so do
+not recap them in why.
 Keep planner order as a hint (fits is best-first) but you may skip a
 worse later row. Copy campsite_id, accommodation_type, start, end, and
 booking_url exactly from the fit you pick. Do not invent or rewrite a
@@ -67,6 +82,10 @@ hot-shower query, and never "no info on showers" when they did not ask.
 
 Do not quote or recap the query ("the request was for X", "הבקשה הייתה").
 Do not recap dates, party size, or price; the stay line already has them.
+When extract.child_num is set, say once that some of the lodging is
+priced differently depending on the children's age. Put that in intro
+when you write one; otherwise in the single why. Do not repeat it on
+every stay.
 Do not write form-language: "the option offers", "האפשרות מציעה",
 "הליסטינג", "fits the request at the specified dates". Sound like a
 person who looked this up, not a translated checklist.
@@ -95,11 +114,21 @@ Cite listing vs reviews (use date / days_ago when you name a review):
   clean." Or a caveat: "Some recent reviews say they are not working.
   Also, many reviews say the showers are dirty."
 
+In why, stated amenities and rules are the same facts. Do not sort the
+answer into amenities versus rules, and do not say which row a fact
+came from. "There is a pool" and "last entry is 20:00" are both what
+the site states.
+
+Do say when the site does not have what they asked for:
+- a rule or a review claim says it is absent
+- a rule explicitly forbids it (polarity false: no dogs allowed, when
+  they asked to bring a dog)
+- a rule states a limit that misses the ask (last entry 20:00 when they
+  want to arrive at 21:00)
+A yes on another row does not cancel that no. Say it in ordinary words.
+
 Evidence, in this order of trust:
-- why: how each request was met. stated_amenity is the unit listing,
-  site_amenity is the campsite listing, locus room means the guest wanted
-  it inside the unit. A why entry with claim is a guest review only —
-  never present it as listed.
+- why: stated amenities on the unit that met the request.
 - review_claims: guest claims a judge kept as about the request,
   positive and negative (is_positive), with date and days_ago. Use them
   for match, contradiction, review-only facts, and related caveats —
@@ -107,10 +136,10 @@ Evidence, in this order of trust:
   that lists the amenity. Weigh recent reviews more. claim text is
   English (text_en) — paraphrase it in the user's language; never paste
   it.
-- rules: official listing rows retrieved for the request. MOST are
-  unrelated nearest neighbors. Cite a rule only when it is actually about
-  the ask, including polarity-false forbids (dogs_allowed false for pet
-  friendly). A tent/cabin/room/hut subject is lodging, not a location or
+- rules: the same site facts as why. The judge kept these rows as about
+  the request, including polarity-false forbids and limits that miss
+  the ask. Write them as what the site states, not as a rules section.
+  A tent/cabin/room/hut subject is lodging, not a location or
   a vibe. electric_stove / kettle is cooking, not campsite electricity.
   A caravan-bay hookup does not serve a guest without a caravan.
   subject is an internal key (tent_pitch, dogs_allowed). Use
@@ -123,18 +152,21 @@ If extract.date_notice or date_truncated is set, say that only the first
 empty is a short follow-up (dates, area, budget, amenities). empty is
 null when you recommend.
 
-Language: pick one from query and stay in it. Packed JSON is English
-(field names, snake_case subjects, review claims). None of that English
-belongs in why, intro, or empty.
+Language: the user JSON field reply_language is already decided. Obey it.
+Packed JSON is English (field names, snake_case subjects, review claims).
+Copy campsite and accommodation_type names from the fit as stored, even
+when that name is Hebrew and reply_language is english.
 
-If query is mostly Hebrew, why, intro, and empty are Hebrew only — no
+If reply_language is hebrew, why, intro, and empty are Hebrew only — no
 Latin, CJK, or mixed-script tokens. For reviews write אורחים מספרים,
 never Guests / guests / ゲuests / ospites. Do not write pitch,
 tent_pitch, outlets, bungalow, camping, accommodation, Stay, stations,
 dank, or glue Latin inside a Hebrew word (not בungalו, איןoutlets,
-יש.pitch). If query is mostly English, why, intro, and empty are
-English only — no Hebrew prose; write "guests report" for reviews.
-Copy campsite and accommodation_type names from the fit as stored.
+יש.pitch). None of the packed English belongs in why, intro, or empty.
+
+If reply_language is english, why, intro, and empty are English
+sentences only. Do not write the prose in Hebrew because the campsite
+name or the listing is Hebrew. Write "guests report" for reviews.
 
 Output JSON only:
 {"recommendations": [{"campsite_id": int, "accommodation_type": str,
@@ -165,6 +197,7 @@ class Recommendation:
     why: str
     booking_url: str = ""
     price_explanation: str = ""
+    dates: tuple[StayWindow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -334,6 +367,7 @@ def pack_recommender_input(query: str, payload: dict[str, Any]) -> dict[str, Any
         extract = {}
     pack: dict[str, Any] = {
         "query": query,
+        "reply_language": "hebrew" if query_is_hebrew(query) else "english",
         "extract": extract,
         "fits": [
             compact_fit(fit)
@@ -370,7 +404,7 @@ def parse_recommender_payload(raw: str) -> dict[str, Any]:
         parsed = _parse_json_payload(text)
     except (json.JSONDecodeError, ValueError):
         try:
-            parsed = _parse_json_payload(_drop_invalid_json_escapes(text))
+            parsed = _parse_json_payload(drop_invalid_json_escapes(text))
         except (json.JSONDecodeError, ValueError):
             logger.warning("recommender unparseable: %s", text[:200])
             return {"recommendations": [], "empty": None, "intro": None}
@@ -386,10 +420,20 @@ def parse_recommender_payload(raw: str) -> dict[str, Any]:
     }
 
 
+def _stay_windows(fit: dict[str, Any]) -> tuple[StayWindow, ...]:
+    key = stay_key(fit)
+    fallback = None
+    if key is not None:
+        fallback = StayWindow(
+            key.start, key.end, _as_text(fit.get("booking_url"))
+        )
+    return windows_from_dates(fit.get("dates"), fallback=fallback)
+
+
 def validate_recommendations(
     parsed: dict[str, Any], fits: list[dict[str, Any]]
 ) -> list[Recommendation]:
-    """Keep at most two recs whose stay identity exists in fits."""
+    """Keep at most three recs whose stay identity exists in fits."""
     by_key: dict[_StayKey, dict[str, Any]] = {}
     for fit in fits:
         if not isinstance(fit, dict):
@@ -420,36 +464,50 @@ def validate_recommendations(
                 why=why,
                 booking_url=_as_text(fit.get("booking_url")),
                 price_explanation=_as_text(fit.get("price_explanation")),
+                dates=_stay_windows(fit),
             )
         )
-        if len(kept) >= 2:
+        if len(kept) >= 3:
             break
     return kept
 
 
-def _day_month(iso: str) -> str:
-    parts = _as_text(iso).split("-")
-    if len(parts) < 3:
-        return _as_text(iso)
-    try:
-        return f"{int(parts[2])}.{int(parts[1])}"
-    except ValueError:
-        return _as_text(iso)
+def _pad_to_top(
+    recs: list[Recommendation], fits: list[dict[str, Any]]
+) -> list[Recommendation]:
+    """One model pick still shows the next best fits, up to three."""
+    if len(recs) != 1:
+        return recs
+    rows = [
+        {
+            "campsite_id": rec.campsite_id,
+            "accommodation_type": rec.accommodation_type,
+            "start": rec.start,
+            "end": rec.end,
+            "why": rec.why,
+        }
+        for rec in recs
+    ]
+    for fit in fits:
+        key = stay_key(fit)
+        if key is None:
+            continue
+        rows.append(
+            {
+                "campsite_id": key.campsite_id,
+                "accommodation_type": key.accommodation_type,
+                "start": key.start,
+                "end": key.end,
+                "why": "",
+            }
+        )
+    return validate_recommendations({"recommendations": rows}, fits)
 
 
-def _date_lead(recs: list[Recommendation]) -> str:
-    ranges: list[str] = []
-    seen: set[str] = set()
-    for rec in recs:
-        label = _day_month(rec.start)
-        if rec.end and rec.end != rec.start:
-            end_label = _day_month(rec.end)
-            if end_label != label:
-                label = f"{label}–{end_label}"
-        if label not in seen:
-            seen.add(label)
-            ranges.append(label)
-    return ", ".join(ranges)
+def _rec_windows(rec: Recommendation) -> tuple[StayWindow, ...]:
+    if rec.dates:
+        return rec.dates
+    return (StayWindow(rec.start, rec.end, rec.booking_url),)
 
 
 def _price_label(value: Any) -> str:
@@ -470,14 +528,23 @@ def render_recommendations(
     empty: str | None = None,
     date_notice: str | None = None,
     intro: str | None = None,
+    query: str = "",
+    why_not: list[dict[str, Any]] | None = None,
+    constraints: dict[str, Any] | None = None,
 ) -> str:
+    hebrew = query_is_hebrew(query)
+    funnel = render_why_not(why_not, hebrew=hebrew, constraints=constraints)
     if not recs:
         text = _as_text(empty) or EMPTY_REPLY_FALLBACK
         notice = _as_text(date_notice)
         if notice and notice not in text:
-            return f"{notice}\n\n{text}".strip()
+            text = f"{notice}\n\n{text}".strip()
+        if funnel:
+            return f"{text}\n\n{funnel}".strip()
         return text
-    lines = [_date_lead(recs)]
+    labels = [stay_date_label(_rec_windows(rec)) for rec in recs]
+    shared = len(set(labels)) == 1 and bool(labels[0])
+    lines = [labels[0]] if shared else []
     notice = _as_text(date_notice)
     if notice:
         lines.append(notice)
@@ -494,12 +561,18 @@ def render_recommendations(
         if price:
             title = f"{title} ({price})"
         lines.append(f"{i}. {title}")
+        if not shared and labels[i - 1]:
+            lines.append(f"   {labels[i - 1]}")
         if rec.why:
             lines.append(f"   {rec.why}")
-        if rec.booking_url:
-            lines.append(f"   {rec.booking_url}")
+        lines.extend(
+            booking_lines(rec.dates, rec.booking_url)
+        )
         if i < len(recs):
             lines.append("")
+    if funnel:
+        lines.append("")
+        lines.append(funnel)
     return "\n".join(lines).strip()
 
 
@@ -516,64 +589,20 @@ def recommendation_row(rec: Recommendation) -> dict[str, Any]:
     }
 
 
-def _json_object_prefix(raw: str) -> str:
-    start = (raw or "").find("{")
-    if start < 0:
-        return ""
-    return raw[start:]
-
-
-def _drop_invalid_json_escapes(text: str) -> str:
-    """Keep only JSON string escapes; turn `\\pitch` into `pitch`."""
-    out: list[str] = []
-    i = 0
-    n = len(text)
-    while i < n:
-        if text[i] != "\\":
-            out.append(text[i])
-            i += 1
-            continue
-        nxt = text[i + 1] if i + 1 < n else ""
-        if nxt in '"\\/bfnrt':
-            out.append(text[i : i + 2])
-            i += 2
-            continue
-        hex_digits = "0123456789abcdefABCDEF"
-        if (
-            nxt == "u"
-            and i + 5 < n
-            and all(ch in hex_digits for ch in text[i + 2 : i + 6])
-        ):
-            out.append(text[i : i + 6])
-            i += 6
-            continue
-        i += 1
-    return "".join(out)
-
-
-def _parse_stream_json(blob: str) -> dict[str, Any] | None:
-    """parse_partial_json re-raises on a finished-but-illegal `\\escape`."""
-    for candidate in (blob, _drop_invalid_json_escapes(blob)):
-        try:
-            parsed = parse_partial_json(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
-    return None
-
-
 def _draft_spoken_text(
     raw: str,
     fits: list[dict[str, Any]],
     *,
     date_notice: str | None = None,
+    query: str = "",
+    why_not: list[dict[str, Any]] | None = None,
+    constraints: dict[str, Any] | None = None,
 ) -> str | None:
     """Spoken reply from a possibly incomplete JSON prefix. None if nothing to show."""
-    blob = _json_object_prefix(raw)
+    blob = json_object_prefix(raw)
     if not blob:
         return None
-    parsed = _parse_stream_json(blob)
+    parsed = parse_stream_json(blob)
     if parsed is None:
         return None
     rec_rows = parsed.get("recommendations")
@@ -581,8 +610,11 @@ def _draft_spoken_text(
         rec_rows = []
     empty_val = parsed.get("empty")
     empty_text = empty_val.strip() if isinstance(empty_val, str) else ""
-    recs = validate_recommendations(
-        {"recommendations": [row for row in rec_rows if isinstance(row, dict)]},
+    recs = _pad_to_top(
+        validate_recommendations(
+            {"recommendations": [row for row in rec_rows if isinstance(row, dict)]},
+            fits,
+        ),
         fits,
     )
     intro_val = parsed.get("intro")
@@ -593,10 +625,18 @@ def _draft_spoken_text(
             empty=None,
             date_notice=date_notice,
             intro=intro_text,
+            query=query,
+            why_not=why_not,
+            constraints=constraints,
         )
     if empty_text:
         return render_recommendations(
-            [], empty=empty_text, date_notice=date_notice
+            [],
+            empty=empty_text,
+            date_notice=date_notice,
+            query=query,
+            why_not=why_not,
+            constraints=constraints,
         )
     return None
 
@@ -607,6 +647,7 @@ def recommend_from_payload(
     *,
     chat: Any | None = None,
 ) -> RecommendResult:
+    report_turn_status(RANKING)
     pack = pack_recommender_input(query, payload)
     user_msg = HumanMessage(
         content=json.dumps(pack, ensure_ascii=False, default=str)
@@ -616,6 +657,8 @@ def recommend_from_payload(
         "date_notice"
     )
     notice = date_notice if isinstance(date_notice, str) else None
+    why_not = payload.get("why_not")
+    funnel = why_not if isinstance(why_not, list) else None
 
     def _run(call, *, started: float, fallback_from: str | None = None):
         on_text = _recommend_text_sink.get()
@@ -644,7 +687,16 @@ def recommend_from_payload(
                 continue
             clock.note_text()
             parts.append(delta)
-            draft = _draft_spoken_text("".join(parts), fits, date_notice=notice)
+            draft = _draft_spoken_text(
+                "".join(parts),
+                fits,
+                date_notice=notice,
+                query=query,
+                why_not=funnel,
+                constraints=payload.get("constraints")
+                if isinstance(payload.get("constraints"), dict)
+                else None,
+            )
             if draft is None or draft == last_draft:
                 continue
             last_draft = draft
@@ -662,11 +714,19 @@ def recommend_from_payload(
         )
         raw = "".join(parts)
         parsed = parse_recommender_payload(raw)
-        recs = validate_recommendations(parsed, fits)
+        recs = _pad_to_top(validate_recommendations(parsed, fits), fits)
         empty = parsed.get("empty") if not recs else None
         intro = parsed.get("intro") if len(recs) >= 2 else None
         text = render_recommendations(
-            recs, empty=empty, date_notice=notice, intro=intro
+            recs,
+            empty=empty,
+            date_notice=notice,
+            intro=intro,
+            query=query,
+            why_not=funnel,
+            constraints=payload.get("constraints")
+            if isinstance(payload.get("constraints"), dict)
+            else None,
         )
         if on_text is not None and text != last_draft:
             on_text(text)

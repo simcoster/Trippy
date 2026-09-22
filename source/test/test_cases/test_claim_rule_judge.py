@@ -45,7 +45,8 @@ def test_claim_only_fit_dropped_when_judge_says_not_satisfies():
     )
     assert out["fits"] == []
     assert out["rejected_count"] == 1
-    assert out["rejected"][0]["why"][-1]["reason"] == "claim_not_verified"
+    assert out["rejected"][0]["why"] == []
+    assert out["rejected"][0]["claim_judge"][0]["satisfies"] is False
 
 
 def test_claim_only_fit_kept_when_judge_satisfies_and_evidence_filtered():
@@ -120,7 +121,10 @@ def test_stated_amenity_is_dropped_when_judge_says_no():
     )
     assert out["fits"] == []
     assert out["rejected_count"] == 1
-    assert out["rejected"][0]["why"][-1]["reason"] == "claim_not_verified"
+    assert out["rejected"][0]["why"] == [
+        {"query": "fridge", "stated_amenity": "refrigerator"}
+    ]
+    assert out["rejected"][0]["claim_judge"][0]["satisfies"] is False
 
 
 def test_relevant_negative_stays_on_rejected_amenity_fit():

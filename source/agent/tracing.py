@@ -135,5 +135,6 @@ def emit_child_span(
             tags=tags,
         )
         child.end(outputs=outputs)
+        child.post()
     except Exception:
         return

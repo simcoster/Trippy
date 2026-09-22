@@ -100,7 +100,7 @@ if not hasattr(_recommender_timing, "last_recommend_timing"):
 
 import source.agent.graph as agent_graph
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.keepalive import ping_new_session, start_model_keepalive
+from source.agent.keepalive import ping_new_session
 from source.agent.recommender.recommend import listen_recommend_text
 from source.agent.recommender.timing import last_recommend_timing
 from source.agent.search import amenities, availability, campsites, claims, embed, rules
@@ -111,6 +111,7 @@ from source.agent.tracing import (
     project_name,
     tracing_configured,
 )
+from source.agent.turn_status import SEARCHING, set_turn_status
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
@@ -131,9 +132,22 @@ st.set_page_config(
 )
 # Streamlit binds "c" to Clear cache; Ctrl+C in the browser opens that dialog.
 st.set_option("client.toolbarMode", "viewer")
+# A Hebrew paragraph starts on the right; an English one stays on the left.
+# plaintext takes the direction from the first strong letter in that block.
+st.markdown(
+    """
+<style>
+[data-testid="stChatMessageContent"] p,
+[data-testid="stChatMessageContent"] li {
+    unicode-bidi: plaintext;
+    text-align: start;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
-start_model_keepalive()
 
 _USER_ERROR = "Something went wrong."
 logger = logging.getLogger("trippy.streamlit")
@@ -1324,24 +1338,41 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
+        phase = (
+            st.status(SEARCHING, expanded=False, state="running")
+            if stop_after != "extractor"
+            else None
+        )
         reply_box = st.empty()
         if not _PUBLIC_UI:
             _progress_ui = st.empty()
+
+        def _show_phase(text: str) -> None:
+            if phase is not None:
+                phase.update(label=text, state="running")
+
+        set_turn_status(_show_phase if phase is not None else None)
+        failed = False
         try:
-            with st.spinner("Thinking…"):
-                try:
-                    if _db_error:
-                        reply, trace = _USER_ERROR, []
-                    else:
-                        with listen_recommend_text(reply_box.markdown):
-                            reply, trace = invoke_agent(
-                                prompt, stop_after=stop_after
-                            )
-                except Exception as e:
-                    reply = _report_error(e)
-                    trace = []
+            try:
+                if _db_error:
+                    reply, trace = _USER_ERROR, []
+                else:
+                    with listen_recommend_text(reply_box.markdown):
+                        reply, trace = invoke_agent(
+                            prompt, stop_after=stop_after
+                        )
+            except Exception as e:
+                reply = _report_error(e)
+                trace = []
+                failed = True
+                if phase is not None:
+                    phase.update(state="error")
         finally:
+            set_turn_status(None)
             _progress_ui = None
+            if phase is not None and not failed:
+                phase.update(state="complete")
         reply_box.markdown(reply)
         if trace and not _PUBLIC_UI:
             with st.expander("LangGraph trace", expanded=True):

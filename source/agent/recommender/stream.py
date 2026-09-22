@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import queue
 import threading
 import time
@@ -73,7 +74,15 @@ def iter_chat_chunks(
         else:
             pending.put(("done", None))
 
-    threading.Thread(target=_run, daemon=True, name="recommend-ttft").start()
+    # The first-token wait runs the stream off-thread. Copy the caller
+    # context so LangSmith still records that model call under this node.
+    caller = contextvars.copy_context()
+    threading.Thread(
+        target=caller.run,
+        args=(_run,),
+        daemon=True,
+        name="recommend-ttft",
+    ).start()
     deadline = time.monotonic() + first_token_sec
     saw_token = False
     while True:

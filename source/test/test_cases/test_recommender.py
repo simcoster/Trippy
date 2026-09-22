@@ -128,7 +128,7 @@ def test_rules_fall_back_to_campsite_rules():
     assert compact["rules"][0]["rules"][0]["subject"] == "ignored_when_retrieved"
 
 
-def test_validate_drops_invented_and_caps_at_two():
+def test_validate_drops_invented_and_caps_at_three():
     fits = [
         _fit(),
         _fit(
@@ -175,7 +175,7 @@ def test_validate_drops_invented_and_caps_at_two():
         ]
     }
     recs = validate_recommendations(parsed, fits)
-    assert [r.campsite_id for r in recs] == [37, 38]
+    assert [r.campsite_id for r in recs] == [37, 38, 1]
     assert recs[0].campsite == "אכזיב צפון"
     assert recs[0].why == "ים"
 

@@ -1,0 +1,4403 @@
+{
+    "fits": [
+        {
+            "campsite_id": 1,
+            "campsite": "חניון לילה גן לאומי חורשת טל",
+            "accommodation_type_id": 1,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגר [76.0], 2 ילד [58.0] []; רגיל",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=9_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגר [76.0], 2 ילד [58.0] []; רגיל",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=9_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 268.0,
+            "price_explanation": "2 מבוגר [76.0], 2 ילד [58.0] []; רגיל",
+            "why": [],
+            "score": 5.7212656660926475,
+            "review_claims": [
+                {
+                    "query": "pools for children",
+                    "claim": "Two pools are open.",
+                    "date": "2026-09-04",
+                    "days_ago": 18,
+                    "is_positive": true
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "There is a natural water pool, lakes, and streams for young children to play in.",
+                    "date": "2026-09-12",
+                    "days_ago": 10,
+                    "is_positive": true
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "There are shallow and deep pools with a lifeguard on duty.",
+                    "date": "2026-05-19",
+                    "days_ago": 126,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 1,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "מטבחון כולל: מקרר, קומקום חשמלי, מיקרוגל, פלטה חשמלית לבישול.",
+                        "accommodation_type_id": 4,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 1,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "בכל בונגלו: 4 מיטות, מזרנים, מיני מקרר, ארונית, שקע חשמל, מזגן.",
+                        "accommodation_type_id": 5,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 1,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "מטבחון: מקרר, קומקום חשמלי, פלטה חשמלית, מיקרוגל.",
+                        "accommodation_type_id": 3,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 1,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "מטבחון כולל: מקרר, קומקום חשמלי, פלטה חשמלית, מיקרוגל.",
+                        "accommodation_type_id": 2,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 1,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "בכל בונגלו: 4 מיטות, מזרנים, מיני מקרר, ארונית, שקע חשמל, מזגן.",
+                        "accommodation_type_id": 6,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=9_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "9_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        { "claim": "Two pools are open.", "is_positive": true },
+                        {
+                            "claim": "There is a natural water pool, lakes, and streams for young children to play in.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "It is ideal for children.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There are shallow and deep pools with a lifeguard on duty.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Two pools are closed.",
+                            "is_positive": false
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        { "claim": "Two pools are open.", "is_positive": true },
+                        {
+                            "claim": "There is a natural water pool, lakes, and streams for young children to play in.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "It is ideal for children.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There are shallow and deep pools with a lifeguard on duty.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Two pools are closed.",
+                            "is_positive": false
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מטבחון כולל: מקרר, קומקום חשמלי, מיקרוגל, פלטה חשמלית לבישול."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "בכל בונגלו: 4 מיטות, מזרנים, מיני מקרר, ארונית, שקע חשמל, מזגן."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מטבחון: מקרר, קומקום חשמלי, פלטה חשמלית, מיקרוגל."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מטבחון כולל: מקרר, קומקום חשמלי, פלטה חשמלית, מיקרוגל."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "בכל בונגלו: 4 מיטות, מזרנים, מיני מקרר, ארונית, שקע חשמל, מזגן."
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [
+                        "Two pools are open.",
+                        "There is a natural water pool, lakes, and streams for young children to play in.",
+                        "There are shallow and deep pools with a lifeguard on duty."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "claim",
+                    "reason": "pools mentioned in claims",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [],
+                    "satisfies": true,
+                    "satisfy_by": "rule",
+                    "reason": "fridge provided in rules",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 37,
+            "campsite": "חניון לילה גן לאומי אכזיב – חניון צפוני",
+            "accommodation_type_id": 8,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-22",
+            "end": "2026-09-23",
+            "dates": [
+                {
+                    "start": "2026-09-22",
+                    "end": "2026-09-23",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-22&out=2026-09-23&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-23",
+                    "end": "2026-09-24",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-23&out=2026-09-24&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 268.0,
+            "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+            "why": [],
+            "score": 2.9875942475957333,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "The refrigerators are set to a temperature that is not cold enough.",
+                    "date": "2025-08-23",
+                    "days_ago": 395,
+                    "is_positive": false
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "The natural pool has shaded areas on the beach, shallow water suitable for young children, space for swimming, many fish of all sizes, rocks, small crabs, and sand for playing.",
+                    "date": "2025-08-23",
+                    "days_ago": 395,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 37,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 3.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (3)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-22&out=2026-09-23&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "23_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "Lifeguards are present on site.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The natural pool has shaded areas on the beach, shallow water suitable for young children, space for swimming, many fish of all sizes, rocks, small crabs, and sand for playing.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The site is suitable for family recreation.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Lifeguards are present on the site.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The refrigerators are set to a temperature that is not cold enough.",
+                            "is_positive": false
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (3)",
+                            "qualifier": 3.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [
+                        "The natural pool has shaded areas on the beach, shallow water suitable for young children, space for swimming, many fish of all sizes, rocks, small crabs, and sand for playing."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "claim",
+                    "reason": "natural pool suits children",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "The refrigerators are set to a temperature that is not cold enough."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided and mentioned",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 38,
+            "campsite": "חניון לילה גן לאומי אכזיב – חניון דרומי",
+            "accommodation_type_id": 8,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-22",
+            "end": "2026-09-23",
+            "dates": [
+                {
+                    "start": "2026-09-22",
+                    "end": "2026-09-23",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-22&out=2026-09-23&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-23",
+                    "end": "2026-09-24",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-23&out=2026-09-24&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 268.0,
+            "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+            "why": [],
+            "score": 2.9875942475957333,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "The refrigerators are set to a temperature that is not cold enough.",
+                    "date": "2025-08-23",
+                    "days_ago": 395,
+                    "is_positive": false
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "The natural pool has shaded areas on the beach, shallow water suitable for young children, space for swimming, many fish of all sizes, rocks, small crabs, and sand for playing.",
+                    "date": "2025-08-23",
+                    "days_ago": 395,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 38,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 3.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (3)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 38,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "2 חושות מחוברות עם דלת מקשרת שבכל חדר: 4 מיטות, 4 מזרנים, מיני מקרר ומאוורר",
+                        "accommodation_type_id": 12,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 38,
+                        "subject": "mini_refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "בכל חושה: 4 מיטות, מזרנים, שירותים, מקלחת עם מים חמים, קומקום חשמלי, תאורה, מיני מקרר, מזגן.",
+                        "accommodation_type_id": 13,
+                        "distance": -0.8705874085426331
+                    },
+                    {
+                        "campsite_id": 38,
+                        "subject": "mini_refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "בכל חושה: 4 מיטות, מזרנים, תאורה, מיני מקרר, מאוורר.",
+                        "accommodation_type_id": 11,
+                        "distance": -0.8705874085426331
+                    },
+                    {
+                        "campsite_id": 38,
+                        "subject": "mini_refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "בכל חושה: 4 מיטות, מזרנים, תאורה, מיני מקרר, מאוורר.",
+                        "accommodation_type_id": 10,
+                        "distance": -0.8705874085426331
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=23_1&in=2026-09-22&out=2026-09-23&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "23_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "Lifeguards are present on site.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The natural pool has shaded areas on the beach, shallow water suitable for young children, space for swimming, many fish of all sizes, rocks, small crabs, and sand for playing.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The site is suitable for family recreation.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Lifeguards are present on the site.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The refrigerators are set to a temperature that is not cold enough.",
+                            "is_positive": false
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (3)",
+                            "qualifier": 3.0
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "2 חושות מחוברות עם דלת מקשרת שבכל חדר: 4 מיטות, 4 מזרנים, מיני מקרר ומאוורר"
+                        },
+                        {
+                            "subject": "mini_refrigerator",
+                            "polarity": true,
+                            "evidence_span": "בכל חושה: 4 מיטות, מזרנים, שירותים, מקלחת עם מים חמים, קומקום חשמלי, תאורה, מיני מקרר, מזגן."
+                        },
+                        {
+                            "subject": "mini_refrigerator",
+                            "polarity": true,
+                            "evidence_span": "בכל חושה: 4 מיטות, מזרנים, תאורה, מיני מקרר, מאוורר."
+                        },
+                        {
+                            "subject": "mini_refrigerator",
+                            "polarity": true,
+                            "evidence_span": "בכל חושה: 4 מיטות, מזרנים, תאורה, מיני מקרר, מאוורר."
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [
+                        "The natural pool has shaded areas on the beach, shallow water suitable for young children, space for swimming, many fish of all sizes, rocks, small crabs, and sand for playing."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "claim",
+                    "reason": "natural pool suits children",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "The refrigerators are set to a temperature that is not cold enough."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided in rules; claim confirms presence",
+                    "relevant_rules": ["refrigerator", "mini_refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 13,
+            "campsite": "חניון לילה גן לאומי הבשור (אשכול)",
+            "accommodation_type_id": 38,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-26",
+            "end": "2026-09-27",
+            "dates": [
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0]; רגיל",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=10_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0]; רגיל",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=10_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 adults [64.0]; 2 children [47.0]; רגיל",
+            "why": [],
+            "score": 0.9811888466490064,
+            "review_claims": [
+                {
+                    "query": "pools for children",
+                    "claim": "The health pools are about half a meter high and suitable for children of almost all ages.",
+                    "date": "2026-08-26",
+                    "days_ago": 27,
+                    "is_positive": true
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "There is a central pool approximately 40-50 cm high.",
+                    "date": "2026-09-12",
+                    "days_ago": 10,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 13,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 7.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (7)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=10_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "10_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The pools are not well maintained.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pool floor is somewhat slippery.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The health pools are about half a meter high and suitable for children of almost all ages.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There is a central pool approximately 40-50 cm high.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The water in the pool is clean.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The pools are not well maintained.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pool floor is somewhat slippery.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The health pools are about half a meter high and suitable for children of almost all ages.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There is a central pool approximately 40-50 cm high.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The water in the pool is clean.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (7)",
+                            "qualifier": 7.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [
+                        "The health pools are about half a meter high and suitable for children of almost all ages.",
+                        "There is a central pool approximately 40-50 cm high."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "claim",
+                    "reason": "pools suitable for children",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [],
+                    "satisfies": true,
+                    "satisfy_by": "rule",
+                    "reason": "fridge provided officially",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 8,
+            "campsite": "חניון לילה גן לאומי מעיין חרוד",
+            "accommodation_type_id": 28,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 268.0,
+            "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+            "why": [],
+            "score": -0.8792383103853308,
+            "review_claims": [
+                {
+                    "query": "pools for children",
+                    "claim": "The pool is shallow and designated for children.",
+                    "date": "2026-08-06",
+                    "days_ago": 47,
+                    "is_positive": false
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "The pools are very shallow and suitable only for young children and toddlers.",
+                    "date": "2026-08-18",
+                    "days_ago": 35,
+                    "is_positive": false
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
+                    "date": "2026-08-18",
+                    "days_ago": 35,
+                    "is_positive": false
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 8,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 10.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (10)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "15_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The pool is shallow and designated for children.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are very shallow and suitable only for young children and toddlers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The site is suitable for very young children.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The water is pleasant at the site.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The pool is shallow and designated for children.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are very shallow and suitable only for young children and toddlers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The site is suitable for very young children.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The water is pleasant at the site.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (10)",
+                            "qualifier": 10.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [
+                        "The pool is shallow and designated for children.",
+                        "The pools are very shallow and suitable only for young children and toddlers.",
+                        "The pools are not suitable for children aged 8 and up or teenagers."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "claim",
+                    "reason": "pools shallow for children",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [],
+                    "satisfies": true,
+                    "satisfy_by": "rule",
+                    "reason": "fridge provided officially",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        }
+    ],
+    "rejected": [
+        {
+            "campsite_id": 17,
+            "campsite": "חניון לילה חאן בארות – מכתש רמון",
+            "accommodation_type_id": 59,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-22",
+            "end": "2026-09-23",
+            "dates": [
+                {
+                    "start": "2026-09-22",
+                    "end": "2026-09-23",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=13_1&in=2026-09-22&out=2026-09-23&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-23",
+                    "end": "2026-09-24",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=13_1&in=2026-09-23&out=2026-09-24&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=13_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=13_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=13_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=13_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+            "why": [],
+            "score": 6.509597967734357,
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 17,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוwave.",
+                        "accommodation_type_id": 65,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 17,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "כל זוג חדרים חולקים: מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוגל.",
+                        "accommodation_type_id": 62,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 17,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "כל זוג חדרים חולקים: מקלחת, שירותים, מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוגל.",
+                        "accommodation_type_id": 63,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 17,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוגל.",
+                        "accommodation_type_id": 64,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 17,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 7.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (7)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=13_1&in=2026-09-22&out=2026-09-23&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "13_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The camping site is family-friendly.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Toilets and showers are available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There is hot water in the showers.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "There is an outdoor kitchen and a sink.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The store sells ice cream and similar items.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוwave."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "כל זוג חדרים חולקים: מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוגל."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "כל זוג חדרים חולקים: מקלחת, שירותים, מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוגל."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוגל."
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (7)",
+                            "qualifier": 7.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool mention",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [],
+                    "satisfies": true,
+                    "satisfy_by": "rule",
+                    "reason": "fridge provided",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 15,
+            "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+            "accommodation_type_id": 49,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0] 2 children [47.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=11_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0] 2 children [47.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=11_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0] 2 children [47.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=11_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 adults [64.0] 2 children [47.0] (רגיל)",
+            "why": [],
+            "score": 6.488372418569563,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "There is a kitchen and refrigerators available.",
+                    "date": "2026-09-14",
+                    "days_ago": 8,
+                    "is_positive": true
+                },
+                {
+                    "query": "fridge",
+                    "claim": "There are power outlets for refrigerators and freezers.",
+                    "date": "2026-08-11",
+                    "days_ago": 42,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 15,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 4.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (4)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=11_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "11_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "Sinks are available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Showers are available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Toilets are available.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "There is a kitchen and refrigerators available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There are power outlets for refrigerators and freezers.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (4)",
+                            "qualifier": 4.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool related sources",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "There is a kitchen and refrigerators available.",
+                        "There are power outlets for refrigerators and freezers."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided and mentioned",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 5,
+            "campsite": "חניון לילה שמורת טבע יהודיה",
+            "accommodation_type_id": 20,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 4,
+                    "price_per_night": 128.0,
+                    "price_explanation": "2 adults [64.0], 2 toddler [free] (ages 0, 0) (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=18_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 128.0,
+                    "price_explanation": "2 adults [64.0], 2 toddler [free] (ages 0, 0) (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=18_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 128.0,
+            "price_explanation": "2 adults [64.0], 2 toddler [free] (ages 0, 0) (רגיל)",
+            "why": [],
+            "score": 5.490815286867059,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "There is a kitchen and refrigerators available.",
+                    "date": "2026-09-18",
+                    "days_ago": 4,
+                    "is_positive": true
+                },
+                {
+                    "query": "fridge",
+                    "claim": "The campsite has a kitchen area with refrigerators.",
+                    "date": "2026-05-23",
+                    "days_ago": 122,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 5,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 1.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקרר (1)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=18_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "18_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The site has sinks for washing dishes.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There is hot water in the showers.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The site provides shared refrigerators.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "There is a kitchen and refrigerators available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The campsite has a kitchen area with refrigerators.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקרר (1)",
+                            "qualifier": 1.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool related",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "There is a kitchen and refrigerators available.",
+                        "The campsite has a kitchen area with refrigerators."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge claimed and provided",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 16,
+            "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+            "accommodation_type_id": 54,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0], 2 ילדים [47.0], (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=12_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0], 2 ילדים [47.0], (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=12_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0], 2 ילדים [47.0], (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=12_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 מבוגרים [64.0], 2 ילדים [47.0], (רגיל)",
+            "why": [],
+            "score": 3.6086552462201698,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "The kitchen had plenty of storage space in the refrigerators.",
+                    "date": "2023-08-13",
+                    "days_ago": 1136,
+                    "is_positive": true
+                },
+                {
+                    "query": "fridge",
+                    "claim": "The campsite has fridges available for use.",
+                    "date": "2026-09-05",
+                    "days_ago": 17,
+                    "is_positive": true
+                },
+                {
+                    "query": "fridge",
+                    "claim": "The tent includes a heater radiator and a small refrigerator.",
+                    "date": "2026-05-13",
+                    "days_ago": 132,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 16,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "בכל טוקול: מזרנים, נקודת חשמל, תאורה, מקרר קטן, פינת ישיבה, חימום בחורף (רדיאטור)",
+                        "accommodation_type_id": 57,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 16,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 7.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (7)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=12_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "12_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The tents are spacious.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Cold drinking water is available at the campsite.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The kitchen had plenty of storage space in the refrigerators.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The campsite has fridges available for use.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The tent includes a heater radiator and a small refrigerator.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "בכל טוקול: מזרנים, נקודת חשמל, תאורה, מקרר קטן, פינת ישיבה, חימום בחורף (רדיאטור)"
+                        },
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (7)",
+                            "qualifier": 7.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool or child water feature",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "The kitchen had plenty of storage space in the refrigerators.",
+                        "The campsite has fridges available for use.",
+                        "The tent includes a heater radiator and a small refrigerator."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided and stated",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 12,
+            "campsite": "חניון לילה גן לאומי תל אשקלון",
+            "accommodation_type_id": 37,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 128.0,
+                    "price_explanation": "2 adults [64.0] + 2 toddler [free] [ages 0, 0]; רגיל",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=17_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 128.0,
+                    "price_explanation": "2 adults [64.0] + 2 toddler [free] [ages 0, 0]; רגיל",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=17_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 128.0,
+            "price_explanation": "2 adults [64.0] + 2 toddler [free] [ages 0, 0]; רגיל",
+            "why": [],
+            "score": 3.0771641273626704,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "Refrigerators are available for storing equipment.",
+                    "date": "2026-07-04",
+                    "days_ago": 80,
+                    "is_positive": true
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "There is access to the sea.",
+                    "date": "2026-07-04",
+                    "days_ago": 80,
+                    "is_positive": true
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "The site is located on the sea shore.",
+                    "date": "2026-09-04",
+                    "days_ago": 18,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 12,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 4.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (4)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    },
+                    {
+                        "campsite_id": 12,
+                        "subject": "accessible_refrigerators",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "הונגשו בחניון הלילה: מקררים, פינת פיקניק",
+                        "accommodation_type_id": null,
+                        "distance": -0.8461925983428955
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=17_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "17_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "Coolers with cold drinking water are available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There is access to the sea.",
+                            "is_positive": true
+                        },
+                        { "claim": "area:center", "is_positive": true },
+                        {
+                            "claim": "The site is located on the sea shore.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "Refrigerators are available for storing equipment.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (4)",
+                            "qualifier": 4.0
+                        },
+                        {
+                            "subject": "accessible_refrigerators",
+                            "polarity": true,
+                            "evidence_span": "הונגשו בחניון הלילה: מקררים, פינת פיקניק"
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [
+                        "There is access to the sea.",
+                        "The site is located on the sea shore."
+                    ],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "sea access not pool",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "Refrigerators are available for storing equipment."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided and stated",
+                    "relevant_rules": [
+                        "refrigerator",
+                        "accessible_refrigerators"
+                    ]
+                }
+            ]
+        },
+        {
+            "campsite_id": 6,
+            "campsite": "חניון לילה חוות משמר הכרמל",
+            "accommodation_type_id": 21,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-26",
+            "end": "2026-09-27",
+            "dates": [
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] ['age 10', 'age 10']",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=24_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] ['age 10', 'age 10']",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=24_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 adults [64.0]; 2 children [47.0] ['age 10', 'age 10']",
+            "why": [],
+            "score": 2.5797863480905496,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "There is a kitchen with gas stoves, refrigerators, and a nearby fire pit area.",
+                    "date": "2020-08-29",
+                    "days_ago": 2215,
+                    "is_positive": true
+                },
+                {
+                    "query": "fridge",
+                    "claim": "The kitchen is good and includes a cooler with cold water.",
+                    "date": "2026-05-30",
+                    "days_ago": 115,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 6,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 3.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (3)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=24_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "24_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The showers are muddy.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The site has showers.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The site has toilets.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "There is a kitchen with gas stoves, refrigerators, and a nearby fire pit area.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The kitchen is good and includes a cooler with cold water.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (3)",
+                            "qualifier": 3.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool mention",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "There is a kitchen with gas stoves, refrigerators, and a nearby fire pit area.",
+                        "The kitchen is good and includes a cooler with cold water."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge in kitchen and rule",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 4,
+            "campsite": "חניון לילה שמורת טבע נחל עמוד",
+            "accommodation_type_id": 18,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 164.0,
+                    "price_explanation": "2 adults [47.0]; 2 children [35.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 164.0,
+                    "price_explanation": "2 adults [47.0]; 2 children [35.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 164.0,
+                    "price_explanation": "2 adults [47.0]; 2 children [35.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 164.0,
+            "price_explanation": "2 adults [47.0]; 2 children [35.0] (רגיל)",
+            "why": [],
+            "score": 2.0835048777500975,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "The kitchen includes refrigerators and faucets.",
+                    "date": "2025-11-22",
+                    "days_ago": 304,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 4,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 3.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (1 במתחם ראשי 1 במתחם משני ו- 1 במתחם הדס)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "27_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "Campfires are allowed.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There are three refrigerators, barbecues, trash bins, water, and toilets available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The campsite has a dishwashing station.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The campsite has toilet facilities.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The kitchen includes refrigerators and faucets.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (1 במתחם ראשי 1 במתחם משני ו- 1 במתחם הדס)",
+                            "qualifier": 3.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool related sources",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "The kitchen includes refrigerators and faucets."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided in kitchen",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 4,
+            "campsite": "חניון לילה שמורת טבע נחל עמוד",
+            "accommodation_type_id": 19,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 292.0,
+                    "price_explanation": "family tent base [292.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 292.0,
+                    "price_explanation": "family tent base [292.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 292.0,
+                    "price_explanation": "family tent base [292.0] (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 292.0,
+            "price_explanation": "family tent base [292.0] (רגיל)",
+            "why": [],
+            "score": 2.0835048777500975,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "The kitchen includes refrigerators and faucets.",
+                    "date": "2025-11-22",
+                    "days_ago": 304,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 4,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 3.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (1 במתחם ראשי 1 במתחם משני ו- 1 במתחם הדס)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=27_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "27_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "Campfires are allowed.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There are three refrigerators, barbecues, trash bins, water, and toilets available.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The campsite has a dishwashing station.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The campsite has toilet facilities.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The kitchen includes refrigerators and faucets.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (1 במתחם ראשי 1 במתחם משני ו- 1 במתחם הדס)",
+                            "qualifier": 3.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool related sources",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "The kitchen includes refrigerators and faucets."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided in kitchen",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 11,
+            "campsite": "חניון לילה הקסטל",
+            "accommodation_type_id": 35,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-27",
+            "end": "2026-09-28",
+            "dates": [
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 128.0,
+                    "price_explanation": "2 adults [64.0]; 2 toddler [free] (age 0, age 0); רגיל",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=20_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 128.0,
+            "price_explanation": "2 adults [64.0]; 2 toddler [free] (age 0, age 0); רגיל",
+            "why": [],
+            "score": 1.5024926730853985,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "The site has refrigerators.",
+                    "date": "2023-09-23",
+                    "days_ago": 1095,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 11,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 3.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (3)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=20_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "20_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The site has bathroom stalls and toilets.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The site has barbecues.",
+                            "is_positive": true
+                        },
+                        { "claim": "The site has shade.", "is_positive": true }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The site has refrigerators.",
+                            "is_positive": true
+                        },
+                        { "claim": "area:center", "is_positive": true }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (3)",
+                            "qualifier": 3.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool or child water feature",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": ["The site has refrigerators."],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided officially and in review",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 10,
+            "campsite": "חניון לילה גן לאומי מקורות הירקון",
+            "accommodation_type_id": 32,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=22_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=22_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=22_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+            "why": [],
+            "score": 0.6448206316772466,
+            "review_claims": [
+                {
+                    "query": "fridge",
+                    "claim": "There are refrigerators available for use, approximately 10 to 15 small units.",
+                    "date": "2021-08-14",
+                    "days_ago": 1865,
+                    "is_positive": true
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [],
+                "fridge": [
+                    {
+                        "campsite_id": 10,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 1.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (1)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840981364250183
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=22_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "22_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "There are water taps with drinking water.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "Toilets are available at the site.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The site has regular showers.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": []
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "There are refrigerators available for use, approximately 10 to 15 small units.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "There is a cooler with cold drinking water.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (1)",
+                            "qualifier": 1.0
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no pool mentions",
+                    "relevant_rules": []
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [
+                        "There are refrigerators available for use, approximately 10 to 15 small units."
+                    ],
+                    "satisfies": true,
+                    "satisfy_by": "both",
+                    "reason": "fridge provided officially",
+                    "relevant_rules": ["refrigerator"]
+                }
+            ]
+        },
+        {
+            "campsite_id": 38,
+            "campsite": "חניון לילה גן לאומי אכזיב – חניון דרומי",
+            "accommodation_type_id": 11,
+            "accommodation_type": "חושה",
+            "start": "2026-09-22",
+            "end": "2026-09-23",
+            "dates": [
+                {
+                    "start": "2026-09-22",
+                    "end": "2026-09-23",
+                    "room_count": 12,
+                    "price_per_night": 350.0,
+                    "price_explanation": "יחידת אירוח"
+                },
+                {
+                    "start": "2026-09-23",
+                    "end": "2026-09-24",
+                    "room_count": 9,
+                    "price_per_night": 350.0,
+                    "price_explanation": "יחידת אירוח"
+                }
+            ],
+            "room_count": 12,
+            "max_occupancy": 4,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "יחידת אירוח",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 17,
+            "campsite": "חניון לילה חאן בארות – מכתש רמון",
+            "accommodation_type_id": 61,
+            "accommodation_type": "מאהל גדול קבוע",
+            "start": "2026-09-22",
+            "end": "2026-09-23",
+            "dates": [
+                {
+                    "start": "2026-09-22",
+                    "end": "2026-09-23",
+                    "room_count": 6,
+                    "price_per_night": 350.0,
+                    "price_explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)"
+                },
+                {
+                    "start": "2026-09-23",
+                    "end": "2026-09-24",
+                    "room_count": 6,
+                    "price_per_night": 350.0,
+                    "price_explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)"
+                },
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 5,
+                    "price_per_night": 350.0,
+                    "price_explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 350.0,
+                    "price_explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 5,
+                    "price_per_night": 350.0,
+                    "price_explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 6,
+                    "price_per_night": 350.0,
+                    "price_explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)"
+                }
+            ],
+            "room_count": 6,
+            "max_occupancy": 12,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 18,
+            "campsite": "חניון לילה שמורת טבע חי-בר יוטבתה",
+            "accommodation_type_id": 67,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-22",
+            "end": "2026-09-23",
+            "dates": [
+                {
+                    "start": "2026-09-22",
+                    "end": "2026-09-23",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "אוברול [350.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-23",
+                    "end": "2026-09-24",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "אוברול [350.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "אוברול [350.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "אוברול [350.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "אוברול [350.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "אוברול [350.0] + (רגיל)"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "אוברול [350.0] + (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 1,
+            "campsite": "חניון לילה גן לאומי חורשת טל",
+            "accommodation_type_id": 5,
+            "accommodation_type": "בונגלו מונגש עם מזגן",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 2,
+                    "price_per_night": null,
+                    "price_explanation": null
+                }
+            ],
+            "room_count": 2,
+            "max_occupancy": 4,
+            "occupancy_unknown": false,
+            "price_per_night": null,
+            "price_explanation": null,
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 1,
+            "campsite": "חניון לילה גן לאומי חורשת טל",
+            "accommodation_type_id": 6,
+            "accommodation_type": "בונגלו עם מזגן",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 18,
+                    "price_per_night": 430.0,
+                    "price_explanation": "מחיר בסיס 430.0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 3,
+                    "price_per_night": 530.0,
+                    "price_explanation": "מחיר בסיס 530.0"
+                }
+            ],
+            "room_count": 18,
+            "max_occupancy": 4,
+            "occupancy_unknown": false,
+            "price_per_night": 430.0,
+            "price_explanation": "מחיר בסיס 430.0",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 8,
+            "campsite": "חניון לילה גן לאומי מעיין חרוד",
+            "accommodation_type_id": 30,
+            "accommodation_type": "עמדת חניה לקרוואן פרטי",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 8,
+                    "price_per_night": 305.0,
+                    "price_explanation": "unit base [305.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 3,
+                    "price_per_night": 305.0,
+                    "price_explanation": "unit base [305.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 5,
+                    "price_per_night": 305.0,
+                    "price_explanation": "unit base [305.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 305.0,
+                    "price_explanation": "unit base [305.0] + (רגיל)"
+                }
+            ],
+            "room_count": 8,
+            "max_occupancy": 6,
+            "occupancy_unknown": false,
+            "price_per_night": 305.0,
+            "price_explanation": "unit base [305.0] + (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 14,
+            "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+            "accommodation_type_id": 45,
+            "accommodation_type": "מאהל גדול קבוע",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 3,
+                    "price_per_night": 860.0,
+                    "price_explanation": "base [860.0]; רגיל"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 860.0,
+                    "price_explanation": "base [860.0]; רגיל"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 860.0,
+                    "price_explanation": "base [860.0]; רגיל"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 860.0,
+                    "price_explanation": "base [860.0]; רגיל"
+                }
+            ],
+            "room_count": 3,
+            "max_occupancy": 50,
+            "occupancy_unknown": false,
+            "price_per_night": 860.0,
+            "price_explanation": "base [860.0]; רגיל",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 10,
+            "campsite": "חניון לילה גן לאומי מקורות הירקון",
+            "accommodation_type_id": 33,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "בסיס [350.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "בסיס [350.0] + (רגיל)"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "בסיס [350.0] + (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 10,
+            "campsite": "חניון לילה גן לאומי מקורות הירקון",
+            "accommodation_type_id": 34,
+            "accommodation_type": "עמדת חניה לקרוואן פרטי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 324.0,
+                    "price_explanation": "בסיס [230.0] + תוספת 2 ילדים [47.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 324.0,
+                    "price_explanation": "בסיס [230.0] + תוספת 2 ילדים [47.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 324.0,
+                    "price_explanation": "בסיס [230.0] + תוספת 2 ילדים [47.0] + (רגיל)"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 6,
+            "occupancy_unknown": false,
+            "price_per_night": 324.0,
+            "price_explanation": "בסיס [230.0] + תוספת 2 ילדים [47.0] + (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 13,
+            "campsite": "חניון לילה גן לאומי הבשור (אשכול)",
+            "accommodation_type_id": 39,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "unit [350.0]; רגיל"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "unit [350.0]; רגיל"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "unit [350.0]; רגיל",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 13,
+            "campsite": "חניון לילה גן לאומי הבשור (אשכול)",
+            "accommodation_type_id": 41,
+            "accommodation_type": "עמדת חניה לקרוואן פרטי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 408.0,
+                    "price_explanation": "unit [280.0]; 2 extra adults [64.0]; רגיל"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 408.0,
+                    "price_explanation": "unit [280.0]; 2 extra adults [64.0]; רגיל"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 6,
+            "occupancy_unknown": false,
+            "price_per_night": 408.0,
+            "price_explanation": "unit [280.0]; 2 extra adults [64.0]; רגיל",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 14,
+            "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+            "accommodation_type_id": 43,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "base [350.0]; רגיל"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "base [350.0]; רגיל"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "base [350.0]; רגיל"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "base [350.0]; רגיל",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 15,
+            "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+            "accommodation_type_id": 50,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "family tent base [350.0] (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "family tent base [350.0] (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "family tent base [350.0] (רגיל)"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "family tent base [350.0] (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 15,
+            "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+            "accommodation_type_id": 51,
+            "accommodation_type": "מאהל גדול קבוע (מבנה כנעני)",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 3,
+                    "price_per_night": 860.0,
+                    "price_explanation": "large tent base [860.0] (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 3,
+                    "price_per_night": 860.0,
+                    "price_explanation": "large tent base [860.0] (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 3,
+                    "price_per_night": 860.0,
+                    "price_explanation": "large tent base [860.0] (רגיל)"
+                }
+            ],
+            "room_count": 3,
+            "max_occupancy": 35,
+            "occupancy_unknown": false,
+            "price_per_night": 860.0,
+            "price_explanation": "large tent base [860.0] (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 15,
+            "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+            "accommodation_type_id": 53,
+            "accommodation_type": "עמדות חניה לקרוואן פרטי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 374.0,
+                    "price_explanation": "caravan parking base [280.0] + 2 extra child(ren) [47.0] (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 374.0,
+                    "price_explanation": "caravan parking base [280.0] + 2 extra child(ren) [47.0] (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 374.0,
+                    "price_explanation": "caravan parking base [280.0] + 2 extra child(ren) [47.0] (רגיל)"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 6,
+            "occupancy_unknown": false,
+            "price_per_night": 374.0,
+            "price_explanation": "caravan parking base [280.0] + 2 extra child(ren) [47.0] (רגיל)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 16,
+            "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+            "accommodation_type_id": 55,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "מחיר בסיס [350.0] (עד 4 לנים)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "מחיר בסיס [350.0] (עד 4 לנים)"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "מחיר בסיס [350.0] (עד 4 לנים)",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 16,
+            "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+            "accommodation_type_id": 58,
+            "accommodation_type": "עמדות חניה לקרוואן פרטי",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 1,
+                    "price_per_night": 358.0,
+                    "price_explanation": "מחיר בסיס [230.0] (עד 2 לנים), 2 תוספות מבוגרים [64.0]"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 358.0,
+                    "price_explanation": "מחיר בסיס [230.0] (עד 2 לנים), 2 תוספות מבוגרים [64.0]"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 358.0,
+                    "price_explanation": "מחיר בסיס [230.0] (עד 2 לנים), 2 תוספות מבוגרים [64.0]"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 6,
+            "occupancy_unknown": false,
+            "price_per_night": 358.0,
+            "price_explanation": "מחיר בסיס [230.0] (עד 2 לנים), 2 תוספות מבוגרים [64.0]",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 3,
+            "campsite": "חניון לילה גן לאומי מבצר יחיעם",
+            "accommodation_type_id": 16,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-26",
+            "end": "2026-09-27",
+            "dates": [
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": null
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "4 people [350.0]  (רגיל)"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": null,
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 1,
+            "campsite": "חניון לילה גן לאומי חורשת טל",
+            "accommodation_type_id": 7,
+            "accommodation_type": "עמדת חניה לקרוואן פרטי",
+            "start": "2026-09-27",
+            "end": "2026-09-28",
+            "dates": [
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 421.0,
+                    "price_explanation": "מחיר בסיס 305.0, 2 תוספת ילד [58.0]"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 6,
+            "occupancy_unknown": false,
+            "price_per_night": 421.0,
+            "price_explanation": "מחיר בסיס 305.0, 2 תוספת ילד [58.0]",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 6,
+            "campsite": "חניון לילה חוות משמר הכרמל",
+            "accommodation_type_id": 22,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-27",
+            "end": "2026-09-28",
+            "dates": [
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "family tent [350.0]"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "family tent [350.0]",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 11,
+            "campsite": "חניון לילה הקסטל",
+            "accommodation_type_id": 36,
+            "accommodation_type": "השכרת אוהל קמפינג משפחתי",
+            "start": "2026-09-27",
+            "end": "2026-09-28",
+            "dates": [
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 1,
+                    "price_per_night": 350.0,
+                    "price_explanation": "family tent rental [350.0]; רגיל"
+                }
+            ],
+            "room_count": 1,
+            "max_occupancy": 5,
+            "occupancy_unknown": false,
+            "price_per_night": 350.0,
+            "price_explanation": "family tent rental [350.0]; רגיל",
+            "why": [{ "reason": "price" }]
+        },
+        {
+            "campsite_id": 18,
+            "campsite": "חניון לילה שמורת טבע חי-בר יוטבתה",
+            "accommodation_type_id": 66,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-22",
+            "end": "2026-09-23",
+            "dates": [
+                {
+                    "start": "2026-09-22",
+                    "end": "2026-09-23",
+                    "room_count": 3,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-23",
+                    "end": "2026-09-24",
+                    "room_count": 3,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 3,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 3,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 3,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 3,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)"
+                }
+            ],
+            "room_count": 3,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+            "why": [
+                {
+                    "reason": "missing_stated_amenity",
+                    "query": "pools for children"
+                }
+            ]
+        },
+        {
+            "campsite_id": 14,
+            "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+            "accommodation_type_id": 42,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-25",
+            "end": "2026-09-26",
+            "dates": [
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "adult [64.0]; adult [64.0]; child [47.0] [age 10]; child [47.0] [age 10]; רגיל"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "adult [64.0]; adult [64.0]; child [47.0] [age 10]; child [47.0] [age 10]; רגיל"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "adult [64.0]; adult [64.0]; child [47.0] [age 10]; child [47.0] [age 10]; רגיל"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "adult [64.0]; adult [64.0]; child [47.0] [age 10]; child [47.0] [age 10]; רגיל",
+            "why": [
+                {
+                    "reason": "missing_stated_amenity",
+                    "query": "pools for children"
+                }
+            ]
+        },
+        {
+            "campsite_id": 3,
+            "campsite": "חניון לילה גן לאומי מבצר יחיעם",
+            "accommodation_type_id": 15,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-26",
+            "end": "2026-09-27",
+            "dates": [
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] (רגיל)"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 222.0,
+                    "price_explanation": "2 adults [64.0]; 2 children [47.0] (רגיל)"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 222.0,
+            "price_explanation": "2 adults [64.0]; 2 children [47.0] (רגיל)",
+            "why": [
+                {
+                    "reason": "missing_stated_amenity",
+                    "query": "pools for children"
+                }
+            ]
+        }
+    ],
+    "rejected_count": 34,
+    "constraints": {
+        "numeric_constraints": [
+            { "field": "party_size", "operator": ">=", "value": 4 },
+            { "field": "price_per_night", "operator": "<=", "value": 300 }
+        ],
+        "semantic_constraints": [
+            { "query": "pools for children", "locus": "site" },
+            { "query": "fridge", "locus": "site" }
+        ],
+        "date_windows": [
+            { "start": "2026-09-22", "end": "2026-09-23" },
+            { "start": "2026-09-23", "end": "2026-09-24" },
+            { "start": "2026-09-24", "end": "2026-09-25" },
+            { "start": "2026-09-25", "end": "2026-09-26" },
+            { "start": "2026-09-26", "end": "2026-09-27" },
+            { "start": "2026-09-27", "end": "2026-09-28" }
+        ],
+        "date": { "start": "2026-09-22", "end": "2026-09-23" },
+        "date_truncated": false,
+        "date_notice": null,
+        "child_num": 2
+    },
+    "open_slots_query": {
+        "sql": "SELECT stay_start, stay_end, site_id, campsite, room_count,\n       type_id, type_name, max_occupancy, parent_id\nFROM (\n  SELECT w.stay_start, w.stay_end, a.site_id, c.name AS campsite,\n         MIN(a.room_count) AS room_count, at.id AS type_id,\n         at.name AS type_name, at.max_occupancy, c.parent_id,\n         ROW_NUMBER() OVER (\n           PARTITION BY w.stay_start, w.stay_end ORDER BY at.id\n         ) AS rn\n  FROM unnest(ARRAY['2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27']::date[], ARRAY['2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28']::date[], ARRAY[1, 1, 1, 1, 1, 1]::int[])\n    AS w(stay_start, stay_end, night_count)\n  JOIN availability a\n    ON a.start_date >= w.stay_start\n   AND a.start_date < w.stay_end\n   AND a.end_date = a.start_date + 1\n  JOIN accommodation_types at ON at.id = a.accommodation_type_id\n  JOIN campsites c ON c.id = a.site_id\n  WHERE (at.max_occupancy IS NULL OR at.max_occupancy >= 4)\n  GROUP BY w.stay_start, w.stay_end, w.night_count,\n           a.site_id, c.name, at.id, at.name, at.max_occupancy,\n           c.parent_id\n  HAVING COUNT(DISTINCT a.start_date) = w.night_count\n) q\nWHERE rn <= 80\nORDER BY stay_start, type_id",
+        "price_constraint": ["<=", 300.0],
+        "windows": [
+            { "start": "2026-09-22", "end": "2026-09-23" },
+            { "start": "2026-09-23", "end": "2026-09-24" },
+            { "start": "2026-09-24", "end": "2026-09-25" },
+            { "start": "2026-09-25", "end": "2026-09-26" },
+            { "start": "2026-09-26", "end": "2026-09-27" },
+            { "start": "2026-09-27", "end": "2026-09-28" }
+        ],
+        "row_count": 112,
+        "sandbox": {
+            "url": "http://127.0.0.1:8503",
+            "skipped": null,
+            "calls": [
+                {
+                    "request_id": "37:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 37,
+                    "campsite": "חניון לילה גן לאומי אכזיב – חניון צפוני",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": 2,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "38:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 38,
+                    "campsite": "חניון לילה גן לאומי אכזיב – חניון דרומי",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": 2,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "38:חושה:2:0:c2:",
+                    "campsite_id": 38,
+                    "campsite": "חניון לילה גן לאומי אכזיב – חניון דרומי",
+                    "lodging": "חושה",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": 2,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "יחידת אירוח",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "17:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 17,
+                    "campsite": "חניון לילה חאן בארות – מכתש רמון",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "17:מאהל גדול קבוע:2:0:c2:",
+                    "campsite_id": 17,
+                    "campsite": "חניון לילה חאן בארות – מכתש רמון",
+                    "lodging": "מאהל גדול קבוע",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "18:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 18,
+                    "campsite": "חניון לילה שמורת טבע חי-בר יוטבתה",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "18:השכרת אוהל קמפינג משפחתי:2:0:c2:",
+                    "campsite_id": 18,
+                    "campsite": "חניון לילה שמורת טבע חי-בר יוטבתה",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "אוברול [350.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "1:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 1,
+                    "campsite": "חניון לילה גן לאומי חורשת טל",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 מבוגר [76.0], 2 ילד [58.0] []; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "1:בונגלו מונגש עם מזגן:2:0:c2:",
+                    "campsite_id": 1,
+                    "campsite": "חניון לילה גן לאומי חורשת טל",
+                    "lodging": "בונגלו מונגש עם מזגן",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": false,
+                    "error": "<Lodging.BUNGALOW_AC_ACCESSIBLE: 'בונגלו מונגש עם מזגן'>",
+                    "source": "quote_night"
+                },
+                {
+                    "request_id": "1:בונגלו עם מזגן:2:0:c2:",
+                    "campsite_id": 1,
+                    "campsite": "חניון לילה גן לאומי חורשת טל",
+                    "lodging": "בונגלו עם מזגן",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 430.0,
+                    "explanation": "מחיר בסיס 430.0",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "5:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 5,
+                    "campsite": "חניון לילה שמורת טבע יהודיה",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 128.0,
+                    "explanation": "2 adults [64.0], 2 toddler [free] (ages 0, 0) (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "8:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 8,
+                    "campsite": "חניון לילה גן לאומי מעיין חרוד",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "8:עמדת חניה לקרוואן פרטי:2:0:c2:",
+                    "campsite_id": 8,
+                    "campsite": "חניון לילה גן לאומי מעיין חרוד",
+                    "lodging": "עמדת חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 305.0,
+                    "explanation": "unit base [305.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "14:מאהל גדול קבוע:2:0:c2:",
+                    "campsite_id": 14,
+                    "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+                    "lodging": "מאהל גדול קבוע",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 860.0,
+                    "explanation": "base [860.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "37:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 37,
+                    "campsite": "חניון לילה גן לאומי אכזיב – חניון צפוני",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": 2,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "4:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 4,
+                    "campsite": "חניון לילה שמורת טבע נחל עמוד",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 164.0,
+                    "explanation": "2 adults [47.0]; 2 children [35.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "4:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 4,
+                    "campsite": "חניון לילה שמורת טבע נחל עמוד",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 292.0,
+                    "explanation": "family tent base [292.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "5:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 5,
+                    "campsite": "חניון לילה שמורת טבע יהודיה",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 128.0,
+                    "explanation": "2 adults [64.0], 2 toddler [free] (ages 0, 0) (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "8:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 8,
+                    "campsite": "חניון לילה גן לאומי מעיין חרוד",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "8:עמדת חניה לקרוואן פרטי:2:1:c2:",
+                    "campsite_id": 8,
+                    "campsite": "חניון לילה גן לאומי מעיין חרוד",
+                    "lodging": "עמדת חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 305.0,
+                    "explanation": "unit base [305.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "10:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 10,
+                    "campsite": "חניון לילה גן לאומי מקורות הירקון",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "10:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 10,
+                    "campsite": "חניון לילה גן לאומי מקורות הירקון",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "בסיס [350.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "10:עמדת חניה לקרוואן פרטי:2:1:c2:",
+                    "campsite_id": 10,
+                    "campsite": "חניון לילה גן לאומי מקורות הירקון",
+                    "lodging": "עמדת חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 324.0,
+                    "explanation": "בסיס [230.0] + תוספת 2 ילדים [47.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "12:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 12,
+                    "campsite": "חניון לילה גן לאומי תל אשקלון",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 128.0,
+                    "explanation": "2 adults [64.0] + 2 toddler [free] [ages 0, 0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "13:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 13,
+                    "campsite": "חניון לילה גן לאומי הבשור (אשכול)",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "unit [350.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "13:עמדת חניה לקרוואן פרטי:2:1:c2:",
+                    "campsite_id": 13,
+                    "campsite": "חניון לילה גן לאומי הבשור (אשכול)",
+                    "lodging": "עמדת חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 408.0,
+                    "explanation": "unit [280.0]; 2 extra adults [64.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "14:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 14,
+                    "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "adult [64.0]; adult [64.0]; child [47.0] [age 10]; child [47.0] [age 10]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "14:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 14,
+                    "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "base [350.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "14:מאהל גדול קבוע:2:1:c2:",
+                    "campsite_id": 14,
+                    "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+                    "lodging": "מאהל גדול קבוע",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 860.0,
+                    "explanation": "base [860.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0] 2 children [47.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "family tent base [350.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:מאהל גדול קבוע (מבנה כנעני):2:1:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "מאהל גדול קבוע (מבנה כנעני)",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 860.0,
+                    "explanation": "large tent base [860.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:עמדות חניה לקרוואן פרטי:2:1:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "עמדות חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 374.0,
+                    "explanation": "caravan parking base [280.0] + 2 extra child(ren) [47.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "16:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 16,
+                    "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 מבוגרים [64.0], 2 ילדים [47.0], (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "16:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 16,
+                    "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "מחיר בסיס [350.0] (עד 4 לנים)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "16:עמדות חניה לקרוואן פרטי:2:1:c2:",
+                    "campsite_id": 16,
+                    "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+                    "lodging": "עמדות חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 358.0,
+                    "explanation": "מחיר בסיס [230.0] (עד 2 לנים), 2 תוספות מבוגרים [64.0]",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "17:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 17,
+                    "campsite": "חניון לילה חאן בארות – מכתש רמון",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "17:מאהל גדול קבוע:2:1:c2:",
+                    "campsite_id": 17,
+                    "campsite": "חניון לילה חאן בארות – מכתש רמון",
+                    "lodging": "מאהל גדול קבוע",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "2 adults [96.0]; 2 children [79.0] [ages ]; (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "18:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 18,
+                    "campsite": "חניון לילה שמורת טבע חי-בר יוטבתה",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "18:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 18,
+                    "campsite": "חניון לילה שמורת טבע חי-בר יוטבתה",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "אוברול [350.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "1:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 1,
+                    "campsite": "חניון לילה גן לאומי חורשת טל",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 מבוגר [76.0], 2 ילד [58.0] []; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "1:בונגלו עם מזגן:2:1:c2:",
+                    "campsite_id": 1,
+                    "campsite": "חניון לילה גן לאומי חורשת טל",
+                    "lodging": "בונגלו עם מזגן",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 530.0,
+                    "explanation": "מחיר בסיס 530.0",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "38:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 38,
+                    "campsite": "חניון לילה גן לאומי אכזיב – חניון דרומי",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": 2,
+                    "ok": true,
+                    "price": 268.0,
+                    "explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "3:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 3,
+                    "campsite": "חניון לילה גן לאומי מבצר יחיעם",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "3:השכרת אוהל קמפינג משפחתי:2:1:c2:",
+                    "campsite_id": 3,
+                    "campsite": "חניון לילה גן לאומי מבצר יחיעם",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": false,
+                    "error": "'weekend'",
+                    "source": "quote_night",
+                    "price": 350.0
+                },
+                {
+                    "request_id": "6:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 6,
+                    "campsite": "חניון לילה חוות משמר הכרמל",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0] ['age 10', 'age 10']",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "13:לינת שטח באוהלים פרטיים:2:1:c2:",
+                    "campsite_id": 13,
+                    "campsite": "חניון לילה גן לאומי הבשור (אשכול)",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": true,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "1:עמדת חניה לקרוואן פרטי:2:0:c2:",
+                    "campsite_id": 1,
+                    "campsite": "חניון לילה גן לאומי חורשת טל",
+                    "lodging": "עמדת חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 421.0,
+                    "explanation": "מחיר בסיס 305.0, 2 תוספת ילד [58.0]",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "3:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 3,
+                    "campsite": "חניון לילה גן לאומי מבצר יחיעם",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "3:השכרת אוהל קמפינג משפחתי:2:0:c2:",
+                    "campsite_id": 3,
+                    "campsite": "חניון לילה גן לאומי מבצר יחיעם",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "4 people [350.0]  (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "4:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 4,
+                    "campsite": "חניון לילה שמורת טבע נחל עמוד",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 164.0,
+                    "explanation": "2 adults [47.0]; 2 children [35.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "4:השכרת אוהל קמפינג משפחתי:2:0:c2:",
+                    "campsite_id": 4,
+                    "campsite": "חניון לילה שמורת טבע נחל עמוד",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 292.0,
+                    "explanation": "family tent base [292.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "6:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 6,
+                    "campsite": "חניון לילה חוות משמר הכרמל",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0] ['age 10', 'age 10']",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "6:השכרת אוהל קמפינג משפחתי:2:0:c2:",
+                    "campsite_id": 6,
+                    "campsite": "חניון לילה חוות משמר הכרמל",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "family tent [350.0]",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "10:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 10,
+                    "campsite": "חניון לילה גן לאומי מקורות הירקון",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "10:עמדת חניה לקרוואן פרטי:2:0:c2:",
+                    "campsite_id": 10,
+                    "campsite": "חניון לילה גן לאומי מקורות הירקון",
+                    "lodging": "עמדת חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 324.0,
+                    "explanation": "בסיס [230.0] + תוספת 2 ילדים [47.0] + (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "11:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 11,
+                    "campsite": "חניון לילה הקסטל",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 128.0,
+                    "explanation": "2 adults [64.0]; 2 toddler [free] (age 0, age 0); רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "11:השכרת אוהל קמפינג משפחתי:2:0:c2:",
+                    "campsite_id": 11,
+                    "campsite": "חניון לילה הקסטל",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "family tent rental [350.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "12:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 12,
+                    "campsite": "חניון לילה גן לאומי תל אשקלון",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 128.0,
+                    "explanation": "2 adults [64.0] + 2 toddler [free] [ages 0, 0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "13:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 13,
+                    "campsite": "חניון לילה גן לאומי הבשור (אשכול)",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0]; 2 children [47.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "14:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 14,
+                    "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "adult [64.0]; adult [64.0]; child [47.0] [age 10]; child [47.0] [age 10]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "14:השכרת אוהל קמפינג משפחתי:2:0:c2:",
+                    "campsite_id": 14,
+                    "campsite": "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "base [350.0]; רגיל",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 adults [64.0] 2 children [47.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:השכרת אוהל קמפינג משפחתי:2:0:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "השכרת אוהל קמפינג משפחתי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 350.0,
+                    "explanation": "family tent base [350.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:מאהל גדול קבוע (מבנה כנעני):2:0:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "מאהל גדול קבוע (מבנה כנעני)",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 860.0,
+                    "explanation": "large tent base [860.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "15:עמדות חניה לקרוואן פרטי:2:0:c2:",
+                    "campsite_id": 15,
+                    "campsite": "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                    "lodging": "עמדות חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 374.0,
+                    "explanation": "caravan parking base [280.0] + 2 extra child(ren) [47.0] (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "16:לינת שטח באוהלים פרטיים:2:0:c2:",
+                    "campsite_id": 16,
+                    "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+                    "lodging": "לינת שטח באוהלים פרטיים",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 222.0,
+                    "explanation": "2 מבוגרים [64.0], 2 ילדים [47.0], (רגיל)",
+                    "source": "sandbox"
+                },
+                {
+                    "request_id": "16:עמדות חניה לקרוואן פרטי:2:0:c2:",
+                    "campsite_id": 16,
+                    "campsite": "חניון לילה גן לאומי ממשית – החאן הנבטי",
+                    "lodging": "עמדות חניה לקרוואן פרטי",
+                    "adults_num": 2,
+                    "child_num": 2,
+                    "child_ages": [],
+                    "is_weekend_or_holiday": false,
+                    "planned_entry_time": null,
+                    "planned_exit_time": null,
+                    "parent_site_id": null,
+                    "ok": true,
+                    "price": 358.0,
+                    "explanation": "מחיר בסיס [230.0] (עד 2 לנים), 2 תוספות מבוגרים [64.0]",
+                    "source": "sandbox"
+                }
+            ],
+            "cached": 0,
+            "latency_ms": 647.446500021033
+        },
+        "quoted_count": 56
+    },
+    "why_not": [
+        {
+            "stage": "missing",
+            "count": 12,
+            "query": "pools for children",
+            "sites": [
+                "חניון לילה שמורת טבע חי-בר יוטבתה",
+                "חניון לילה גן לאומי מצדה מערב – מחנה מצדה",
+                "חניון לילה גן לאומי מבצר יחיעם",
+                "חניון לילה חאן בארות – מכתש רמון",
+                "חניון לילה גן לאומי תל ערד – החאן הכנעני",
+                "חניון לילה שמורת טבע יהודיה",
+                "חניון לילה גן לאומי ממשית – החאן הנבטי",
+                "חניון לילה גן לאומי תל אשקלון",
+                "חניון לילה חוות משמר הכרמל",
+                "חניון לילה שמורת טבע נחל עמוד",
+                "חניון לילה הקסטל",
+                "חניון לילה גן לאומי מקורות הירקון"
+            ]
+        }
+    ]
+}

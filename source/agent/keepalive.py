@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import threading
@@ -12,7 +13,11 @@ from typing import Any, NamedTuple
 
 from langchain_core.messages import HumanMessage
 
-from source.agent.tracing import bind_to_current_trace, tracing_configured
+from source.agent.tracing import (
+    bind_to_current_trace,
+    emit_child_span,
+    tracing_configured,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,8 +222,32 @@ def ping_models(
         print(scheduled, flush=True)
         logger.info(scheduled)
 
-    def _run() -> None:
+    def _run() -> str | None:
+        if reason == "session" and chats is None:
+            from source.agent.claim_judge import judge_model, warmup_claim_judge
+
+            scheduled = (
+                f"keepalive ping=system role=claim_judge "
+                f"model={judge_model()} kind=chat reason={reason}"
+            )
+            print(scheduled, flush=True)
+            logger.info(scheduled)
+            ping = bind_to_current_trace(warmup_claim_judge)
+            with ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="keepalive"
+            ) as pool:
+                # Each worker needs its own copy. One Context cannot be
+                # entered on two threads, and without a copy the model
+                # calls land as root runs instead of children.
+                chats_done = pool.submit(
+                    contextvars.copy_context().run, _ping_round, targets
+                )
+                judge_done = pool.submit(contextvars.copy_context().run, ping)
+            chats_done.result()
+            reply = judge_done.result()
+            return reply if isinstance(reply, str) else None
         _ping_round(targets)
+        return None
 
     if tracing_configured():
         try:
@@ -235,7 +264,14 @@ def ping_models(
                 tags=["keepalive", reason],
                 metadata={"keepalive": True, "reason": reason},
             ):
-                _run()
+                judge_reply = _run()
+                if judge_reply is not None:
+                    emit_child_span(
+                        name="keepalive-claim_judge",
+                        inputs={"role": "claim_judge"},
+                        outputs={"reply": judge_reply},
+                        tags=["keepalive", reason, "claim_judge"],
+                    )
             return
         except Exception:
             logger.warning("keepalive langsmith parent failed", exc_info=True)
