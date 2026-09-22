@@ -6,6 +6,16 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-21, tomorrow is on=tomorrow)
+
+**“for tomorrow” / מחר is `on=tomorrow`, not today.** Schema `on`
+was `"YYYY-MM-DD" | "today"` and the prompt forbade ISO, so the 235B
+mapped tomorrow onto the only relative token. `resolve_dates` now
+offsets `tomorrow` by one day (`tonight` stays this night). Few-shot
+of the live English miss plus bare `מחר`.
+`test_date_intent_tomorrow.py`, `test_extractor_tomorrow.py`.
+design.md “Query extractor: date_intent”. experiments.md 2026-09-21 §1.
+
 ### Done (2026-09-20, availability scrape is 4 weeks)
 
 **`scrape-availability` walks 28 nights, not 14.**

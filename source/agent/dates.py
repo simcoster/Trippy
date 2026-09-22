@@ -41,6 +41,13 @@ _WEEKDAY_EN = (
     "sunday",
 )
 
+# Closed `on` tokens from the extractor schema. Offsets are days from today.
+_ON_OFFSET_DAYS = {
+    "today": 0,
+    "tonight": 0,
+    "tomorrow": 1,
+}
+
 
 def today_il(today: date | None = None) -> date:
     if today is not None:
@@ -323,11 +330,11 @@ def resolve_dates(
             windows = _prefer_weekend_windows(windows)
             week_notice = WEEK_TRUNCATED_NOTICE
     elif on:
-        on_d = (
-            today_d
-            if str(on).strip().lower() in {"today", "tonight"}
-            else _parse_iso_day(on)
-        )
+        on_key = str(on).strip().lower()
+        if on_key in _ON_OFFSET_DAYS:
+            on_d = today_d + timedelta(days=_ON_OFFSET_DAYS[on_key])
+        else:
+            on_d = _parse_iso_day(on)
         if on_d is None:
             on_d = today_d
         if weeks_n is not None:
@@ -434,7 +441,8 @@ resolve_dates_tool = StructuredTool.from_function(
         "Friday and Saturday). 'next week' / לשבוע הבא is kind=week, "
         "when=next — not on=today. weeks_from_now for 'in N weeks'; "
         "horizon_days enumerates kind's weekday (weekend=Friday) or, "
-        "with kind=on, consecutive nights from `on`, capped at 4. Do "
+        "with kind=on, consecutive nights from `on`, capped at 4. "
+        "on=today|tonight is this night; on=tomorrow is the next. Do "
         "not set kind=weekend unless the user said weekend. next "
         "weekday is next ISO week, not this week's upcoming day."
     ),

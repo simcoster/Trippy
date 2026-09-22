@@ -90,7 +90,7 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
         "when": "this" | "next" | null,
         "weeks_from_now": N | null,
         "horizon_days": N | null,
-        "on": "YYYY-MM-DD" | "today" | null,
+        "on": "YYYY-MM-DD" | "today" | "tonight" | "tomorrow" | null,
         "nights": 1
       }} | null,
       "campsite": "Horashat Tal" | null,
@@ -137,7 +137,10 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
          only when they asked for several dates over a span — never for a
          season or weather ("בקיץ" / "in the summer" is semantic, not a
          date horizon).
-       - "today" / "החל מהיום" → kind="on", on="today".
+       - "today" / "tonight" / "החל מהיום" / "הלילה" → kind="on",
+         on="today" or on="tonight" (same calendar night).
+       - "tomorrow" / "מחר" → kind="on", on="tomorrow". Not on="today".
+         Do not emit an ISO date for it.
        - "שומר שבת" is semantic ("shabbat observant"), not kind=weekend
          and not a Friday — they did not say סופ״ש / weekend.
        - nights: stay length ("לילה אחד" → 1, "ל2 לילות" → 2). Weekend
@@ -263,6 +266,21 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     }}
 
     Example:
+    Input: "we're looking for a place for 2 adults and 2 kids for tomorrow, with pools for the kids, maybe with a fridge"
+    Output:
+    {{
+      "date_intent": {{"kind": "on", "on": "tomorrow", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [
+        {{"field": "party_size", "operator": ">=", "value": 4}}
+      ],
+      "semantic_constraints": [
+        {{"query": "pools for children", "locus": "site"}},
+        {{"query": "fridge", "locus": "site"}}
+      ]
+    }}
+
+    Example:
     Input: "מקום עם מקררים"
     Output:
     {{
@@ -291,6 +309,16 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     Output:
     {{
       "date_intent": {{"kind": "weekend", "when": "this", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": []
+    }}
+
+    Example:
+    Input: "מחר"
+    Output:
+    {{
+      "date_intent": {{"kind": "on", "on": "tomorrow", "nights": 1}},
       "campsite": null,
       "numeric_constraints": [],
       "semantic_constraints": []

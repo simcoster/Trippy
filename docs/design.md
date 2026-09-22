@@ -859,7 +859,16 @@ Hebrew clocks that used to be mislabelled, and the intents they must emit:
 | שבוע הבא / next week (no weekday) | `kind=week`, `when=next` — nights of that ISO week, not `on=today` |
 | השבוע / this week | `kind=week`, `when=this` (remaining days) |
 | בעוד N שבועות / in N weeks | `weeks_from_now=N`, and no `when` |
+| today / tonight / החל מהיום / הלילה | `kind=on`, `on=today` or `on=tonight` (same night) |
+| tomorrow / מחר | `kind=on`, `on=tomorrow` — not `on=today`, not an ISO date |
 | שומר שבת | semantic (`shabbat observant`), not `kind=weekend` |
+
+`on` relative tokens are `today` / `tonight` / `tomorrow`. The extractor
+must not invent the ISO day; `resolve_dates` offsets them from Israel
+today (`tonight` = this night, `tomorrow` = +1). The live miss
+“for tomorrow” with kids' pools emitted `on=today` because the schema
+only listed `today` and forbade ISO calendars (experiments.md
+2026-09-21 §1).
 
 `kind=week` is Monday–Sunday. The planner caps at 4 windows, so a full
 week keeps Friday and Saturday and fills from Monday. `horizon_days`
