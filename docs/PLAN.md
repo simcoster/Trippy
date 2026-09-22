@@ -6,6 +6,20 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, no periodic keepalive)
+
+**Streamlit no longer starts the 10-minute model ping.** A new browser
+session still sends one `hi` per model endpoint. Supersedes the
+interval thread in design.md; `start_model_keepalive` remains for an
+explicit call.
+
+### Done (2026-09-22, reply language follows the query)
+
+**An English query gets English why and intro.** The pack sets
+`reply_language` from the query, and the prompt obeys that field.
+Hebrew campsite names stay as stored. Supersedes “the model picks the
+language” in the recommender section of design.md.
+
 ### Done (2026-09-22, why-not names the other sites)
 
 **The why-not line names the other available campsites and the reason.**

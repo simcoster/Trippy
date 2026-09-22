@@ -1268,8 +1268,10 @@ useful option; the one fit when that is all there is; never more
 than 3). Prefer different campsites over two types at the same site.
 If the model names only one stay and more fits exist, the reply still
 lists the next best fits up to three; those extras have no model `why`.
-Each `why` is one language — Hebrew only if the query is mostly
-Hebrew, English only if it is mostly English. More than one pick
+Each `why` is one language. The pack sets `reply_language` from the
+query (Hebrew when it has more Hebrew letters than Latin, otherwise
+English). why, intro, and empty follow that field. Campsite names stay
+as stored. More than one pick
 also sets `intro`: note that there is more than one option, name
 them, and compare them somewhat. Phrasing is free; render puts that
 above the numbered list. `intro` is null for a single stay.
@@ -1336,18 +1338,16 @@ paints the rendered reply as soon as `parse_partial_json` can read a
 stay identity or `empty` — not the raw JSON. Recommend usage is
 `role="recommend"`. `client.toolbarMode` is `viewer` so Ctrl+C in the page copies
 instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
-On first load Streamlit starts
-`start_model_keepalive` (`source/agent/keepalive.py`): one
-process-lifetime thread that pings every 600 s (10 min)
-(`TRIPPY_KEEPALIVE_INTERVAL_SEC`; not a measured Nebius idle timeout).
-Each new browser session also sends a 5-token `hi` once per **model
-endpoint** (`ping_new_session`; Reset does not): Kimi, the 235B
-(light and extractor share it), and `Qwen3-Embedding-8B`.
-A retrieve embed already counts as that ping; the interval skip
-does not call Nebius again while the last embed is still inside
-`TRIPPY_KEEPALIVE_INTERVAL_SEC`. LangSmith: tag `keepalive`, run names `model-keepalive-session`
-and `model-keepalive-interval`, children `keepalive-{role}`. Stdout
-prints the ping and the reply (or `keepalive failed`).
+Streamlit does not start the interval keepalive. Each new browser
+session sends a 5-token `hi` once per **model endpoint**
+(`ping_new_session`; Reset does not): Kimi, the 235B (light and
+extractor share it), and `Qwen3-Embedding-8B`. A retrieve embed
+already counts as that ping. `start_model_keepalive` still exists
+for an explicit interval (`TRIPPY_KEEPALIVE_INTERVAL_SEC`, default
+600 s; not a measured Nebius idle timeout) but nothing starts it.
+LangSmith: tag `keepalive`, run name `model-keepalive-session`,
+children `keepalive-{role}`. Stdout prints the ping and the reply
+(or `keepalive failed`).
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
 (experiments.md 2026-09-10 §7). Each recommend dump stores
@@ -1424,8 +1424,8 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
 tool to the terminal and a caption under Thinking while the turn runs.
 Project defaults to `trippy` (`LANGSMITH_PROJECT`). Filter tag
-`keepalive` (`model-keepalive-session` / `model-keepalive-interval`)
-for the idle pings; they are not graph turns. Traces include the
+`keepalive` (`model-keepalive-session`) for the one ping a new
+session sends; it is not a graph turn. Traces include the
 full query. The planner invokes `claim_judge_tool` (`StructuredTool`,
 same pattern as `resolve_dates`) once per (campsite, request). LangSmith
 shows that tool under the planner node: **inputs** are the claims and

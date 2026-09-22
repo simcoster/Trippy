@@ -137,18 +137,21 @@ If extract.date_notice or date_truncated is set, say that only the first
 empty is a short follow-up (dates, area, budget, amenities). empty is
 null when you recommend.
 
-Language: pick one from query and stay in it. Packed JSON is English
-(field names, snake_case subjects, review claims). None of that English
-belongs in why, intro, or empty.
+Language: the user JSON field reply_language is already decided. Obey it.
+Packed JSON is English (field names, snake_case subjects, review claims).
+Copy campsite and accommodation_type names from the fit as stored, even
+when that name is Hebrew and reply_language is english.
 
-If query is mostly Hebrew, why, intro, and empty are Hebrew only — no
+If reply_language is hebrew, why, intro, and empty are Hebrew only — no
 Latin, CJK, or mixed-script tokens. For reviews write אורחים מספרים,
 never Guests / guests / ゲuests / ospites. Do not write pitch,
 tent_pitch, outlets, bungalow, camping, accommodation, Stay, stations,
 dank, or glue Latin inside a Hebrew word (not בungalו, איןoutlets,
-יש.pitch). If query is mostly English, why, intro, and empty are
-English only — no Hebrew prose; write "guests report" for reviews.
-Copy campsite and accommodation_type names from the fit as stored.
+יש.pitch). None of the packed English belongs in why, intro, or empty.
+
+If reply_language is english, why, intro, and empty are English
+sentences only. Do not write the prose in Hebrew because the campsite
+name or the listing is Hebrew. Write "guests report" for reviews.
 
 Output JSON only:
 {"recommendations": [{"campsite_id": int, "accommodation_type": str,
@@ -349,6 +352,7 @@ def pack_recommender_input(query: str, payload: dict[str, Any]) -> dict[str, Any
         extract = {}
     pack: dict[str, Any] = {
         "query": query,
+        "reply_language": "hebrew" if query_is_hebrew(query) else "english",
         "extract": extract,
         "fits": [
             compact_fit(fit)

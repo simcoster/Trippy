@@ -100,7 +100,7 @@ if not hasattr(_recommender_timing, "last_recommend_timing"):
 
 import source.agent.graph as agent_graph
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.keepalive import ping_new_session, start_model_keepalive
+from source.agent.keepalive import ping_new_session
 from source.agent.recommender.recommend import listen_recommend_text
 from source.agent.recommender.timing import last_recommend_timing
 from source.agent.search import amenities, availability, campsites, claims, embed, rules
@@ -133,7 +133,6 @@ st.set_page_config(
 st.set_option("client.toolbarMode", "viewer")
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
-start_model_keepalive()
 
 _USER_ERROR = "Something went wrong."
 logger = logging.getLogger("trippy.streamlit")

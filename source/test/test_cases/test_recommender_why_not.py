@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from source.agent.recommender.recommend import (
     Recommendation,
+    pack_recommender_input,
     recommend_from_payload,
     render_recommendations,
     validate_recommendations,
@@ -33,6 +34,13 @@ def _one_nights() -> tuple[StayWindow, ...]:
         StayWindow(f"2026-05-{day:02d}", f"2026-05-{day + 1:02d}", f"https://book/{day}")
         for day in range(24, 30)
     )
+
+
+def test_pack_sets_reply_language_from_the_query():
+    english = pack_recommender_input("a pool for the kids", {"fits": []})
+    hebrew = pack_recommender_input("בריכה לילדים", {"fits": []})
+    assert english["reply_language"] == "english"
+    assert hebrew["reply_language"] == "hebrew"
 
 
 def test_contiguous_one_nights_render_as_one_span():
