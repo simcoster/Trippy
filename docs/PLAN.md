@@ -6,6 +6,19 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, unstated children are age 10)
+
+**A child with no stated age is quoted as 10.** The recommender says
+once that some lodging is priced differently by age. The booking link
+no longer adds “Adjust the date on the booking page.”
+
+### Done (2026-09-22, why does not split rules from amenities)
+
+**The recommender writes amenities and rules as one account.** It still
+names a miss: a rule or claim that says the thing is absent, an
+explicit no, or a limit that misses the ask (entry at 20:00 vs 21:00).
+Prompt only.
+
 ### Done (2026-09-22, why is stated amenities; rules follow the judge)
 
 **`why` is only stated amenities on the unit.** Campsite rules stay

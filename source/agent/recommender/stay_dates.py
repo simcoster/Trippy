@@ -100,24 +100,14 @@ def windows_from_dates(
 def booking_lines(
     windows: Sequence[StayWindow],
     fallback_url: str,
-    *,
-    hebrew: bool,
 ) -> list[str]:
-    """One link for the site. Several dates add a note to change the date."""
+    """One link for the site."""
     url = (fallback_url or "").strip()
     if not url:
         url = next((window.booking_url for window in windows if window.booking_url), "")
     if not url:
         return []
-    lines = [f"   {url}"]
-    if len(windows) > 1:
-        note = (
-            "שנו את התאריך בעמוד ההזמנה."
-            if hebrew
-            else "Adjust the date on the booking page."
-        )
-        lines.append(f"   {note}")
-    return lines
+    return [f"   {url}"]
 
 
 def stay_date_label(windows: Sequence[StayWindow]) -> str:

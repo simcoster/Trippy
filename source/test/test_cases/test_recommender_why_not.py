@@ -52,17 +52,18 @@ def test_contiguous_one_nights_render_as_one_span():
     assert "one night" not in text
     assert "https://book/site" in text
     assert "https://book/24" not in text
-    assert "Adjust the date on the booking page." in text
+    assert "Adjust the date on the booking page." not in text
     assert text.count("https://book/") == 1
 
 
-def test_hebrew_span_says_to_adjust_the_date():
+def test_hebrew_span_has_one_booking_link():
     text = render_recommendations(
         [_rec(dates=_one_nights(), booking_url="https://book/site")],
         query="בריכה",
     )
     assert text.startswith("24–29.5")
-    assert "שנו את התאריך בעמוד ההזמנה." in text
+    assert "שנו את התאריך בעמוד ההזמנה." not in text
+    assert text.count("https://book/") == 1
 
 
 def test_gapped_nights_are_separate_ranges():

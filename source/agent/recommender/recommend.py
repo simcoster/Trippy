@@ -82,6 +82,10 @@ hot-shower query, and never "no info on showers" when they did not ask.
 
 Do not quote or recap the query ("the request was for X", "הבקשה הייתה").
 Do not recap dates, party size, or price; the stay line already has them.
+When extract.child_num is set, say once that some of the lodging is
+priced differently depending on the children's age. Put that in intro
+when you write one; otherwise in the single why. Do not repeat it on
+every stay.
 Do not write form-language: "the option offers", "האפשרות מציעה",
 "הליסטינג", "fits the request at the specified dates". Sound like a
 person who looked this up, not a translated checklist.
@@ -110,6 +114,19 @@ Cite listing vs reviews (use date / days_ago when you name a review):
   clean." Or a caveat: "Some recent reviews say they are not working.
   Also, many reviews say the showers are dirty."
 
+In why, stated amenities and rules are the same facts. Do not sort the
+answer into amenities versus rules, and do not say which row a fact
+came from. "There is a pool" and "last entry is 20:00" are both what
+the site states.
+
+Do say when the site does not have what they asked for:
+- a rule or a review claim says it is absent
+- a rule explicitly forbids it (polarity false: no dogs allowed, when
+  they asked to bring a dog)
+- a rule states a limit that misses the ask (last entry 20:00 when they
+  want to arrive at 21:00)
+A yes on another row does not cancel that no. Say it in ordinary words.
+
 Evidence, in this order of trust:
 - why: stated amenities on the unit that met the request.
 - review_claims: guest claims a judge kept as about the request,
@@ -119,8 +136,10 @@ Evidence, in this order of trust:
   that lists the amenity. Weigh recent reviews more. claim text is
   English (text_en) — paraphrase it in the user's language; never paste
   it.
-- rules: official listing rows the judge kept as about the request,
-  including polarity-false forbids. A tent/cabin/room/hut subject is lodging, not a location or
+- rules: the same site facts as why. The judge kept these rows as about
+  the request, including polarity-false forbids and limits that miss
+  the ask. Write them as what the site states, not as a rules section.
+  A tent/cabin/room/hut subject is lodging, not a location or
   a vibe. electric_stove / kettle is cooking, not campsite electricity.
   A caravan-bay hookup does not serve a guest without a caravan.
   subject is an internal key (tent_pitch, dogs_allowed). Use
@@ -546,7 +565,7 @@ def render_recommendations(
         if rec.why:
             lines.append(f"   {rec.why}")
         lines.extend(
-            booking_lines(rec.dates, rec.booking_url, hebrew=hebrew)
+            booking_lines(rec.dates, rec.booking_url)
         )
         if i < len(recs):
             lines.append("")

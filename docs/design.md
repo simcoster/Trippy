@@ -1221,7 +1221,7 @@ loaded. Streamlit, local and prod, exits unless that `/health` is ok.
 during a run that already started. The extractor emits `child_num` and `child_ages` (the
 `QuoteParams` fields) when the user names children; the planner passes
 them into the sandbox quote and subtracts `child_num` from `party_size`
-so those children are not also priced as adults. `guest_type` (the
+so those children are not also priced as adults. A child with no stated age is quoted as 10 (`quote_party`). `guest_type` (the
 rate-card tab; default `רגיל`) stays off. `planned_entry_time` is
 the extractor clock (`HH:MM`) when they said when they will arrive;
 `planned_exit_time` is the same for when they will leave. `child_num` is an explicit
@@ -1270,15 +1270,20 @@ query (Hebrew when it has more Hebrew letters than Latin, otherwise
 English). why, intro, and empty follow that field. Campsite names stay
 as stored. More than one pick
 also sets `intro`: note that there is more than one option, name
-them, and compare them somewhat. Phrasing is free; render puts that
+them, and compare them somewhat. When the party includes children, that
+note (or the single why, when there is one stay) says once that some
+lodging is priced differently depending on age. Phrasing is free; render puts that
 above the numbered list. `intro` is null for a single stay.
 A fit's `dates` are all shown. Several check-ins collapse to ranges
-(`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site, with a note to change the date
-on the booking page when more than one date fits. After the picks, render appends
+(`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site. After the picks, render appends
 `why_not` in the query's language: other available sites by name, and
 why they were left out. Three or more campsites are a count only
 (`3 campsites say they don't have pools`). One or two are named
 (`2 campsites [A and B] say that they don't have pools`).
+Stated amenities and rules are one account in `why`: the model does not
+label which row a fact came from. It does name a miss — a rule or claim
+that says the thing is absent, a polarity-false forbid (no dogs), or a
+limit that misses the ask (last entry 20:00 when they want 21:00).
 `why` leads with the matching facts, not a recap of the query,
 dates, or party (those are on the stay line). If listing and reviews
 agree the asked thing exists, say it once — reviews add quality or

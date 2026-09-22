@@ -275,6 +275,10 @@ class QuoteParty(NamedTuple):
     child_ages: tuple[int, ...]
 
 
+# A child with no stated age is priced as 10 (a paying child, ages 5–14).
+DEFAULT_CHILD_AGE = 10
+
+
 def quote_party(
     *,
     party_size: int | None,
@@ -285,6 +289,7 @@ def quote_party(
 
     `party_size` is everyone. Stated children come off that total so they
     are not priced as extra adults. No party and no children stays one adult.
+    Each child without a stated age is `DEFAULT_CHILD_AGE`.
     """
     ages = tuple(int(age) for age in (child_ages or ()))
     children = int(child_num) if child_num else 0
@@ -292,6 +297,8 @@ def quote_party(
         children = 0
     if not children and ages:
         children = len(ages)
+    if children > len(ages):
+        ages = ages + (DEFAULT_CHILD_AGE,) * (children - len(ages))
     if party_size and party_size > 0:
         adults = max(int(party_size) - children, 0) if children else int(party_size)
     else:
