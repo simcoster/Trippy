@@ -210,20 +210,17 @@ streamlit:
     uv run python -m streamlit run scripts/streamlit_chat.py --server.port 8502
 
 # VM: sandbox first, load quote(), then Streamlit (it depends on a healthy sandbox).
-[unix]
 prod-up:
     docker compose -f docker-compose.prod.yml --env-file .env up -d db price-sandbox
     just prod-load-sandbox
     docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 # VM: POST site_price_functions into price-sandbox (one-shot, then exit)
-[unix]
 prod-load-sandbox:
     docker compose -f docker-compose.prod.yml --env-file .env --profile load run --rm price-sandbox-loader
 
 # VM: one-shot ingest. just prod-scrape availability
 #      just prod-scrape availability -- --site 2
-[unix]
 prod-scrape job *args:
     docker compose -f docker-compose.prod.yml --env-file .env --profile scrape run --rm scrape {{job}} {{trim_start_match(args, "-- ")}}
     just prod-load-sandbox

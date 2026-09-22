@@ -14,7 +14,7 @@ from typing import Any, Callable
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from source.agent.planner import CLAIM_EVIDENCE_LIMIT
+from source.agent.planner import CLAIM_EVIDENCE_LIMIT, fold_unverified_into_why_not
 from source.agent.timing import record_stage, stage
 from source.scraper.amenity_enrichment.llm import (
     GLM_INSTRUCT_MODEL,
@@ -931,4 +931,5 @@ def apply_claim_rule_judgements(
     sink = collected_llm_usage()
     if sink is not None:
         sink.merge(usage)
+    fold_unverified_into_why_not(payload, kept=kept, dropped=extra_rejected)
     return payload

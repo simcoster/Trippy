@@ -55,6 +55,24 @@ def _missing_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
     return f"{count} other sites have availability {listed} but they don't have {query}."
 
 
+def _rule_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
+    listed = _bracket(sites)
+    count = len(sites)
+    if hebrew:
+        if count == 1:
+            return f"אתר נוסף עם זמינות {listed} אבל כלל באתר לא מתיר {query}."
+        return f"{count} אתרים נוספים עם זמינות {listed} אבל כלל באתר לא מתיר {query}."
+    if count == 1:
+        return (
+            f"1 other site has availability {listed} "
+            f"but a rule doesn't allow {query}."
+        )
+    return (
+        f"{count} other sites have availability {listed} "
+        f"but a rule doesn't allow {query}."
+    )
+
+
 def _step_line(step: dict[str, Any], *, hebrew: bool) -> str:
     sites = _site_list(step)
     if not sites:
@@ -67,6 +85,11 @@ def _step_line(step: dict[str, Any], *, hebrew: bool) -> str:
         if not query:
             return ""
         return _missing_sentence(sites, query, hebrew=hebrew)
+    if stage == "rule":
+        query = str(step.get("query") or "").strip()
+        if not query:
+            return ""
+        return _rule_sentence(sites, query, hebrew=hebrew)
     return ""
 
 

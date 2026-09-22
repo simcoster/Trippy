@@ -41,6 +41,7 @@ from source.agent.recommender.stream import chunk_text, chunk_thinking, iter_cha
 from source.agent.recommender.timing import RecommendClock, record_recommend
 from source.agent.recommender.why_not import query_is_hebrew, render_why_not
 from source.agent.timing import stage
+from source.agent.turn_status import RANKING, report_turn_status
 from source.scraper.amenity_enrichment.llm import (
     _parse_json_payload,
     langchain_chat_usage,
@@ -628,6 +629,7 @@ def recommend_from_payload(
     *,
     chat: Any | None = None,
 ) -> RecommendResult:
+    report_turn_status(RANKING)
     pack = pack_recommender_input(query, payload)
     user_msg = HumanMessage(
         content=json.dumps(pack, ensure_ascii=False, default=str)

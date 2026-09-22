@@ -1242,7 +1242,8 @@ the recommender pack run once for that site+type. A price limit
 removes those nights from `fits` and keeps them on `rejected` with
 `reason: price` (every such unit, not only the five-row semantic
 sample). `why_not` names the other campsites that had a vacancy and
-were left out, grouped by price or by the amenity they miss. The model
+were left out, grouped by price or by the amenity they miss. Sites the judge then drops are added too: a missing amenity, or a
+polarity-false rule for that ask. The model
 does not see `why_not` or `rejected`; render writes that sentence in
 the query's language.
 
@@ -1335,7 +1336,10 @@ is not silent 235B. The recommend
 call streams (`ChatOpenAI.stream`, `stream_usage=True`); token counts
 match a non-stream call (experiments.md 2026-09-04 §1). Streamlit
 paints the rendered reply as soon as `parse_partial_json` can read a
-stay identity or `empty` — not the raw JSON. Recommend usage is
+stay identity or `empty` — not the raw JSON. While that runs, the
+assistant bubble shows Searching, then `Found N candidates, filtering`
+once availability returns (N is distinct site + unit type), then
+Ranking when recommend is called. Recommend usage is
 `role="recommend"`. `client.toolbarMode` is `viewer` so Ctrl+C in the page copies
 instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
 Streamlit does not start the interval keepalive. Each new browser
@@ -1422,7 +1426,7 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 `metadata.channel` on each `stream`
 (`source/agent/tracing.py`). One browser tab is one thread until Reset.
 Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
-tool to the terminal and a caption under Thinking while the turn runs.
+tool to the terminal and a caption under the phase line while the turn runs.
 Project defaults to `trippy` (`LANGSMITH_PROJECT`). Filter tag
 `keepalive` (`model-keepalive-session`) for the one ping a new
 session sends; it is not a graph turn. Traces include the

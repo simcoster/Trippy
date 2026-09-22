@@ -25,6 +25,11 @@ from source.agent.search import (
     rules,
     sandbox,
 )
+from source.agent.turn_status import (
+    SEARCHING,
+    found_candidates_line,
+    report_turn_status,
+)
 
 AMENITY_MATCH_MAX_DISTANCE = -0.7
 # Claims are whole sentences, so they sit further from a short query than a
@@ -531,6 +536,100 @@ def _why_not_steps(
     return steps
 
 
+class _WhyGroup(NamedTuple):
+    stage: str
+    query: str
+
+
+def _rule_forbids(row: dict, query: str) -> bool:
+    """A stored rule for this ask whose polarity is false."""
+    raw = row.get("campsite_rules")
+    rules: list = []
+    if isinstance(raw, dict):
+        rules = list(raw.get(query) or [])
+    elif isinstance(raw, list):
+        rules = list(raw)
+    return any(
+        isinstance(rule, dict) and rule.get("polarity") is False for rule in rules
+    )
+
+
+def fold_unverified_into_why_not(
+    payload: dict[str, Any],
+    *,
+    kept: list[dict],
+    dropped: list[dict],
+) -> None:
+    """Sites the judge removes join why-not.
+
+    why_not is built before the judge. A loose amenity hit can put a
+    campsite in fits, and the judge can then drop it. A polarity-false
+    rule for that ask is a rule line; otherwise it is a missing-amenity
+    line. Price misses stay on the quote's price line.
+    """
+    if not dropped:
+        return
+    still_fit = _campsite_ids(kept)
+    steps = [
+        dict(step)
+        for step in (payload.get("why_not") or [])
+        if isinstance(step, dict)
+    ]
+    named = {
+        str(name)
+        for step in steps
+        for name in (step.get("sites") or [])
+    }
+    by_group: dict[_WhyGroup, list[str]] = {}
+    seen: dict[_WhyGroup, set[int]] = {}
+    for row in dropped:
+        cid = row.get("campsite_id")
+        if cid is None:
+            continue
+        cid = int(cid)
+        if cid in still_fit:
+            continue
+        name = str(row.get("campsite") or "").strip() or str(cid)
+        if name in named:
+            continue
+        for verdict in row.get("claim_judge") or []:
+            if not isinstance(verdict, dict) or verdict.get("satisfies"):
+                continue
+            query = str(verdict.get("query") or "").strip()
+            if not query:
+                continue
+            group = _WhyGroup(
+                "rule" if _rule_forbids(row, query) else "missing",
+                query,
+            )
+            if cid in seen.setdefault(group, set()):
+                continue
+            seen[group].add(cid)
+            by_group.setdefault(group, []).append(name)
+            named.add(name)
+            break
+    if not by_group:
+        return
+    for group, names in by_group.items():
+        for step in steps:
+            if step.get("stage") == group.stage and step.get("query") == group.query:
+                sites = list(step.get("sites") or [])
+                sites.extend(name for name in names if name not in sites)
+                step["sites"] = sites
+                step["count"] = len(sites)
+                break
+        else:
+            steps.append(
+                {
+                    "stage": group.stage,
+                    "count": len(names),
+                    "query": group.query,
+                    "sites": names,
+                }
+            )
+    payload["why_not"] = steps
+
+
 def _price_rejected_slots(
     open_slots: list[dict],
     priced_slots: list[dict],
@@ -599,6 +698,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
     if constraints_json.get("planned_exit_time"):
         child_kwargs["planned_exit_time"] = constraints_json["planned_exit_time"]
     party_size = party_size_from_numeric(numeric)
+    report_turn_status(SEARCHING)
     with sandbox.price_quote_cache():
         slots = availability.search_open_slots(
             date_windows=windows,
@@ -613,6 +713,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         if slots and slots[0].get("error"):
             payload["error"] = slots[0]["error"]
             return payload
+        report_turn_status(found_candidates_line(len(_slots_by_unit(slots))))
 
         ctx = contextvars.copy_context()
         quoted: dict[str, Any] = {}

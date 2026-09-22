@@ -6,6 +6,29 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, why-not splits rules from missing amenities)
+
+**A polarity-false rule is its own why-not line.** Judge drops with no
+such rule stay on the missing-amenity line. Price misses stay on the
+quote's price line. Supersedes folding every judge drop into "missing".
+
+### Done (2026-09-22, why-not keeps judge drops)
+
+**Sites the claim judge rejects stay on the why-not line.** The line was
+built before the judge, so a query whose amenity hits all went into fits
+and then were dropped showed no why-not. Supersedes “why_not is only the
+pre-judge funnel” in design.md.
+
+### Done (2026-09-22, prod just recipes on Windows)
+
+**`just prod-up`, `prod-load-sandbox`, and `prod-scrape` are no longer Unix-only.** They were hidden on Windows. The bodies are `docker compose`, so they run from the laptop too.
+
+### Done (2026-09-22, search phase line)
+
+**The assistant bubble names the phase.** Searching, then how many
+candidates availability returned, then Ranking when recommend runs.
+Supersedes the Thinking spinner in design.md.
+
 ### Done (2026-09-22, no periodic keepalive)
 
 **Streamlit no longer starts the 10-minute model ping.** A new browser
