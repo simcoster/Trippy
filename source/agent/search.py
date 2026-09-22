@@ -169,12 +169,14 @@ def _open_slots_sql(
     rel = _availability_relation()
     sql = (
         "SELECT a.site_id, c.name, MIN(a.start_date), MAX(a.end_date),\n"
-        "       MIN(a.room_count), at.id, at.name, at.max_occupancy\n"
+        "       MIN(a.room_count), at.id, at.name, at.max_occupancy,\n"
+        "       c.parent_id\n"
         f"FROM {rel} a\n"
         "JOIN accommodation_types at ON at.id = a.accommodation_type_id\n"
         "JOIN campsites c ON c.id = a.site_id\n"
         f"WHERE {' AND '.join(clauses)}\n"
-        "GROUP BY a.site_id, c.name, at.id, at.name, at.max_occupancy\n"
+        "GROUP BY a.site_id, c.name, at.id, at.name, at.max_occupancy,\n"
+        "         c.parent_id\n"
         "HAVING COUNT(DISTINCT a.start_date) = %s\n"
         "ORDER BY MIN(a.start_date), at.id\n"
         "LIMIT %s"
@@ -367,6 +369,11 @@ def _quote_sandbox_batch(
         QuoteRequest(
             request_id=str(call["request_id"]),
             site_id=int(call["campsite_id"]),
+            parent_site_id=(
+                int(call["parent_site_id"])
+                if call.get("parent_site_id") is not None
+                else None
+            ),
             params=QuoteParams(
                 lodging=str(call["lodging"]),
                 adults_num=int(call["adults_num"]),
@@ -444,6 +451,7 @@ def _sandbox_quotes_for_slots(
                 "adults_num": key.adults_num,
                 "is_weekend_or_holiday": key.weekend,
                 "planned_entry_time": key.planned_entry_time,
+                "parent_site_id": slot.get("parent_id"),
             }
         )
     by_key: dict[_SandboxQuoteKey, QuoteResult] = {}
@@ -560,6 +568,7 @@ def search_open_slots(
     slots: list[dict] = []
     for row in rows:
         occupancy = int(row[7]) if row[7] is not None else None
+        parent_raw = row[8] if len(row) > 8 else None
         slots.append(
             {
                 "campsite_id": int(row[0]),
@@ -571,6 +580,7 @@ def search_open_slots(
                 "accommodation_type": row[6],
                 "max_occupancy": occupancy,
                 "occupancy_unknown": occupancy is None,
+                "parent_id": int(parent_raw) if parent_raw is not None else None,
             }
         )
     type_ids = list({int(s["accommodation_type_id"]) for s in slots})
@@ -594,6 +604,7 @@ def search_open_slots(
     }
     quoted: list[dict] = []
     for slot in slots:
+        slot.pop("parent_id", None)
         key = _SandboxQuoteKey(
             campsite_id=int(slot["campsite_id"]),
             lodging=str(slot.get("accommodation_type") or ""),

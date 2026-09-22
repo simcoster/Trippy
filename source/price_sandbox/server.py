@@ -57,6 +57,15 @@ def load_functions(entries: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _optional_site_id(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def quote_batch(items: list[dict[str, Any]]) -> dict[str, Any]:
     if len(items) > MAX_BATCH:
         return {"ok": False, "error": f"at most {MAX_BATCH} quotes per request"}
@@ -69,6 +78,10 @@ def quote_batch(items: list[dict[str, Any]]) -> dict[str, Any]:
             results.append({"id": request_id, "ok": False, "error": "site_id required"})
             continue
         source = _functions.get(site_id)
+        if source is None:
+            parent_site_id = _optional_site_id(item.get("parent_site_id"))
+            if parent_site_id is not None:
+                source = _functions.get(parent_site_id)
         if source is None:
             results.append({"id": request_id, "ok": False, "error": "unknown site"})
             continue

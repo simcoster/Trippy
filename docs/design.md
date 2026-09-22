@@ -1199,7 +1199,10 @@ host bind). Re-run the loader after
 `scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
 other) front end does not own this.
 Each quote runs in a short-lived child with a memory cap and a
-sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
+sub-second timeout. A subcamp has no page, so its rate card and
+`quote()` live on the parent. Open slots send that `parent_site_id`,
+and `/quote` uses the parent's function when the subcamp id is not
+loaded. `PRICE_SANDBOX_URL` unset or a load miss uses
 `quote_night`. Planner party size is still `adults_num`; `child_num`,
 child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
 off until the extractor grows those fields. `planned_entry_time` is

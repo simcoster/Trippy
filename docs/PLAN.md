@@ -6,6 +6,10 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, subcamp quote uses the parent function)
+
+**`/quote` falls back to `parent_site_id` when the slot's site is not loaded.** Achziv north/south (37, 38) were `unknown site` because availability is on the subcamp and `site_price_functions` is on the parent (site 2). Open slots select `c.parent_id` and the sandbox uses that function only when the child id misses. design.md "Per-site price functions".
+
 ### Done (2026-09-22, date windows cap 20)
 
 **`MAX_DATE_WINDOWS` is 20.** A full week fits, so Friday/Saturday

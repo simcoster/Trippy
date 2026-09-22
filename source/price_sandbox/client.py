@@ -33,6 +33,7 @@ class QuoteRequest:
     request_id: str
     site_id: int
     params: QuoteParams
+    parent_site_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +147,7 @@ def quote_replies(
                     {
                         "id": item.request_id,
                         "site_id": item.site_id,
+                        "parent_site_id": item.parent_site_id,
                         "params": item.params.to_json(),
                     }
                     for item in chunk
