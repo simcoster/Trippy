@@ -960,11 +960,8 @@ calls was not needed):
   the compact suffix (experiments.md 2026-09-10 §6). Full eval
   `2026-09-10_131406` was compact ×5 (23/26). Quoted output is
   `TRIPPY_JUDGE_COMPACT=0` / `--no-judge-compact`. Live judge calls
-run **10 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 10).
-Ten copies of one fridge job finished in 9.9s and 11.7s at that
-width, against 13.1s and 21.3s at 5; every call agreed and none
-errored. Each call slowed, and the second wave disappeared
-(experiments.md 2026-09-22 §1).
+run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5). The
+10-wide default made live turns slower, so the width is 5 again.
 A single batched `judgements[]` call still drops E03 tent vs
 `tent_pitch` on this 235B (16/20). With thinking off and
 `max_tokens=2000`, Qwen3.5-397B and GLM-5.2 both hit 78/80 and
@@ -1345,7 +1342,9 @@ instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
 Streamlit does not start the interval keepalive. Each new browser
 session sends a 5-token `hi` once per **model endpoint**
 (`ping_new_session`; Reset does not): Kimi, the 235B (light and
-extractor share it), and `Qwen3-Embedding-8B`. A retrieve embed
+extractor share it), and `Qwen3-Embedding-8B`. The same round also
+sends the claim-judge system prompt alone, so that prefix is hot.
+A retrieve embed
 already counts as that ping. `start_model_keepalive` still exists
 for an explicit interval (`TRIPPY_KEEPALIVE_INTERVAL_SEC`, default
 600 s; not a measured Nebius idle timeout) but nothing starts it.

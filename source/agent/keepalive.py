@@ -218,6 +218,22 @@ def ping_models(
         logger.info(scheduled)
 
     def _run() -> None:
+        if reason == "session" and chats is None:
+            from source.agent.claim_judge import judge_model, warmup_claim_judge
+
+            scheduled = (
+                f"keepalive ping=system role=claim_judge "
+                f"model={judge_model()} kind=chat reason={reason}"
+            )
+            print(scheduled, flush=True)
+            logger.info(scheduled)
+            ping = bind_to_current_trace(warmup_claim_judge)
+            with ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="keepalive"
+            ) as pool:
+                pool.submit(_ping_round, targets)
+                pool.submit(ping)
+            return
         _ping_round(targets)
 
     if tracing_configured():

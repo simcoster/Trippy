@@ -60,7 +60,7 @@ def test_forbidding_rule_is_its_own_why_not_line():
     ]
 
 
-def test_price_line_stays_when_the_judge_drops_someone_else():
+def test_judge_drop_merges_into_an_existing_missing_line():
     survivor = {
         "campsite_id": 1,
         "campsite": "Hurshat Tal",
@@ -106,4 +106,51 @@ def test_price_line_stays_when_the_judge_drops_someone_else():
             "query": "fridge",
             "sites": ["Already Dry", "Dry Site"],
         }
+    ]
+
+
+def test_price_line_stays_beside_a_judge_drop():
+    survivor = {
+        "campsite_id": 1,
+        "campsite": "Hurshat Tal",
+        "why": [{"query": "fridge"}],
+    }
+    dropped = {
+        "campsite_id": 2,
+        "campsite": "Dry Site",
+        "why": [{"query": "fridge"}],
+    }
+
+    def _fn(**kwargs):
+        return {
+            "relevant_claims": [],
+            "satisfies": kwargs.get("campsite") == "Hurshat Tal",
+            "satisfy_by": None,
+            "reason": "ok",
+        }
+
+    out = apply_claim_rule_judgements(
+        {
+            "fits": [survivor, dropped],
+            "rejected": [],
+            "rejected_count": 0,
+            "why_not": [
+                {
+                    "stage": "price",
+                    "count": 1,
+                    "sites": ["Pricey"],
+                }
+            ],
+        },
+        judge=_fn,
+        search_rules=lambda *a, **k: [],
+    )
+    assert out["why_not"] == [
+        {"stage": "price", "count": 1, "sites": ["Pricey"]},
+        {
+            "stage": "missing",
+            "count": 1,
+            "query": "fridge",
+            "sites": ["Dry Site"],
+        },
     ]

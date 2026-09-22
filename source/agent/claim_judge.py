@@ -14,7 +14,8 @@ from typing import Any, Callable
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from source.agent.planner import CLAIM_EVIDENCE_LIMIT, fold_unverified_into_why_not
+from source.agent.planner import CLAIM_EVIDENCE_LIMIT
+from source.agent.recommender.why_not import fold_unverified_into_why_not
 from source.agent.timing import record_stage, stage
 from source.scraper.amenity_enrichment.llm import (
     GLM_INSTRUCT_MODEL,
@@ -250,11 +251,11 @@ _JUDGE_TIME_STAGE: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 
 def judge_concurrency() -> int:
-    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "10").strip()
+    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "5").strip()
     try:
         n = int(raw)
     except ValueError:
-        return 10
+        return 5
     return max(1, n)
 
 
@@ -287,6 +288,40 @@ def _judge_system() -> str:
     if judge_compact():
         return CLAIM_JUDGE_SYSTEM + "\n\n" + CLAIM_JUDGE_COMPACT_SUFFIX
     return CLAIM_JUDGE_SYSTEM
+
+
+def warmup_claim_judge() -> None:
+    """Session ping: the system prompt alone, so the judge prefix is hot."""
+    model = judge_model()
+    started = time.perf_counter()
+    try:
+        response = make_nebius_openai_client().chat.completions.create(
+            model=model,
+            temperature=0,
+            max_tokens=5,
+            messages=[{"role": "system", "content": _judge_system()}],
+        )
+    except Exception:
+        print(f"keepalive failed role=claim_judge model={model}", flush=True)
+        logger.warning(
+            "keepalive failed role=claim_judge model=%s", model, exc_info=True
+        )
+        return
+    usage = LlmUsage()
+    usage.add_chat(response.usage, role="claim_judge", model=model)
+    sink = collected_llm_usage()
+    if sink is not None:
+        sink.merge(usage)
+    text = ""
+    choices = getattr(response, "choices", None) or []
+    if choices:
+        text = (choices[0].message.content or "").strip()
+    done = (
+        f"keepalive reply={text!r} role=claim_judge model={model} "
+        f"in {time.perf_counter() - started:.1f}s"
+    )
+    print(done, flush=True)
+    logger.info(done)
 
 
 def _no_think_kwargs() -> dict[str, Any]:

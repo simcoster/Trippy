@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, judge width 5 and a session warmup)
+
+**Live claim judges run 5 at a time again.** Ten-wide made real turns
+slower. A new Streamlit session also sends the claim-judge system
+prompt alone, beside the model `hi` pings. Supersedes the
+concurrency-10 default below.
+
 ### Done (2026-09-22, why-not splits rules from missing amenities)
 
 **A polarity-false rule is its own why-not line.** Judge drops with no

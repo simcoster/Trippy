@@ -1,11 +1,11 @@
-"""Claim-judge defaults: compact on, ten parallel live calls."""
+"""Claim-judge defaults: compact on, five parallel live calls."""
 
 from source.agent.claim_judge import judge_compact, judge_concurrency
 
 
-def test_judge_concurrency_default_is_10(monkeypatch):
+def test_judge_concurrency_default_is_5(monkeypatch):
     monkeypatch.delenv("TRIPPY_JUDGE_CONCURRENCY", raising=False)
-    assert judge_concurrency() == 10
+    assert judge_concurrency() == 5
 
 
 def test_judge_compact_env_off(monkeypatch):
