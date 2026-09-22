@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, why-not does not say the campsites say)
+
+**Why-not states the miss directly.** A price line is campsite slots
+outside the range they asked for. An amenity line is no indication
+in reviews or the stated info. Hebrew matches.
+
 ### Done (2026-09-22, claim-judge keepalive reply is posted)
 
 **The session judge ping is posted as its own run.** `emit_child_span`

@@ -1278,8 +1278,11 @@ A fit's `dates` are all shown. Several check-ins collapse to ranges
 (`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site. After the picks, render appends
 `why_not` in the query's language: other available sites by name, and
 why they were left out. Three or more campsites are a count only
-(`3 campsites say they don't have pools`). One or two are named
-(`2 campsites [A and B] say that they don't have pools`).
+(`3 campsites don't have an indication of pools (by review or the stated info)`).
+One or two are named
+(`2 campsites [A and B] don't have an indication of pools (by review or the stated info)`).
+A price miss quotes the limit they asked for
+(`3 campsite slots are outside the price range (up to 300 NIS)`).
 Stated amenities and rules are one account in `why`: the model does not
 label which row a fact came from. It does name a miss — a rule or claim
 that says the thing is absent, a polarity-false forbid (no dogs), or a

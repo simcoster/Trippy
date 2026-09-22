@@ -530,9 +530,10 @@ def render_recommendations(
     intro: str | None = None,
     query: str = "",
     why_not: list[dict[str, Any]] | None = None,
+    constraints: dict[str, Any] | None = None,
 ) -> str:
     hebrew = query_is_hebrew(query)
-    funnel = render_why_not(why_not, hebrew=hebrew)
+    funnel = render_why_not(why_not, hebrew=hebrew, constraints=constraints)
     if not recs:
         text = _as_text(empty) or EMPTY_REPLY_FALLBACK
         notice = _as_text(date_notice)
@@ -595,6 +596,7 @@ def _draft_spoken_text(
     date_notice: str | None = None,
     query: str = "",
     why_not: list[dict[str, Any]] | None = None,
+    constraints: dict[str, Any] | None = None,
 ) -> str | None:
     """Spoken reply from a possibly incomplete JSON prefix. None if nothing to show."""
     blob = json_object_prefix(raw)
@@ -625,6 +627,7 @@ def _draft_spoken_text(
             intro=intro_text,
             query=query,
             why_not=why_not,
+            constraints=constraints,
         )
     if empty_text:
         return render_recommendations(
@@ -633,6 +636,7 @@ def _draft_spoken_text(
             date_notice=date_notice,
             query=query,
             why_not=why_not,
+            constraints=constraints,
         )
     return None
 
@@ -689,6 +693,9 @@ def recommend_from_payload(
                 date_notice=notice,
                 query=query,
                 why_not=funnel,
+                constraints=payload.get("constraints")
+                if isinstance(payload.get("constraints"), dict)
+                else None,
             )
             if draft is None or draft == last_draft:
                 continue
@@ -717,6 +724,9 @@ def recommend_from_payload(
             intro=intro,
             query=query,
             why_not=funnel,
+            constraints=payload.get("constraints")
+            if isinstance(payload.get("constraints"), dict)
+            else None,
         )
         if on_text is not None and text != last_draft:
             on_text(text)

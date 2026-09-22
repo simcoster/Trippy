@@ -36,59 +36,102 @@ def _names(sites: list[str], *, hebrew: bool) -> str:
     return "[" + joiner.join(sites) + "]"
 
 
-def _grouped(sites: list[str], reason: str, *, hebrew: bool, one: str) -> str:
+def _requested_price(constraints: dict[str, Any] | None, *, hebrew: bool) -> str:
+    """The price bound the user asked for, in the reply's language."""
+    numeric = (constraints or {}).get("numeric_constraints")
+    if not isinstance(numeric, list):
+        return ""
+    for item in numeric:
+        if not isinstance(item, dict):
+            continue
+        field = str(item.get("field") or "").lower()
+        if field not in {"price_per_night", "price", "cost"}:
+            continue
+        try:
+            value = float(item.get("value"))
+        except (TypeError, ValueError):
+            return ""
+        amount = str(int(value)) if value.is_integer() else f"{value:g}"
+        op = str(item.get("operator") or "<=")
+        if hebrew:
+            if op in {">=", "=>"}:
+                return f"מ-{amount} ₪"
+            if op in {"=", "=="}:
+                return f"{amount} ₪"
+            return f"עד {amount} ₪"
+        if op in {">=", "=>"}:
+            return f"at least {amount} NIS"
+        if op in {"=", "=="}:
+            return f"{amount} NIS"
+        return f"up to {amount} NIS"
+    return ""
+
+
+def _price_sentence(sites: list[str], *, hebrew: bool, bound: str) -> str:
     count = len(sites)
+    limit = f" ({bound})" if bound else ""
     if count > 2:
         if hebrew:
-            return f"{count} אתרים אומרים {reason}."
-        return f"{count} campsites say {reason}."
+            return f"{count} מקומות לינה מחוץ לטווח המחיר{limit}."
+        return f"{count} campsite slots are outside the price range{limit}."
     listed = _names(sites, hebrew=hebrew)
     if hebrew:
         if count == 1:
-            return f"אתר אחד {listed} אומר {one}."
-        return f"{count} אתרים {listed} אומרים {reason}."
+            return f"מקום לינה אחד {listed} מחוץ לטווח המחיר{limit}."
+        return f"{count} מקומות לינה {listed} מחוץ לטווח המחיר{limit}."
     if count == 1:
-        return f"1 campsite {listed} says that {one}."
-    return f"{count} campsites {listed} say that {reason}."
-
-
-def _price_sentence(sites: list[str], *, hebrew: bool) -> str:
-    if hebrew:
-        reason = "שהם מחוץ לטווח המחיר"
-        one = "שהוא מחוץ לטווח המחיר"
-    else:
-        reason = "they are outside the price range"
-        one = "it is outside the price range"
-    return _grouped(sites, reason, hebrew=hebrew, one=one)
+        return f"1 campsite slot {listed} is outside the price range{limit}."
+    return f"{count} campsite slots {listed} are outside the price range{limit}."
 
 
 def _missing_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
+    count = len(sites)
     if hebrew:
-        reason = f"שאין להם {query}"
-        one = f"שאין לו {query}"
+        note = f"בלי אינדיקציה על {query} (לא בביקורות ולא במידע המוצהר)"
     else:
-        reason = f"they don't have {query}"
-        one = f"it doesn't have {query}"
-    return _grouped(sites, reason, hebrew=hebrew, one=one)
+        note = (
+            f"don't have an indication of {query} "
+            "(by review or the stated info)"
+        )
+    if count > 2:
+        if hebrew:
+            return f"{count} אתרים {note}."
+        return f"{count} campsites {note}."
+    listed = _names(sites, hebrew=hebrew)
+    if hebrew:
+        if count == 1:
+            return f"אתר אחד {listed} {note}."
+        return f"{count} אתרים {listed} {note}."
+    if count == 1:
+        return f"1 campsite {listed} doesn't have an indication of {query} (by review or the stated info)."
+    return f"{count} campsites {listed} {note}."
 
 
 def _rule_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
+    count = len(sites)
+    if count > 2:
+        if hebrew:
+            return f"{count} אתרים עם כלל שלא מתיר {query}."
+        return f"{count} campsites have a rule that doesn't allow {query}."
+    listed = _names(sites, hebrew=hebrew)
     if hebrew:
-        reason = f"שכלל באתר לא מתיר {query}"
-        one = reason
-    else:
-        reason = f"a rule doesn't allow {query}"
-        one = reason
-    return _grouped(sites, reason, hebrew=hebrew, one=one)
+        if count == 1:
+            return f"אתר אחד {listed} עם כלל שלא מתיר {query}."
+        return f"{count} אתרים {listed} עם כלל שלא מתיר {query}."
+    if count == 1:
+        return f"1 campsite {listed} has a rule that doesn't allow {query}."
+    return f"{count} campsites {listed} have a rule that doesn't allow {query}."
 
 
-def _step_line(step: dict[str, Any], *, hebrew: bool) -> str:
+def _step_line(
+    step: dict[str, Any], *, hebrew: bool, price_bound: str
+) -> str:
     sites = _site_list(step)
     if not sites:
         return ""
     stage = step.get("stage")
     if stage == "price":
-        return _price_sentence(sites, hebrew=hebrew)
+        return _price_sentence(sites, hebrew=hebrew, bound=price_bound)
     if stage == "missing":
         query = str(step.get("query") or "").strip()
         if not query:
@@ -102,13 +145,19 @@ def _step_line(step: dict[str, Any], *, hebrew: bool) -> str:
     return ""
 
 
-def render_why_not(steps: list[dict[str, Any]] | None, *, hebrew: bool) -> str:
+def render_why_not(
+    steps: list[dict[str, Any]] | None,
+    *,
+    hebrew: bool,
+    constraints: dict[str, Any] | None = None,
+) -> str:
     """Named sites that were available, and why each group was left out."""
+    bound = _requested_price(constraints, hebrew=hebrew)
     lines: list[str] = []
     for step in steps or []:
         if not isinstance(step, dict):
             continue
-        text = _step_line(step, hebrew=hebrew)
+        text = _step_line(step, hebrew=hebrew, price_bound=bound)
         if text:
             lines.append(text)
     return "\n".join(lines)

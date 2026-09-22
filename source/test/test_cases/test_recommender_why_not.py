@@ -108,7 +108,10 @@ def test_why_not_names_the_other_sites():
         }
     ]
     text = render_recommendations([_rec()], query="a pool", why_not=steps)
-    sentence = "3 campsites say they don't have pools."
+    sentence = (
+        "3 campsites don't have an indication of pools "
+        "(by review or the stated info)."
+    )
     assert sentence in text
     assert "Why not" not in text
     assert text.index("1. אכזיב") < text.index(sentence)
@@ -124,11 +127,29 @@ def test_hebrew_why_not():
         }
     ]
     text = render_recommendations([], empty="אין מקום", query="בריכה", why_not=steps)
-    sentence = "3 אתרים אומרים שאין להם בריכות לילדים."
+    sentence = (
+        "3 אתרים בלי אינדיקציה על בריכות לילדים "
+        "(לא בביקורות ולא במידע המוצהר)."
+    )
     assert "אין מקום" in text
     assert sentence in text
     assert "Why not" not in text
     assert text.index("אין מקום") < text.index("3 אתרים")
+
+
+def test_price_why_not_quotes_the_requested_limit():
+    steps = [{"stage": "price", "count": 3, "sites": ["a", "b", "c"]}]
+    text = render_recommendations(
+        [_rec()],
+        query="a pool",
+        why_not=steps,
+        constraints={
+            "numeric_constraints": [
+                {"field": "price_per_night", "operator": "<=", "value": 300}
+            ]
+        },
+    )
+    assert "3 campsite slots are outside the price range (up to 300 NIS)." in text
 
 
 def test_why_not_is_rendered_and_kept_out_of_the_model_pack():
@@ -179,7 +200,8 @@ def test_why_not_is_rendered_and_kept_out_of_the_model_pack():
     )
     assert result.text.startswith("24–25.5")
     assert (
-        "2 campsites [דרום and צפון] say that they don't have pool."
+        "2 campsites [דרום and צפון] don't have an indication of pool "
+        "(by review or the stated info)."
         in result.text
     )
     assert len(result.recommendations) == 1
