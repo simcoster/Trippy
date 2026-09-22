@@ -7,6 +7,28 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-21
+
+### 1. Does "for tomorrow" stop resolving as today?
+
+**Question.** Live Streamlit ask “we're looking for a place for 2 adults
+and 2 kids for tomorrow, with pools for the kids, maybe with a fridge”
+emitted `kind=on, on=today` (21–22 Sep) because `on` was
+`"YYYY-MM-DD" | "today"` and the prompt forbade ISO calendars. After
+adding `tonight`/`tomorrow` to the schema, a few-shot of that miss plus
+bare `מחר`, and a +1 day offset in `resolve_dates`, does the 235B emit
+`on=tomorrow` and land on the next night?
+
+**Setup.** Extractor only, temperature 0, frozen today Monday 21 Sep
+2026. Five trials of the live English miss; five of a Hebrew variant
+that is not a few-shot (`מחפשים מקום למחר ל2 מבוגרים ו2 ילדים עם
+בריכות לילדים, אולי עם מקרר`). No planner, no DB writes.
+
+**Result.** **10/10** `on=tomorrow` → start 2026-09-22. 35.5 s. Est.
+**~$0.005**.
+
+**Decision.** Ship. design.md "Query extractor: date_intent".
+
 ## 2026-09-17
 
 ### 2. Do the remaining three compile misses recover on a second draw?

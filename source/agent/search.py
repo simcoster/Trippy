@@ -44,6 +44,7 @@ class _SandboxQuoteKey(NamedTuple):
     lodging: str
     adults_num: int
     weekend: bool
+    planned_entry_time: str | None = None
 
 
 class _SandboxQuoteBatch(NamedTuple):
@@ -370,6 +371,11 @@ def _quote_sandbox_batch(
                 lodging=str(call["lodging"]),
                 adults_num=int(call["adults_num"]),
                 is_weekend_or_holiday=bool(call["is_weekend_or_holiday"]),
+                planned_entry_time=(
+                    str(call["planned_entry_time"]).strip()
+                    if call.get("planned_entry_time")
+                    else None
+                ),
             ),
         )
         for call in calls
@@ -394,40 +400,50 @@ def _quote_sandbox_batch(
     return out
 
 
+def _sandbox_request_id(key: _SandboxQuoteKey) -> str:
+    req_id = (
+        f"{key.campsite_id}:{key.lodging}:{key.adults_num}:{int(key.weekend)}"
+    )
+    if key.planned_entry_time:
+        return f"{req_id}:{key.planned_entry_time}"
+    return req_id
+
+
 def _sandbox_quotes_for_slots(
     slots: list[dict],
     *,
     party_size: int | None,
     rate_period: RatePeriod,
+    planned_entry_time: str | None = None,
 ) -> _SandboxQuoteBatch:
     url = sandbox_url()
     adults = party_size if party_size and party_size > 0 else 1
     weekend = rate_period == "weekend_holiday"
+    entry = str(planned_entry_time).strip() if planned_entry_time else None
     calls: list[dict[str, Any]] = []
     keys: list[_SandboxQuoteKey] = []
-    seen: set[_SandboxQuoteKey] = set()
+    seen_keys: set[_SandboxQuoteKey] = set()
     for slot in slots:
         key = _SandboxQuoteKey(
             campsite_id=int(slot["campsite_id"]),
             lodging=str(slot.get("accommodation_type") or ""),
             adults_num=adults,
             weekend=weekend,
+            planned_entry_time=entry,
         )
-        if key in seen:
+        if key in seen_keys:
             continue
-        seen.add(key)
+        seen_keys.add(key)
         keys.append(key)
         calls.append(
             {
-                "request_id": (
-                    f"{key.campsite_id}:{key.lodging}:{key.adults_num}:"
-                    f"{int(key.weekend)}"
-                ),
+                "request_id": _sandbox_request_id(key),
                 "campsite_id": key.campsite_id,
                 "campsite": slot.get("campsite"),
                 "lodging": key.lodging,
                 "adults_num": key.adults_num,
                 "is_weekend_or_holiday": key.weekend,
+                "planned_entry_time": key.planned_entry_time,
             }
         )
     by_key: dict[_SandboxQuoteKey, QuoteResult] = {}
@@ -494,6 +510,7 @@ def search_open_slots(
     site_id: int | list[int] | None = None,
     party_size: int | None = None,
     numeric_constraints: list | None = None,
+    planned_entry_time: str | None = None,
     limit: int = OPEN_SLOTS_LIMIT,
 ) -> list[dict]:
     """Catalog vacancies for a stay window, with list-price quotes.
@@ -561,11 +578,15 @@ def search_open_slots(
     rate_period = _rate_period_for_stay(date_range)
     price_constraint = _price_per_night_constraint(numeric_constraints)
     sandbox_batch = _sandbox_quotes_for_slots(
-        slots, party_size=party_size, rate_period=rate_period
+        slots,
+        party_size=party_size,
+        rate_period=rate_period,
+        planned_entry_time=planned_entry_time,
     )
     query_record["sandbox"] = sandbox_batch.report
     sandbox_quotes = sandbox_batch.by_key
     adults = party_size if party_size and party_size > 0 else 1
+    entry = str(planned_entry_time).strip() if planned_entry_time else None
     calls_by_id = {
         str(row["request_id"]): row
         for row in sandbox_batch.report.get("calls") or []
@@ -578,6 +599,7 @@ def search_open_slots(
             lodging=str(slot.get("accommodation_type") or ""),
             adults_num=adults,
             weekend=rate_period == "weekend_holiday",
+            planned_entry_time=entry,
         )
         sandbox = sandbox_quotes.get(key)
         if sandbox is not None:
@@ -592,9 +614,7 @@ def search_open_slots(
                 accommodation_type_id=int(slot["accommodation_type_id"]),
             )
             source = "quote_night"
-        traced = calls_by_id.get(
-            f"{key.campsite_id}:{key.lodging}:{key.adults_num}:{int(key.weekend)}"
-        )
+        traced = calls_by_id.get(_sandbox_request_id(key))
         if traced is not None:
             traced["source"] = source
             if price is not None:

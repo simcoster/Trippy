@@ -90,10 +90,11 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
         "when": "this" | "next" | null,
         "weeks_from_now": N | null,
         "horizon_days": N | null,
-        "on": "YYYY-MM-DD" | "today" | null,
+        "on": "YYYY-MM-DD" | "today" | "tonight" | "tomorrow" | null,
         "nights": 1
       }} | null,
       "campsite": "Horashat Tal" | null,
+      "planned_entry_time": "19:00" | null,
       "numeric_constraints": [
         {{"field": "price_per_night", "operator": "<=", "value": 500}},
         {{"field": "party_size", "operator": ">=", "value": 3}}
@@ -108,7 +109,7 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     Rules:
     1. Output ONLY JSON.
     2. Dates: emit date_intent only. Do NOT compute ISO calendars and do NOT
-       emit date.start / date.end for relative phrases. A resolve_dates tool
+       emit date.start / date.end for relative phrases. resolve_dates
        turns intent into stay windows after you reply.
        - "next" / "הבא" → when="next" (next calendar week, not this week's
          upcoming weekday). "הקרוב" is not "הבא".
@@ -136,13 +137,17 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
          only when they asked for several dates over a span — never for a
          season or weather ("בקיץ" / "in the summer" is semantic, not a
          date horizon).
-       - "today" / "החל מהיום" → kind="on", on="today".
+       - "today" / "tonight" / "החל מהיום" / "הלילה" → kind="on",
+         on="today" or on="tonight" (same calendar night).
+       - "tomorrow" / "מחר" → kind="on", on="tomorrow". Not on="today".
+         Do not emit an ISO date for it.
        - "שומר שבת" is semantic ("shabbat observant"), not kind=weekend
          and not a Friday — they did not say סופ״ש / weekend.
        - nights: stay length ("לילה אחד" → 1, "ל2 לילות" → 2). Weekend
          defaults to 1 if omitted. Never put stay length in semantic_constraints.
        Do NOT put dates in numeric_constraints or semantic_constraints.
-    3. numeric_constraints: price, party size, distance (km), rating only — never dates.
+    3. numeric_constraints: price, party size, distance (km), rating only — never dates
+       and never clock hours (those are planned_entry_time).
        Party size ("for 3 people", "3 adults", "ל3 אנשים"):
        {{"field": "party_size", "operator": ">=", "value": 3}}.
        That means occupancy >= N — the listing must fit the party. Never use
@@ -165,8 +170,11 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        Each other item: {{"query": "..."}}.
        Prefer English labels: "hot showers", "running water", "near the sea".
        Do not emit an "amenities" key.
-       Do not put check-in time / "arrive Saturday afternoon" / arrival
-       policy in semantic_constraints (omit those until a policy field exists).
+       Arrival / check-in clock ("אפשר להיכנס אחרי 19", "arrive after 19",
+       "להגיע בשבת בצהריים") is planned_entry_time as "HH:MM", never a
+       date and never semantic_constraints. "אחרי 19" is 19:00 (an hour,
+       not the 19th). Afternoon / צהריים → "12:00". Evening / ערב →
+       "18:00". Omit planned_entry_time when they did not say a time.
        Every item carries a "locus":
        - "room" when the feature must be inside the booked unit / private:
          "מקרר בחדר", "fridge in the room", "private shower", "מקלחת פרטית",
@@ -210,10 +218,26 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     {{
       "date_intent": {{"kind": "weekday", "weekday": "saturday", "when": "this", "nights": 1}},
       "campsite": null,
+      "planned_entry_time": "12:00",
       "numeric_constraints": [],
       "semantic_constraints": [
         {{"query": "nice summer weather", "locus": "site"}},
         {{"query": "stargazing", "locus": "site"}}
+      ]
+    }}
+
+    Example:
+    Input: "מקום ל4 אנשים עם בריכות לילדים ואפשר להיכנס אחרי 19"
+    Output:
+    {{
+      "date_intent": null,
+      "campsite": null,
+      "planned_entry_time": "19:00",
+      "numeric_constraints": [
+        {{"field": "party_size", "operator": ">=", "value": 4}}
+      ],
+      "semantic_constraints": [
+        {{"query": "pools for children", "locus": "site"}}
       ]
     }}
 
@@ -238,6 +262,21 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
       ],
       "semantic_constraints": [
         {{"query": "air conditioning", "locus": "site"}}
+      ]
+    }}
+
+    Example:
+    Input: "we're looking for a place for 2 adults and 2 kids for tomorrow, with pools for the kids, maybe with a fridge"
+    Output:
+    {{
+      "date_intent": {{"kind": "on", "on": "tomorrow", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [
+        {{"field": "party_size", "operator": ">=", "value": 4}}
+      ],
+      "semantic_constraints": [
+        {{"query": "pools for children", "locus": "site"}},
+        {{"query": "fridge", "locus": "site"}}
       ]
     }}
 
@@ -270,6 +309,16 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     Output:
     {{
       "date_intent": {{"kind": "weekend", "when": "this", "nights": 1}},
+      "campsite": null,
+      "numeric_constraints": [],
+      "semantic_constraints": []
+    }}
+
+    Example:
+    Input: "מחר"
+    Output:
+    {{
+      "date_intent": {{"kind": "on", "on": "tomorrow", "nights": 1}},
       "campsite": null,
       "numeric_constraints": [],
       "semantic_constraints": []

@@ -6,6 +6,40 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, always forward planned_entry_time)
+
+**Planner always passes `planned_entry_time`.** Omitting it when unset
+needed an extra kwargs dict so exact mock matches would still pass.
+`search_open_slots` already treats None the same as omitted; tests now
+include `planned_entry_time=None`. Supersedes “omit unset
+planned_entry_time” below. design.md “Query extractor: date_intent”.
+
+### Done (2026-09-22, omit unset planned_entry_time)
+
+**Planner does not pass `planned_entry_time=None`.** `search_open_slots`
+already defaults it. Forwarding None made mock assertions miss the
+kwarg and would hide a missing default. Only pass the clock when the
+extractor set one. design.md “Query extractor: date_intent”.
+
+### Done (2026-09-22, resolve_dates is not a tool)
+
+**Extractor does not wrap `resolve_dates` as a LangChain tool.** It was
+never `bind_tools`'d (empty Qwen content); `extractor_node` invoked it
+after JSON, and still swallowed leftover `tool_calls`. `normalize_constraints`
+calls `resolve_dates` directly. Dropped `resolve_dates_tool`,
+`constraints_from_tool_calls`, and the prompt's "resolve_dates tool".
+design.md “Query extractor: date_intent”.
+
+### Done (2026-09-21, tomorrow is on=tomorrow)
+
+**“for tomorrow” / מחר is `on=tomorrow`, not today.** Schema `on`
+was `"YYYY-MM-DD" | "today"` and the prompt forbade ISO, so the 235B
+mapped tomorrow onto the only relative token. `resolve_dates` now
+offsets `tomorrow` by one day (`tonight` stays this night). Few-shot
+of the live English miss plus bare `מחר`.
+`test_date_intent_tomorrow.py`, `test_extractor_tomorrow.py`.
+design.md “Query extractor: date_intent”. experiments.md 2026-09-21 §1.
+
 ### Done (2026-09-20, availability scrape is 4 weeks)
 
 **`scrape-availability` walks 28 nights, not 14.**
@@ -25,6 +59,17 @@ Skipping when the compose service was missing left Streamlit on last
 week's `quote()` (or `quote_night`) with a green job. `no such
 service` fails the run. `--if-up` stays laptop-only (`just streamlit`
 when Compose is down). design.md “Where it runs”.
+
+### Done (2026-09-19, planned_entry_time)
+
+**“אפשר להיכנס אחרי 19” is `planned_entry_time`, not dropped.** The
+extractor prompt used to omit arrival / check-in until a policy field
+existed, and the summer-stargazing few-shot demonstrated dropping
+Saturday afternoon. Schema field `planned_entry_time` (`HH:MM`); still
+not semantic RAG. Normalize accepts `19` / `19:00`. Planner passes it
+to sandbox quotes. Sites are not yet filtered on gate hours.
+`test_planned_entry_time.py`, `test_extractor_late_entry.py`.
+Supersedes the “no extractor field or planner path yet” note below.
 
 ### Done (2026-09-19, keepalive 10 min)
 

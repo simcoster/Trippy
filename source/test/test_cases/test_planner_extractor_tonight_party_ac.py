@@ -107,6 +107,7 @@ def test_planner_output_for_extractor_tonight_party_ac(two_stage: SimpleNamespac
         site_id=None,
         party_size=3,
         numeric_constraints=EXTRACTOR_JSON["numeric_constraints"],
+        planned_entry_time=None,
     )
     two_stage.amenities.assert_called_once()
     assert two_stage.amenities.call_args.args[0] == "air conditioning"

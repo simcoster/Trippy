@@ -846,9 +846,10 @@ Response: {"content": "<html>"}
 ## Query extractor: date_intent
 
 The query extractor (`extractor_node`) emits a `date_intent` only;
-`resolve_dates` turns it into ISO stay windows. It does not invent
-calendars. That node is the **235B** (`extractor_model`, temperature 0).
-`planner_node` is vacancies + amenity SQL, not a chat model.
+`normalize_constraints` calls `resolve_dates` in process and attaches ISO
+stay windows. The extractor is not given a date tool. That node is the
+**235B** (`extractor_model`, temperature 0). `planner_node` is vacancies
++ amenity SQL, not a chat model.
 
 Hebrew clocks that used to be mislabelled, and the intents they must emit:
 
@@ -859,7 +860,16 @@ Hebrew clocks that used to be mislabelled, and the intents they must emit:
 | שבוע הבא / next week (no weekday) | `kind=week`, `when=next` — nights of that ISO week, not `on=today` |
 | השבוע / this week | `kind=week`, `when=this` (remaining days) |
 | בעוד N שבועות / in N weeks | `weeks_from_now=N`, and no `when` |
+| today / tonight / החל מהיום / הלילה | `kind=on`, `on=today` or `on=tonight` (same night) |
+| tomorrow / מחר | `kind=on`, `on=tomorrow` — not `on=today`, not an ISO date |
 | שומר שבת | semantic (`shabbat observant`), not `kind=weekend` |
+
+`on` relative tokens are `today` / `tonight` / `tomorrow`. The extractor
+must not invent the ISO day; `resolve_dates` offsets them from Israel
+today (`tonight` = this night, `tomorrow` = +1). The live miss
+“for tomorrow” with kids' pools emitted `on=today` because the schema
+only listed `today` and forbade ISO calendars (experiments.md
+2026-09-21 §1).
 
 `kind=week` is Monday–Sunday. The planner caps at 4 windows, so a full
 week keeps Friday and Saturday and fills from Monday. `horizon_days`
@@ -886,6 +896,17 @@ campsite and not part of the date. The 235B kept the Thursday and dropped
 the desert on a packed Hebrew ask until a few-shot of `לשבוע הבא בחמישי
 במדבר` plus an explicit “never drop a location pref” rule
 (experiments.md 2026-09-14 §1).
+
+Arrival is `planned_entry_time` (`HH:MM`), not a date and not a semantic
+query. “אפשר להיכנס אחרי 19” is `19:00` (an hour, not the 19th). Putting
+it in `semantic_constraints` would AND-filter amenities and drop sites
+that never advertise late check-in. The planner forwards
+`planned_entry_time` to `search_open_slots` (None when the extractor
+did not set a clock; None and omitted are the same default). Sandbox
+`QuoteParams.planned_entry_time` gets it so late-arrival fees apply. It does not yet reject sites whose gate
+/ check-in window closes earlier (that still needs a policy match, not
+RAG). The summer-stargazing few-shot used to omit Saturday-afternoon
+arrival; it now emits `12:00`.
 
 ## Named campsite lookup
 
@@ -1181,7 +1202,8 @@ Each quote runs in a short-lived child with a memory cap and a
 sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
 `quote_night`. Planner party size is still `adults_num`; `child_num`,
 child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
-off until the extractor grows those fields. `child_num` is an explicit
+off until the extractor grows those fields. `planned_entry_time` is
+the extractor clock (`HH:MM`) when they said when they will arrive. `child_num` is an explicit
 child headcount (toddlers included); `child_ages` only splits toddler /
 child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
 קבוצה is deduced from `adults_num + child_num` against that site's

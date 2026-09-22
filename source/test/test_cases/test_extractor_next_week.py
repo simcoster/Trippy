@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from types import SimpleNamespace
 
 import pytest
 from dotenv import load_dotenv
@@ -89,15 +88,9 @@ def test_week_kind_wins_over_stray_on_today():
 
 def _freeze_today(monkeypatch: pytest.MonkeyPatch, pinned: date) -> None:
     from source.agent import graph as agent_graph
-    from source.agent.dates import resolve_dates as resolve
 
     monkeypatch.setattr(
         agent_graph, "today_il", lambda today=None, day=pinned: day
-    )
-    monkeypatch.setattr(
-        agent_graph,
-        "resolve_dates_tool",
-        SimpleNamespace(invoke=lambda args, day=pinned: resolve(**args, today=day)),
     )
 
 

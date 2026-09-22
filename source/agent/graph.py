@@ -24,14 +24,12 @@ from source.agent.constraints import (
     EMPTY_CONSTRAINTS,
     attach_campsite,
     compact_date_intent,
-    constraints_from_tool_calls,
     intent_nonempty,
     latest_constraints_json,
     normalize_constraints,
     parse_constraints_dict,
     today_il,
 )
-from source.agent.dates import intent_tool_args, resolve_dates_tool
 from source.agent.messages import is_keep_decision, latest_user_text, message_text
 from source.agent.planner import _semantic_evidence_payload, planner_fits_payload
 from source.agent.prompts import (
@@ -106,8 +104,8 @@ class ChatState(TypedDict):
 # Planner calls `source.agent.search` directly — wrap/patch that module.
 
 # Do NOT bind_tools on the chat models: extractor/recommender need text/JSON
-# replies. Tools are invoked imperatively in planner_node. Binding tools made
-# Qwen return empty content + tool_calls, which surfaced as blank agent replies.
+# replies. Binding tools made Qwen return empty content + tool_calls, which
+# surfaced as blank agent replies. extractor_node resolves dates in process.
 light_model = make_agent_chat_model(temperature=0.7)
 # extractor_node only. planner_node is SQL + embeddings, not a chat model.
 # Named extractor_model (it used to be planner_model) so patches and traces
@@ -206,53 +204,34 @@ def extractor_node(state: ChatState) -> ChatState:
     if sink is not None and raw_usage is not None:
         sink.add_chat(raw_usage, role="extract", model=instruct_chat_model())
     raw = message_text(response.content)
-    tool_calls = getattr(response, "tool_calls", None) or []
     user_text = latest_user_text(state["messages"])
     parsed = parse_constraints_dict(raw)
-
-    for tc in tool_calls or []:
-        name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-        args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", None)
-        if name == "resolve_dates" and isinstance(args, dict):
-            parsed["date_intent"] = {**(parsed.get("date_intent") or {}), **args}
 
     intent = parsed.get("date_intent")
     if not intent_nonempty(intent):
         intent = {}
 
     compact = compact_date_intent(intent) if isinstance(intent, dict) else {}
-    resolved = None
-    tool_args = intent_tool_args(intent) if isinstance(intent, dict) else {}
-    if tool_args:
-        resolved = resolve_dates_tool.invoke(tool_args)
-
-    logger.info(
-        "extractor date_intent=%s resolved=%s",
-        json.dumps(compact, ensure_ascii=False) if compact else None,
-        json.dumps(resolved, ensure_ascii=False) if resolved else None,
-    )
-
     constraints_json = normalize_constraints(
         parsed,
         today=today,
         user_text=user_text,
-        resolved=resolved,
     )
     constraints_json = attach_campsite(constraints_json, parsed)
-    if (
-        not constraints_json.get("semantic_constraints")
-        and not constraints_json.get("numeric_constraints")
-        and constraints_json.get("date") is None
-        and tool_calls
-    ):
-        constraints_json = constraints_from_tool_calls(tool_calls)
-        constraints_json = normalize_constraints(
-            constraints_json,
-            today=today,
-            user_text=user_text,
-            resolved=resolved,
+    logger.info(
+        "extractor date_intent=%s resolved=%s",
+        json.dumps(compact, ensure_ascii=False) if compact else None,
+        json.dumps(
+            {
+                "windows": constraints_json.get("date_windows"),
+                "truncated": constraints_json.get("date_truncated"),
+                "notice": constraints_json.get("date_notice"),
+            },
+            ensure_ascii=False,
         )
-        constraints_json = attach_campsite(constraints_json, parsed)
+        if constraints_json.get("date_windows")
+        else None,
+    )
 
     if compact:
         constraints_json["date_intent"] = compact

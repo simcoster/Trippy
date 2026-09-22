@@ -209,6 +209,31 @@ def parse_constraints_dict(raw: str | dict[str, Any] | None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+_ENTRY_TIME_FIELDS = frozenset({"planned_entry_time", "entry_time"})
+_ENTRY_TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?$")
+
+
+def parse_planned_entry_time(value: Any) -> str | None:
+    """Clock hour as HH:MM. `19` and `19:00` both become `19:00`."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        if 0 <= value <= 23:
+            return f"{value:02d}:00"
+        return None
+    if isinstance(value, float) and value.is_integer():
+        return parse_planned_entry_time(int(value))
+    text = str(value).strip()
+    match = _ENTRY_TIME_RE.fullmatch(text)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    if 0 <= hour <= 23 and 0 <= minute <= 59:
+        return f"{hour:02d}:{minute:02d}"
+    return None
+
+
 def normalize_constraints(
     data: dict[str, Any] | str | None,
     *,
@@ -259,11 +284,17 @@ def normalize_constraints(
                     "notice": None,
                 }
 
-    # Strip date-like numeric junk (field containing date)
+    # Strip date-like numeric junk (field containing date). Lift a clock
+    # hour off numeric leftovers onto planned_entry_time.
+    entry = parse_planned_entry_time(parsed.get("planned_entry_time"))
     cleaned_numeric: list[Any] = []
     for item in numeric:
         if isinstance(item, dict):
             field = str(item.get("field") or "").lower()
+            if field in _ENTRY_TIME_FIELDS:
+                if entry is None:
+                    entry = parse_planned_entry_time(item.get("value"))
+                continue
             if "date" in field or field in {"start", "end", "night", "check_in"}:
                 if not (used_resolved and used_resolved.get("windows")):
                     val = item.get("value")
@@ -282,6 +313,8 @@ def normalize_constraints(
         "semantic_constraints": semantic,
     }
     apply_resolved_dates(out, used_resolved)
+    if entry:
+        out["planned_entry_time"] = entry
     return out
 
 
@@ -333,24 +366,6 @@ def parse_constraints_json(raw: str) -> dict[str, Any]:
     if not parsed:
         return dict(EMPTY_CONSTRAINTS)
     return normalize_constraints(parsed)
-
-
-def constraints_from_tool_calls(tool_calls) -> dict[str, Any]:
-    semantic: list[dict] = []
-    for tc in tool_calls or []:
-        name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-        args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", None)
-        if name == "search_claims" and isinstance(args, dict):
-            query = args.get("query")
-            if query:
-                semantic.append({"query": query})
-    return normalize_constraints(
-        {
-            "semantic_constraints": semantic,
-            "numeric_constraints": [],
-            "date": None,
-        }
-    )
 
 
 def latest_constraints_json(messages: list) -> dict[str, Any]:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -60,7 +59,6 @@ def test_thursday_to_saturday_is_two_nights_not_weekend():
 
 def test_extractor_payload_includes_date_intent(monkeypatch, caplog):
     from source.agent import graph as agent_graph
-    from source.agent.dates import resolve_dates as resolve
 
     monkeypatch.setattr(agent_graph, "today_il", lambda today=None: MONDAY)
     llm_json = {
@@ -80,11 +78,6 @@ def test_extractor_payload_includes_date_intent(monkeypatch, caplog):
     fake_model = MagicMock()
     fake_model.invoke.return_value = AIMessage(content=json.dumps(llm_json))
     monkeypatch.setattr(agent_graph, "extractor_model", fake_model)
-    monkeypatch.setattr(
-        agent_graph,
-        "resolve_dates_tool",
-        SimpleNamespace(invoke=lambda args: resolve(**args, today=MONDAY)),
-    )
 
     with caplog.at_level("INFO", logger="source.agent.graph"):
         result = agent_graph.extractor_node(
