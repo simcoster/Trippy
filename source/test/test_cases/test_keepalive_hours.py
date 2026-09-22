@@ -1,10 +1,16 @@
 """Interval keepalive runs from 07:00 until 23:00 Asia/Jerusalem."""
 
+import threading
 from datetime import datetime
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from source.agent import keepalive as keepalive_mod
-from source.agent.keepalive import keepalive_hours_open, start_model_keepalive
+from source.agent.keepalive import (
+    keepalive_hours_open,
+    ping_models,
+    start_model_keepalive,
+)
 
 _TZ = ZoneInfo("Asia/Jerusalem")
 
@@ -31,3 +37,20 @@ def test_interval_skips_ping_outside_hours(monkeypatch):
     monkeypatch.setattr(keepalive_mod, "ping_models", _ping)
     start_model_keepalive(interval_sec=0, blocking=True)
     assert seen == []
+
+
+def test_ping_runs_on_a_daemon_thread():
+    flags: list[bool] = []
+
+    class _Chat:
+        model_name = "kimi"
+
+        def bind(self, **_kwargs):
+            return self
+
+        def invoke(self, messages, config=None):
+            flags.append(threading.current_thread().daemon)
+            return SimpleNamespace(content="ok")
+
+    ping_models(chats={"recommender": _Chat()})
+    assert flags == [True]

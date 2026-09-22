@@ -8,7 +8,6 @@ import os
 import threading
 import time
 from collections.abc import Mapping, MutableMapping
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from datetime import time as wall_time
 from typing import Any, NamedTuple
@@ -215,13 +214,26 @@ def _invoke_ping(target: KeepaliveTarget) -> None:
     logger.info(done)
 
 
+def _start_daemon(name: str, fn: Any, *args: Any) -> threading.Thread:
+    """Daemon so a ping that never returns does not block process exit.
+
+    A thread-pool worker is non-daemon. Kimi can sit for minutes with no
+    token, and Ctrl+C then prints Stopping... until that call ends.
+    """
+    thread = threading.Thread(target=fn, args=args, name=name, daemon=True)
+    thread.start()
+    return thread
+
+
 def _ping_round(targets: tuple[KeepaliveTarget, ...]) -> None:
     if not targets:
         return
     ping = bind_to_current_trace(_invoke_ping)
-    workers = min(len(targets), 4) or 1
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="keepalive") as pool:
-        list(pool.map(ping, targets))
+    threads = [
+        _start_daemon(f"keepalive-{target.role}", ping, target) for target in targets
+    ]
+    for thread in threads:
+        thread.join()
 
 
 def ping_models(
@@ -250,18 +262,28 @@ def ping_models(
             print(scheduled, flush=True)
             logger.info(scheduled)
             ping = bind_to_current_trace(warmup_claim_judge)
-            with ThreadPoolExecutor(
-                max_workers=2, thread_name_prefix="keepalive"
-            ) as pool:
-                # Each worker needs its own copy. One Context cannot be
-                # entered on two threads, and without a copy the model
-                # calls land as root runs instead of children.
-                chats_done = pool.submit(
-                    contextvars.copy_context().run, _ping_round, targets
-                )
-                judge_done = pool.submit(contextvars.copy_context().run, ping)
-            chats_done.result()
-            reply = judge_done.result()
+            judge_box: list[Any] = []
+
+            def _judge() -> None:
+                judge_box.append(ping())
+
+            # Each worker needs its own copy. One Context cannot be
+            # entered on two threads, and without a copy the model
+            # calls land as root runs instead of children.
+            chats_thread = _start_daemon(
+                "keepalive-chats",
+                contextvars.copy_context().run,
+                _ping_round,
+                targets,
+            )
+            judge_thread = _start_daemon(
+                "keepalive-judge",
+                contextvars.copy_context().run,
+                _judge,
+            )
+            chats_thread.join()
+            judge_thread.join()
+            reply = judge_box[0] if judge_box else None
             return reply if isinstance(reply, str) else None
         _ping_round(targets)
         return None
