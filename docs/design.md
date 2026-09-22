@@ -871,8 +871,8 @@ today (`tonight` = this night, `tomorrow` = +1). The live miss
 only listed `today` and forbade ISO calendars (experiments.md
 2026-09-21 §1).
 
-`kind=week` is Monday–Sunday. The planner caps at 4 windows, so a full
-week keeps Friday and Saturday and fills from Monday. `horizon_days`
+`kind=week` is Monday–Sunday. The planner caps at 20 windows, so a full
+week is searched as those nights. `horizon_days`
 with `kind=on` enumerates consecutive nights from `on` (the live miss
 was `on=today, horizon_days=7` collapsing to tonight because `on`
 ignored the horizon). Few-shots of bare `לשבוע הבא` and of the live

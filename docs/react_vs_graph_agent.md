@@ -47,7 +47,7 @@ on the chat models: binding them made Qwen return empty `content` plus
 is one `(campsite, accommodation_type)` that has a one-night vacancy for
 **every** night of the stay (`GROUP BY` + `HAVING COUNT(DISTINCT
 start_date)`), plus a quoted `price_per_night`. Not 80 campsites and not
-80 nights. Up to four date windows (`MAX_DATE_WINDOWS`) are concatenated,
+80 nights. Up to 20 date windows (`MAX_DATE_WINDOWS`) are concatenated,
 so the amenity filter can see more than 80 rows.
 
 The recommender is told to pick only from `fits`. It is passed all

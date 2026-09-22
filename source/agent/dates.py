@@ -11,12 +11,12 @@ from zoneinfo import ZoneInfo
 TZ_IL = ZoneInfo("Asia/Jerusalem")
 logger = logging.getLogger(__name__)
 
-MAX_DATE_WINDOWS = 4
+MAX_DATE_WINDOWS = 20
 DATE_TRUNCATED_NOTICE = (
-    "יש יותר מ-4 טווחי תאריכים מתאימים; חיפשתי רק את ארבעת הראשונים."
+    "יש יותר מ-20 טווחי תאריכים מתאימים; חיפשתי רק את 20 הראשונים."
 )
 WEEK_TRUNCATED_NOTICE = (
-    "השבוע ארוך מ-4 לילות; חיפשתי אמצע שבוע ואת שישי-שבת."
+    "השבוע ארוך מ-20 לילות; חיפשתי אמצע שבוע ואת שישי-שבת."
 )
 
 _WEEKDAY_INDEX = {
