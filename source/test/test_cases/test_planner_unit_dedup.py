@@ -41,15 +41,16 @@ def _fits_payload(result: dict) -> dict:
 
 
 def _open_same_unit(monkeypatch) -> MagicMock:
-    slots = MagicMock(
-        side_effect=lambda **kwargs: [
-            {
-                **SLOT,
-                "start": kwargs["date_range"]["start"],
-                "end": kwargs["date_range"]["end"],
-            }
+    def _slots(**kwargs):
+        windows = kwargs.get("date_windows")
+        if not windows:
+            windows = [kwargs["date_range"]]
+        return [
+            {**SLOT, "start": window["start"], "end": window["end"]}
+            for window in windows
         ]
-    )
+
+    slots = MagicMock(side_effect=_slots)
     monkeypatch.setattr("source.agent.search.search_open_slots", slots)
     monkeypatch.setattr(
         "source.agent.search.search_stated_amenities", MagicMock(return_value=[])
@@ -189,7 +190,7 @@ def test_planner_node_emits_one_fit_for_two_windows(monkeypatch):
             }
         )
     )
-    assert slots.call_count == 2
+    assert slots.call_count == 1
     payload = _fits_payload(result)
     assert len(payload["fits"]) == 1
     assert [d["start"] for d in payload["fits"][0]["dates"]] == [

@@ -19,7 +19,7 @@ def _source(label: str) -> str:
 
 def test_open_slots_sql_selects_parent_id():
     sql, _params = _open_slots_sql(
-        date_range={"start": "2026-09-22", "end": "2026-09-23"},
+        windows=[{"start": "2026-09-22", "end": "2026-09-23"}],
         site_id=None,
         party_size=None,
         limit=10,

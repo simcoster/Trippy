@@ -117,7 +117,7 @@ def vacancy_search(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
 def test_open_slots_sql_does_not_require_one_unit_to_sleep_the_party():
     """6 guests can take two 4-person bungalows; do not require occupancy >= 6."""
     sql, params = _open_slots_sql(
-        date_range=DATE,
+        windows=[DATE],
         site_id=None,
         party_size=6,
         limit=80,
@@ -145,7 +145,7 @@ def test_planner_books_two_units_of_same_type_for_party_of_six(
         )
     )
     vacancy_search.slots.assert_called_once_with(
-        date_range=DATE,
+        date_windows=[DATE],
         site_id=None,
         party_size=6,
         numeric_constraints=PARTY_SIX,

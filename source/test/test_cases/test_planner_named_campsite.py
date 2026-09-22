@@ -99,7 +99,7 @@ def test_planner_named_campsite_looks_up_id_then_open_slots(
     )
     named_site_db.lookup.assert_called_once_with("Horshat Tal")
     named_site_db.slots.assert_called_once_with(
-        date_range=DATE,
+        date_windows=[DATE],
         site_id=1,
         party_size=3,
         numeric_constraints=[

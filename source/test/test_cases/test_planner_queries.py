@@ -87,7 +87,7 @@ def test_planner_date_range_queries_open_slots(db_searches: SimpleNamespace):
         )
     )
     db_searches.slots.assert_called_once()
-    assert db_searches.slots.call_args.kwargs["date_range"] == DATE
+    assert db_searches.slots.call_args.kwargs["date_windows"] == [DATE]
     assert db_searches.slots.call_args.kwargs["site_id"] is None
     db_searches.amenities.assert_not_called()
     db_searches.claims.assert_not_called()

@@ -114,7 +114,7 @@ def test_catalog_date_party_ac_intersects_on_type_ids(two_stage: SimpleNamespace
     two_stage.lookup.assert_not_called()
     two_stage.slots.assert_called_once()
     kwargs = two_stage.slots.call_args.kwargs
-    assert kwargs["date_range"] == DATE
+    assert kwargs["date_windows"] == [DATE]
     assert kwargs["site_id"] is None
     assert kwargs["party_size"] == 3
     two_stage.amenities.assert_called_once()

@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, one availability SQL for one night or many)
+
+**A single stay uses the same query as several windows.** `date_range` is a one-item `date_windows`. `_open_slots_sql` is that query; the old single-range SQL is gone. Supersedes the split in the entry above.
+
+### Done (2026-09-22, one availability search and one quote)
+
+**The planner searches every stay window in one SQL, then quotes once.** A week of one-night stays was one `search_open_slots` and one `price_sandbox_quote` per night. Weekday and weekend prices share that quote; the rate follows each slot's dates. Supersedes the per-window loop. design.md "Planner claim/rule judge" and the LangSmith tool list.
+
 ### Done (2026-09-22, subcamp quote uses the parent function)
 
 **`/quote` falls back to `parent_site_id` when the slot's site is not loaded.** Achziv north/south (37, 38) were `unknown site` because availability is on the subcamp and `site_price_functions` is on the parent (site 2). Open slots select `c.parent_id` and the sandbox uses that function only when the child id misses. design.md "Per-site price functions".

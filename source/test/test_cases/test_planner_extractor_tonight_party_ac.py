@@ -103,7 +103,7 @@ def test_planner_output_for_extractor_tonight_party_ac(two_stage: SimpleNamespac
         }
     )
     two_stage.slots.assert_called_once_with(
-        date_range={"start": "2026-08-30", "end": "2026-09-01"},
+        date_windows=[{"start": "2026-08-30", "end": "2026-09-01"}],
         site_id=None,
         party_size=3,
         numeric_constraints=EXTRACTOR_JSON["numeric_constraints"],
@@ -143,25 +143,26 @@ def test_planner_output_for_extractor_tonight_party_ac(two_stage: SimpleNamespac
 
 def test_open_slots_sql_for_extractor_tonight_party_ac():
     sql, params = _open_slots_sql(
-        date_range=EXTRACTOR_JSON["date"],
+        windows=[EXTRACTOR_JSON["date"]],
         site_id=None,
         party_size=3,
         limit=80,
     )
     rendered = _render_sql(sql, params)
-    assert "a.start_date >= '2026-08-30'" in rendered
-    assert "a.start_date < '2026-09-01'" in rendered
+    assert "2026-08-30" in rendered
+    assert "2026-09-01" in rendered
     assert "a.end_date = a.start_date + 1" in rendered
-    assert "HAVING COUNT(DISTINCT a.start_date) = 2" in rendered
+    assert "w.night_count" in rendered
+    assert "ARRAY[2]" in rendered
     assert "(at.max_occupancy IS NULL OR at.max_occupancy >= 3)" in rendered
-    assert "LIMIT 80" in rendered
+    assert "rn <= 80" in rendered
     assert "%s" not in rendered
-    where = rendered.split("WHERE", 1)[1].split("GROUP BY", 1)[0]
-    assert "a.site_id" not in where
+    assert "a.site_id =" not in rendered
 
 
 # One-night availability rows the mock DB holds for 2026-08-30 → 2026-09-01.
-# Columns match search_open_slots: site_id, campsite, start, end, rooms, type_id, type, occ.
+# Result columns match search_open_slots: start, end, site_id, campsite,
+# rooms, type_id, type, occ.
 _MOCK_NIGHTS = [
     (3, "Park A", date(2026, 8, 30), date(2026, 8, 31), 2, 11, "בונגלו עם מזגן", 4),
     (3, "Park A", date(2026, 8, 31), date(2026, 9, 1), 1, 11, "בונגלו עם מזגן", 4),
@@ -170,10 +171,10 @@ _MOCK_NIGHTS = [
 
 
 def _mock_availability_result(sql: str, params: list) -> list[tuple]:
-    stay_start, stay_end = params[0], params[1]
-    night_count = params[-2]
+    starts, ends, counts = params[0], params[1], params[2]
+    stay_start, stay_end, night_count = starts[0], ends[0], counts[0]
     limit = params[-1]
-    party_size = params[-3] if "max_occupancy" in sql else None
+    party_size = params[-2] if "max_occupancy" in sql else None
     kept: list[tuple] = []
     for row in _MOCK_NIGHTS:
         start, end, occ = row[2], row[3], row[7]
@@ -193,17 +194,17 @@ def _mock_availability_result(sql: str, params: list) -> list[tuple]:
             continue
         out.append(
             (
-                key[0],
-                key[1],
                 min(row[2] for row in rows),
                 max(row[3] for row in rows),
+                key[0],
+                key[1],
                 min(row[4] for row in rows),
                 key[2],
                 key[3],
                 key[4],
             )
         )
-    out.sort(key=lambda row: (row[2], row[5]))
+    out.sort(key=lambda row: (row[0], row[5]))
     return out[:limit]
 
 
@@ -213,7 +214,7 @@ class _MockCursor:
 
     def execute(self, sql: str, params=None) -> None:
         params = list(params or [])
-        if "FROM availability" in sql:
+        if "availability a" in sql:
             self._rows = _mock_availability_result(sql, params)
         else:
             self._rows = []

@@ -443,34 +443,22 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             return payload
         site_id = site_ids if len(site_ids) > 1 else site_ids[0]
 
-    slots: list[dict] = []
-    query_records: list[Any] = []
     planned_entry_time = constraints_json.get("planned_entry_time")
     with search.price_quote_cache():
-        for window in windows:
-            part = search.search_open_slots(
-                date_range=window,
-                site_id=site_id,
-                party_size=party_size_from_numeric(numeric),
-                numeric_constraints=numeric,
-                planned_entry_time=planned_entry_time
-            )
-            record = search._LAST_OPEN_SLOTS_QUERY
-            if not isinstance(record, dict):
-                record = {"date_range": window}
-            else:
-                record = {**record, "date_range": record.get("date_range") or window}
-            query_records.append(record)
-            if part and part[0].get("error"):
-                payload["error"] = part[0]["error"]
-                payload["open_slots_query"] = (
-                    query_records[0] if len(query_records) == 1 else query_records
-                )
-                return payload
-            slots.extend(part)
-    payload["open_slots_query"] = (
-        query_records[0] if len(query_records) == 1 else query_records
-    )
+        slots = search.search_open_slots(
+            date_windows=windows,
+            site_id=site_id,
+            party_size=party_size_from_numeric(numeric),
+            numeric_constraints=numeric,
+            planned_entry_time=planned_entry_time,
+        )
+    record = search._LAST_OPEN_SLOTS_QUERY
+    if not isinstance(record, dict):
+        record = {"windows": windows}
+    payload["open_slots_query"] = record
+    if slots and slots[0].get("error"):
+        payload["error"] = slots[0]["error"]
+        return payload
 
     found = _semantic_why_by_slot(slots, semantic)
     fits: list[dict[str, Any]] = []

@@ -8,7 +8,7 @@ import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import timedelta
+from datetime import date, timedelta
 from types import SimpleNamespace
 from typing import Any, NamedTuple
 
@@ -134,53 +134,90 @@ def _record_open_slots_query(record: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
+class _StayWindow(NamedTuple):
+    start: date
+    end: date
+    night_count: int
+
+
+def _stay_window(date_range: dict) -> _StayWindow | None:
+    nights = stay_night_starts(date_range)
+    if not nights:
+        return None
+    return _StayWindow(
+        start=nights[0],
+        end=nights[-1] + timedelta(days=1),
+        night_count=len(nights),
+    )
+
+
 def _open_slots_sql(
     *,
-    date_range: dict,
+    windows: list[dict],
     site_id: int | list[int] | None,
     party_size: int | None,
     limit: int,
 ) -> tuple[str, list[Any]] | tuple[None, str]:
-    nights = stay_night_starts(date_range)
-    if not nights:
-        return None, "no_date"
-    stay_start = nights[0]
-    stay_end = nights[-1] + timedelta(days=1)
-    clauses = [
-        "a.start_date >= %s",
-        "a.start_date < %s",
-        "a.end_date = a.start_date + 1",
+    """One query: each window must cover every night in its own range."""
+    stays = [
+        stay
+        for window in windows
+        if isinstance(window, dict) and (stay := _stay_window(window)) is not None
     ]
-    params: list[Any] = [stay_start, stay_end]
+    if not stays:
+        return None, "no_date"
+    filters: list[str] = []
+    filter_params: list[Any] = []
     if isinstance(site_id, list):
         ids = [int(x) for x in site_id]
         if not ids:
             return None, "empty_site_ids"
-        clauses.append("a.site_id = ANY(%s)")
-        params.append(ids)
+        filters.append("a.site_id = ANY(%s)")
+        filter_params.append(ids)
     elif site_id is not None:
-        clauses.append("a.site_id = %s")
-        params.append(int(site_id))
+        filters.append("a.site_id = %s")
+        filter_params.append(int(site_id))
     if party_size is not None:
-        clauses.append("(at.max_occupancy IS NULL OR at.max_occupancy >= %s)")
-        params.append(int(party_size))
-    params.append(len(nights))
-    params.append(limit)
+        filters.append("(at.max_occupancy IS NULL OR at.max_occupancy >= %s)")
+        filter_params.append(int(party_size))
+    where = ""
+    if filters:
+        where = "  WHERE " + " AND ".join(filters) + "\n"
     rel = _availability_relation()
     sql = (
-        "SELECT a.site_id, c.name, MIN(a.start_date), MAX(a.end_date),\n"
-        "       MIN(a.room_count), at.id, at.name, at.max_occupancy,\n"
-        "       c.parent_id\n"
-        f"FROM {rel} a\n"
-        "JOIN accommodation_types at ON at.id = a.accommodation_type_id\n"
-        "JOIN campsites c ON c.id = a.site_id\n"
-        f"WHERE {' AND '.join(clauses)}\n"
-        "GROUP BY a.site_id, c.name, at.id, at.name, at.max_occupancy,\n"
-        "         c.parent_id\n"
-        "HAVING COUNT(DISTINCT a.start_date) = %s\n"
-        "ORDER BY MIN(a.start_date), at.id\n"
-        "LIMIT %s"
+        "SELECT stay_start, stay_end, site_id, campsite, room_count,\n"
+        "       type_id, type_name, max_occupancy, parent_id\n"
+        "FROM (\n"
+        "  SELECT w.stay_start, w.stay_end, a.site_id, c.name AS campsite,\n"
+        "         MIN(a.room_count) AS room_count, at.id AS type_id,\n"
+        "         at.name AS type_name, at.max_occupancy, c.parent_id,\n"
+        "         ROW_NUMBER() OVER (\n"
+        "           PARTITION BY w.stay_start, w.stay_end ORDER BY at.id\n"
+        "         ) AS rn\n"
+        "  FROM unnest(%s::date[], %s::date[], %s::int[])\n"
+        "    AS w(stay_start, stay_end, night_count)\n"
+        f"  JOIN {rel} a\n"
+        "    ON a.start_date >= w.stay_start\n"
+        "   AND a.start_date < w.stay_end\n"
+        "   AND a.end_date = a.start_date + 1\n"
+        "  JOIN accommodation_types at ON at.id = a.accommodation_type_id\n"
+        "  JOIN campsites c ON c.id = a.site_id\n"
+        f"{where}"
+        "  GROUP BY w.stay_start, w.stay_end, w.night_count,\n"
+        "           a.site_id, c.name, at.id, at.name, at.max_occupancy,\n"
+        "           c.parent_id\n"
+        "  HAVING COUNT(DISTINCT a.start_date) = w.night_count\n"
+        ") q\n"
+        "WHERE rn <= %s\n"
+        "ORDER BY stay_start, type_id"
     )
+    params: list[Any] = [
+        [stay.start for stay in stays],
+        [stay.end for stay in stays],
+        [stay.night_count for stay in stays],
+        *filter_params,
+        limit,
+    ]
     return sql, params
 
 
@@ -416,6 +453,32 @@ def _sandbox_request_id(key: _SandboxQuoteKey) -> str:
     return req_id
 
 
+def _slot_rate_period(slot: dict, fallback: RatePeriod) -> RatePeriod:
+    """Weekend follows the slot's own nights when it has dates."""
+    if slot.get("start"):
+        return _rate_period_for_stay(
+            {"start": slot["start"], "end": slot.get("end")}
+        )
+    return fallback
+
+
+def _sandbox_key_for_slot(
+    slot: dict,
+    *,
+    adults: int,
+    fallback_rate: RatePeriod,
+    planned_entry_time: str | None,
+) -> _SandboxQuoteKey:
+    entry = str(planned_entry_time).strip() if planned_entry_time else None
+    return _SandboxQuoteKey(
+        campsite_id=int(slot["campsite_id"]),
+        lodging=str(slot.get("accommodation_type") or ""),
+        adults_num=adults,
+        weekend=_slot_rate_period(slot, fallback_rate) == "weekend_holiday",
+        planned_entry_time=entry,
+    )
+
+
 def _sandbox_quotes_for_slots(
     slots: list[dict],
     *,
@@ -425,18 +488,15 @@ def _sandbox_quotes_for_slots(
 ) -> _SandboxQuoteBatch:
     url = sandbox_url()
     adults = party_size if party_size and party_size > 0 else 1
-    weekend = rate_period == "weekend_holiday"
-    entry = str(planned_entry_time).strip() if planned_entry_time else None
     calls: list[dict[str, Any]] = []
     keys: list[_SandboxQuoteKey] = []
     seen_keys: set[_SandboxQuoteKey] = set()
     for slot in slots:
-        key = _SandboxQuoteKey(
-            campsite_id=int(slot["campsite_id"]),
-            lodging=str(slot.get("accommodation_type") or ""),
-            adults_num=adults,
-            weekend=weekend,
-            planned_entry_time=entry,
+        key = _sandbox_key_for_slot(
+            slot,
+            adults=adults,
+            fallback_rate=rate_period,
+            planned_entry_time=planned_entry_time,
         )
         if key in seen_keys:
             continue
@@ -515,30 +575,38 @@ def _sandbox_quotes_for_slots(
 def search_open_slots(
     *,
     date_range: dict | None = None,
+    date_windows: list[dict] | None = None,
     site_id: int | list[int] | None = None,
     party_size: int | None = None,
     numeric_constraints: list | None = None,
     planned_entry_time: str | None = None,
     limit: int = OPEN_SLOTS_LIMIT,
 ) -> list[dict]:
-    """Catalog vacancies for a stay window, with list-price quotes.
+    """Catalog vacancies for every stay window in one query.
 
-    Availability is stored as one-night rows. A multi-night stay matches
-    only when the type has a row for every night in [start, end). Party
-    size uses accommodation max_occupancy (scrape is 1-adult). Price
-    filters use quote_night against list_prices. Optional site_id narrows
-    to a named park. `TRIPPY_AVAILABILITY_TABLE` selects the occupancy
-    relation (`availability_frozen` for the planner benchmark).
+    `date_range` is a one-item `date_windows`. Availability is one-night
+    rows; a stay matches only when the type has a row for every night in
+    [start, end). One sandbox quote covers the rows. Party size uses
+    accommodation max_occupancy (scrape is 1-adult). Price filters use
+    quote_night against list_prices. Optional site_id narrows to a named
+    park. `TRIPPY_AVAILABILITY_TABLE` selects the occupancy relation
+    (`availability_frozen` for the planner benchmark).
     """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         _record_open_slots_query({"skipped": "no_database_url"})
         return []
-    if not isinstance(date_range, dict) or not date_range.get("start"):
+    if date_windows is not None:
+        windows = [item for item in date_windows if isinstance(item, dict)]
+    elif isinstance(date_range, dict) and date_range.get("start"):
+        windows = [date_range]
+    else:
+        windows = []
+    if not windows:
         _record_open_slots_query({"skipped": "no_date"})
         return []
     built = _open_slots_sql(
-        date_range=date_range,
+        windows=windows,
         site_id=site_id,
         party_size=party_size,
         limit=limit,
@@ -547,10 +615,15 @@ def search_open_slots(
         _record_open_slots_query({"skipped": built[1]})
         return []
     sql, params = built
+    price_constraint = _price_per_night_constraint(numeric_constraints)
+    rate_period: RatePeriod = "weekday"
     query_record: dict[str, Any] = {
         "sql": _render_sql(sql, params),
-        "price_constraint": _price_per_night_constraint(numeric_constraints),
-        "rate_period": _rate_period_for_stay(date_range),
+        "price_constraint": price_constraint,
+        "windows": [
+            {"start": item.get("start"), "end": item.get("end")}
+            for item in windows
+        ],
     }
     _record_open_slots_query(query_record)
     _attach_run_sql(sql, params)
@@ -571,10 +644,10 @@ def search_open_slots(
         parent_raw = row[8] if len(row) > 8 else None
         slots.append(
             {
-                "campsite_id": int(row[0]),
-                "campsite": row[1],
-                "start": iso_day(row[2]),
-                "end": iso_day(row[3]),
+                "campsite_id": int(row[2]),
+                "campsite": row[3],
+                "start": iso_day(row[0]),
+                "end": iso_day(row[1]),
                 "room_count": int(row[4]),
                 "accommodation_type_id": int(row[5]),
                 "accommodation_type": row[6],
@@ -585,8 +658,6 @@ def search_open_slots(
         )
     type_ids = list({int(s["accommodation_type_id"]) for s in slots})
     prices = _load_list_prices(type_ids)
-    rate_period = _rate_period_for_stay(date_range)
-    price_constraint = _price_per_night_constraint(numeric_constraints)
     sandbox_batch = _sandbox_quotes_for_slots(
         slots,
         party_size=party_size,
@@ -596,7 +667,6 @@ def search_open_slots(
     query_record["sandbox"] = sandbox_batch.report
     sandbox_quotes = sandbox_batch.by_key
     adults = party_size if party_size and party_size > 0 else 1
-    entry = str(planned_entry_time).strip() if planned_entry_time else None
     calls_by_id = {
         str(row["request_id"]): row
         for row in sandbox_batch.report.get("calls") or []
@@ -605,12 +675,12 @@ def search_open_slots(
     quoted: list[dict] = []
     for slot in slots:
         slot.pop("parent_id", None)
-        key = _SandboxQuoteKey(
-            campsite_id=int(slot["campsite_id"]),
-            lodging=str(slot.get("accommodation_type") or ""),
-            adults_num=adults,
-            weekend=rate_period == "weekend_holiday",
-            planned_entry_time=entry,
+        slot_rate = _slot_rate_period(slot, rate_period)
+        key = _sandbox_key_for_slot(
+            slot,
+            adults=adults,
+            fallback_rate=rate_period,
+            planned_entry_time=planned_entry_time,
         )
         sandbox = sandbox_quotes.get(key)
         if sandbox is not None:
@@ -621,7 +691,7 @@ def search_open_slots(
             price = _quote_slot_price(
                 prices.get(int(slot["accommodation_type_id"])) or [],
                 party_size=party_size,
-                rate_period=rate_period,
+                rate_period=slot_rate,
                 accommodation_type_id=int(slot["accommodation_type_id"]),
             )
             source = "quote_night"

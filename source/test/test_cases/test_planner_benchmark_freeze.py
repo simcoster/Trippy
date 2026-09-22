@@ -12,13 +12,13 @@ from source.agent.search import _availability_relation, _open_slots_sql
 def test_open_slots_sql_uses_frozen_table(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TRIPPY_AVAILABILITY_TABLE", "availability_frozen")
     sql, _params = _open_slots_sql(
-        date_range={"start": "2026-09-17", "end": "2026-09-18"},
+        windows=[{"start": "2026-09-17", "end": "2026-09-18"}],
         site_id=None,
         party_size=None,
         limit=10,
     )
-    assert "FROM availability_frozen a" in sql
-    assert "FROM availability a\n" not in sql
+    assert "JOIN availability_frozen a" in sql
+    assert "JOIN availability a\n" not in sql
 
 
 def test_availability_relation_rejects_injection():

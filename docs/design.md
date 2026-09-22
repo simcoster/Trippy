@@ -933,8 +933,9 @@ allowed” matches `"pet friendly"`. Precision is a 235B call per
 Retrieve is unique on campsite + accommodation type; the judge is
 unique on campsite + query. The planner emits **one fit per unit**
 across date windows — nights live on `dates` (each with its price
-and booking URL). `start` / `end` stay the first night so the
-recommender stay key is unchanged.
+and booking URL). Vacancies for all of those windows are one SQL
+query, then one sandbox quote. `start` / `end` stay the first night
+so the recommender stay key is unchanged.
 
 The planner retrieve embeds each distinct semantic query statement
 (up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search.py`)
@@ -1390,11 +1391,11 @@ official rules the 235B received; **outputs** are `relevant_claims`,
 `satisfies`, `satisfy_by`, and `reason`. The model does not label each
 rule; `satisfy_by` is the rule-side verdict. Worker threads
 `copy_context()` so those tool runs stay under the Streamlit turn.
-Vacancy SQL (`search_open_slots`), price-jail quotes
-(`price_sandbox_quote`, one child span: each campsite’s params,
-price, and explanation, or why it skipped / fell back; POSTs are
-chunked at the sandbox `MAX_BATCH` of 30 and memoized by site +
-lodging + party + weekday/weekend for that user request only), query embeddings (`embed_query`
+Vacancy SQL is one `search_open_slots` for every stay window, then one
+`price_sandbox_quote` (each campsite’s params, price, and explanation,
+or why it skipped / fell back; POSTs are chunked at the sandbox
+`MAX_BATCH` of 30 and memoized by site + lodging + party +
+weekday/weekend for that user request only). Query embeddings (`embed_query`
 StructuredTool, one per phrase, nested under `embed_queries`), and
 retrieve (`retrieve`, plus `search_review_claims` /
 `search_campsite_rules` / amenity SQL) are `@traceable` **tools** under
