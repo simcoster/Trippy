@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, quote batch dedupes worker calls)
+
+**`quote_batch` runs each distinct source and params once, then copies that answer onto every request in the batch.** The client posts the batch as received. Supersedes “posted once” in the four-children entry below.
+
+### Done (2026-09-22, four short-lived quote children)
+
+**`/quote` runs at most four child processes at a time; each evaluates one `quote()` and exits.** Identical site and params are posted once, and every request id gets that answer. Supersedes one-at-a-time children in the price-sandbox section of design.md.
+
 ### Done (2026-09-22, streamlit waits for a healthy sandbox)
 
 **`just streamlit` starts `price-sandbox`, loads quote functions, then `docker compose up --wait` until the container is healthy, then the UI.** A load that returns before Docker's next healthcheck no longer starts Streamlit against an unhealthy container.

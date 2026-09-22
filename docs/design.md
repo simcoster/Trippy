@@ -1205,7 +1205,9 @@ host bind). Re-run the loader after
 `scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
 other) front end does not own this.
 Each quote runs in a short-lived child with a memory cap and a
-sub-second timeout. A subcamp has no page, so its rate card and
+sub-second timeout, four children at a time. The server runs each
+distinct source and params once and copies that answer onto every
+request in the batch. A subcamp has no page, so its rate card and
 `quote()` live on the parent. Open slots send that `parent_site_id`,
 and `/quote` uses the parent's function when the subcamp id is not
 loaded. Streamlit, local and prod, exits unless that `/health` is ok.
