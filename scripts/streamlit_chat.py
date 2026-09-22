@@ -96,11 +96,11 @@ if not hasattr(_recommender_timing, "last_recommend_timing"):
     importlib.reload(_recommender_timing)
 
 import source.agent.graph as agent_graph
-import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
 from source.agent.keepalive import ping_new_session, start_model_keepalive
 from source.agent.recommender.recommend import listen_recommend_text
 from source.agent.recommender.timing import last_recommend_timing
+from source.agent.search import amenities, availability, campsites, claims, embed, rules
 from source.agent.timing import collect_stages, format_stages
 from source.agent.tracing import (
     agent_run_config,
@@ -492,7 +492,7 @@ def _install_tool_hooks() -> None:
                         "party_size": kwargs.get("party_size"),
                         "numeric_constraints": kwargs.get("numeric_constraints"),
                     }
-                    last = getattr(agent_search, "_LAST_OPEN_SLOTS_QUERY", None)
+                    last = getattr(availability, "_LAST_OPEN_SLOTS_QUERY", None)
                     if isinstance(last, dict):
                         params.update(last)
                     sandbox = params.pop("sandbox", None)
@@ -536,42 +536,42 @@ def _install_tool_hooks() -> None:
         wrapper.__doc__ = getattr(fn, "__doc__", None)
         return wrapper
 
-    agent_search.search_claims = _wrap("search_claims", agent_search.search_claims)
-    agent_search.search_review_claims = _wrap(
-        "search_review_claims", agent_search.search_review_claims
+    claims.search_claims = _wrap("search_claims", claims.search_claims)
+    claims.search_review_claims = _wrap(
+        "search_review_claims", claims.search_review_claims
     )
-    agent_search.search_stated_amenities = _wrap(
-        "search_stated_amenities", agent_search.search_stated_amenities
+    amenities.search_stated_amenities = _wrap(
+        "search_stated_amenities", amenities.search_stated_amenities
     )
-    agent_search.search_site_amenities = _wrap(
-        "search_site_amenities", agent_search.search_site_amenities
+    amenities.search_site_amenities = _wrap(
+        "search_site_amenities", amenities.search_site_amenities
     )
-    agent_search.search_campsite_rules = _wrap(
-        "search_campsite_rules", agent_search.search_campsite_rules
+    rules.search_campsite_rules = _wrap(
+        "search_campsite_rules", rules.search_campsite_rules
     )
-    agent_search.lookup_campsite_by_name = _wrap(
-        "lookup_campsite_by_name", agent_search.lookup_campsite_by_name
+    campsites.lookup_campsite_by_name = _wrap(
+        "lookup_campsite_by_name", campsites.lookup_campsite_by_name
     )
-    agent_search.search_open_slots = _wrap(
-        "search_open_slots", agent_search.search_open_slots
+    availability.search_open_slots = _wrap(
+        "search_open_slots", availability.search_open_slots
     )
-    agent_search.search_availability = _wrap(
-        "search_availability", agent_search.search_availability
+    availability.search_availability = _wrap(
+        "search_availability", availability.search_availability
     )
-    agent_search.search_campsites = _wrap(
-        "search_campsites", agent_search.search_campsites
+    campsites.search_campsites = _wrap(
+        "search_campsites", campsites.search_campsites
     )
-    agent_graph.search_claims = agent_search.search_claims
-    agent_graph.search_review_claims = agent_search.search_review_claims
-    agent_graph.search_stated_amenities = agent_search.search_stated_amenities
-    agent_graph.search_site_amenities = agent_search.search_site_amenities
-    agent_graph.search_campsite_rules = agent_search.search_campsite_rules
-    agent_graph.lookup_campsite_by_name = agent_search.lookup_campsite_by_name
-    agent_graph.search_open_slots = agent_search.search_open_slots
-    agent_graph.search_availability = agent_search.search_availability
-    agent_graph.search_campsites = agent_search.search_campsites
+    agent_graph.search_claims = claims.search_claims
+    agent_graph.search_review_claims = claims.search_review_claims
+    agent_graph.search_stated_amenities = amenities.search_stated_amenities
+    agent_graph.search_site_amenities = amenities.search_site_amenities
+    agent_graph.search_campsite_rules = rules.search_campsite_rules
+    agent_graph.lookup_campsite_by_name = campsites.lookup_campsite_by_name
+    agent_graph.search_open_slots = availability.search_open_slots
+    agent_graph.search_availability = availability.search_availability
+    agent_graph.search_campsites = campsites.search_campsites
 
-    embedder = getattr(agent_search, "_claims_embedder", None)
+    embedder = embed._claims_embedder
     orig_embed = getattr(embedder, "embed", None)
     if orig_embed is not None:
 

@@ -62,7 +62,7 @@ and `accommodation_types`. The planner's two lanes read the JSONB, so
 `rules_ingest.db.sync_campsite_amenity_ids` mirrored site-level rows into
 `campsites.amenities` after every ingest.
 
-`027_drop_amenities_jsonb` ended that. Both lanes in `source/agent/search.py` now
+`027_drop_amenities_jsonb` ended that. Both lanes in `source/agent/search/` now
 join `campsite_rules`, the mirror function is gone, and the four columns and the
 two `*_with_amenity_names` views are dropped.
 
@@ -933,11 +933,12 @@ allowed” matches `"pet friendly"`. Precision is a 235B call per
 Retrieve is unique on campsite + accommodation type; the judge is
 unique on campsite + query. The planner emits **one fit per unit**
 across date windows — nights live on `dates` (each with its price
-and booking URL). `start` / `end` stay the first night so the
-recommender stay key is unchanged.
+and booking URL). Vacancies for all of those windows are one SQL
+query, then one sandbox quote. `start` / `end` stay the first night
+so the recommender stay key is unchanged.
 
 The planner retrieve embeds each distinct semantic query statement
-(up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search.py`)
+(up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search/embed.py`)
 and loads the top-5 claims
 **and** the nearest official `campsite_rules` (all categories,
 including polarity false) onto each fit. The 235B judge in
@@ -1199,7 +1200,10 @@ host bind). Re-run the loader after
 `scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
 other) front end does not own this.
 Each quote runs in a short-lived child with a memory cap and a
-sub-second timeout. `PRICE_SANDBOX_URL` unset or a load miss uses
+sub-second timeout. A subcamp has no page, so its rate card and
+`quote()` live on the parent. Open slots send that `parent_site_id`,
+and `/quote` uses the parent's function when the subcamp id is not
+loaded. `PRICE_SANDBOX_URL` unset or a load miss uses
 `quote_night`. Planner party size is still `adults_num`; `child_num`,
 child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
 off until the extractor grows those fields. `planned_entry_time` is
@@ -1387,11 +1391,11 @@ official rules the 235B received; **outputs** are `relevant_claims`,
 `satisfies`, `satisfy_by`, and `reason`. The model does not label each
 rule; `satisfy_by` is the rule-side verdict. Worker threads
 `copy_context()` so those tool runs stay under the Streamlit turn.
-Vacancy SQL (`search_open_slots`), price-jail quotes
-(`price_sandbox_quote`, one child span: each campsite’s params,
-price, and explanation, or why it skipped / fell back; POSTs are
-chunked at the sandbox `MAX_BATCH` of 30 and memoized by site +
-lodging + party + weekday/weekend for that user request only), query embeddings (`embed_query`
+Vacancy SQL is one `search_open_slots` for every stay window, then one
+`price_sandbox_quote` (each campsite’s params, price, and explanation,
+or why it skipped / fell back; POSTs are chunked at the sandbox
+`MAX_BATCH` of 30 and memoized by site + lodging + party +
+weekday/weekend for that user request only). Query embeddings (`embed_query`
 StructuredTool, one per phrase, nested under `embed_queries`), and
 retrieve (`retrieve`, plus `search_review_claims` /
 `search_campsite_rules` / amenity SQL) are `@traceable` **tools** under

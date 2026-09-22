@@ -7,7 +7,6 @@ from typing import Any, NamedTuple, TypeAlias
 
 from langsmith import traceable
 
-from source.agent import search
 from source.agent.booking import attach_booking_urls
 from source.agent.constraints import (
     ROOM_LOCUS,
@@ -15,6 +14,15 @@ from source.agent.constraints import (
     semantic_locus_groups,
 )
 from source.agent.dates import DATE_TRUNCATED_NOTICE, MAX_DATE_WINDOWS
+from source.agent.search import (
+    amenities,
+    availability,
+    campsites,
+    claims,
+    embed,
+    rules,
+    sandbox,
+)
 
 AMENITY_MATCH_MAX_DISTANCE = -0.7
 # Claims are whole sentences, so they sit further from a short query than a
@@ -93,17 +101,17 @@ def _semantic_evidence_payload(queries: list[str], *, limit: int = 5) -> dict:
     review_claims: list[dict] = []
     seen_amenities: set[str] = set()
     seen_claims: set[tuple] = set()
-    vecs = search._query_vec_literals(queries)
+    vecs = embed._query_vec_literals(queries)
     for query in queries:
         vec = vecs[query]
-        for hit in search.search_stated_amenities(query, limit=limit, embedding=vec):
+        for hit in amenities.search_stated_amenities(query, limit=limit, embedding=vec):
             if hit.get("error"):
                 continue
             label = str(hit.get("amenity") or "").strip()
             if label and label not in seen_amenities:
                 seen_amenities.add(label)
                 stated_amenities.append(label)
-        for hit in search.search_review_claims(query, limit=limit, embedding=vec):
+        for hit in claims.search_review_claims(query, limit=limit, embedding=vec):
             if hit.get("error"):
                 continue
             label = str(hit.get("claim") or "").strip()
@@ -247,7 +255,7 @@ def _semantic_why_by_slot(
     missing: dict[_SlotKey, _WhyRows] = {key: [] for key in keys}
     matching = set(keys)
     seen_claims: set[tuple] = set()
-    vecs = search._query_vec_literals(
+    vecs = embed._query_vec_literals(
         [query for group in groups for query in group["queries"]]
     )
 
@@ -262,7 +270,7 @@ def _semantic_why_by_slot(
                 rules_by_query[query] = _rules_hits_by_site(
                     query, vec, site_ids
                 )
-            for hit in search.search_stated_amenities(
+            for hit in amenities.search_stated_amenities(
                 query,
                 limit=max(len(type_ids), 1),
                 embedding=vec,
@@ -279,7 +287,7 @@ def _semantic_why_by_slot(
                         "distance": hit.get("distance"),
                     },
                 )
-            for hit in search.search_review_claims(
+            for hit in claims.search_review_claims(
                 query,
                 limit=CLAIM_EVIDENCE_LIMIT,
                 embedding=vec,
@@ -310,7 +318,7 @@ def _semantic_why_by_slot(
                 continue
             # Claim and site-amenity always both retrieve. A positive claim
             # must not skip the listing; satisfaction is either lane.
-            for hit in search.search_site_amenities(
+            for hit in amenities.search_site_amenities(
                 query,
                 limit=max(len(site_ids), 1),
                 embedding=vec,
@@ -360,7 +368,7 @@ def _rules_hits_by_site(
     query: str, vec: str, site_ids: list[int]
 ) -> _RulesByCampsite:
     by_site: _RulesByCampsite = {int(i): [] for i in site_ids}
-    for hit in search.search_campsite_rules(
+    for hit in rules.search_campsite_rules(
         query,
         limit=CLAIM_EVIDENCE_LIMIT,
         embedding=vec,
@@ -385,7 +393,7 @@ def _rules_for_fit(
 
 
 def _named_site_ids(name: str) -> tuple[list[int], dict[str, Any] | None]:
-    hits = search.lookup_campsite_by_name(name)
+    hits = campsites.lookup_campsite_by_name(name)
     if not hits:
         return [], {"error": "No campsite matched that name", "query": name}
     if hits[0].get("error"):
@@ -443,34 +451,22 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             return payload
         site_id = site_ids if len(site_ids) > 1 else site_ids[0]
 
-    slots: list[dict] = []
-    query_records: list[Any] = []
     planned_entry_time = constraints_json.get("planned_entry_time")
-    with search.price_quote_cache():
-        for window in windows:
-            part = search.search_open_slots(
-                date_range=window,
-                site_id=site_id,
-                party_size=party_size_from_numeric(numeric),
-                numeric_constraints=numeric,
-                planned_entry_time=planned_entry_time
-            )
-            record = search._LAST_OPEN_SLOTS_QUERY
-            if not isinstance(record, dict):
-                record = {"date_range": window}
-            else:
-                record = {**record, "date_range": record.get("date_range") or window}
-            query_records.append(record)
-            if part and part[0].get("error"):
-                payload["error"] = part[0]["error"]
-                payload["open_slots_query"] = (
-                    query_records[0] if len(query_records) == 1 else query_records
-                )
-                return payload
-            slots.extend(part)
-    payload["open_slots_query"] = (
-        query_records[0] if len(query_records) == 1 else query_records
-    )
+    with sandbox.price_quote_cache():
+        slots = availability.search_open_slots(
+            date_windows=windows,
+            site_id=site_id,
+            party_size=party_size_from_numeric(numeric),
+            numeric_constraints=numeric,
+            planned_entry_time=planned_entry_time,
+        )
+    record = availability._LAST_OPEN_SLOTS_QUERY
+    if not isinstance(record, dict):
+        record = {"windows": windows}
+    payload["open_slots_query"] = record
+    if slots and slots[0].get("error"):
+        payload["error"] = slots[0]["error"]
+        return payload
 
     found = _semantic_why_by_slot(slots, semantic)
     fits: list[dict[str, Any]] = []

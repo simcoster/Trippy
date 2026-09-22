@@ -5,11 +5,8 @@ from __future__ import annotations
 import inspect
 
 from source.agent.claim_judge import CLAIM_JUDGE_SYSTEM
-from source.agent.search import (
-    _OWN_OR_PARENT_RULES,
-    search_campsite_rules,
-    search_site_amenities,
-)
+from source.agent.search.amenities import search_site_amenities
+from source.agent.search.rules import _OWN_OR_PARENT_RULES, search_campsite_rules
 
 
 def test_own_or_parent_sql_is_this_site_and_parent():

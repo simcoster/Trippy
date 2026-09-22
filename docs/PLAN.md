@@ -6,6 +6,26 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, search package init stays empty)
+
+**`source/agent/search/__init__.py` does not re-export.** Callers import the submodule, the same way `recommender/` does. Supersedes the re-export sentence in the search-package entry below.
+
+### Done (2026-09-22, search package)
+
+**Catalog search lives in `source/agent/search/`.** Sandbox quotes, open slots, campsite names, query embeddings, amenities, rules, and claims are separate modules. `source.agent.search` still re-exports the names the planner calls. `_LAST_OPEN_SLOTS_QUERY` is read from the availability module, because that name is rebound on each search.
+
+### Done (2026-09-22, one availability SQL for one night or many)
+
+**A single stay uses the same query as several windows.** `date_range` is a one-item `date_windows`. `_open_slots_sql` is that query; the old single-range SQL is gone. Supersedes the split in the entry above.
+
+### Done (2026-09-22, one availability search and one quote)
+
+**The planner searches every stay window in one SQL, then quotes once.** A week of one-night stays was one `search_open_slots` and one `price_sandbox_quote` per night. Weekday and weekend prices share that quote; the rate follows each slot's dates. Supersedes the per-window loop. design.md "Planner claim/rule judge" and the LangSmith tool list.
+
+### Done (2026-09-22, subcamp quote uses the parent function)
+
+**`/quote` falls back to `parent_site_id` when the slot's site is not loaded.** Achziv north/south (37, 38) were `unknown site` because availability is on the subcamp and `site_price_functions` is on the parent (site 2). Open slots select `c.parent_id` and the sandbox uses that function only when the child id misses. design.md "Per-site price functions".
+
 ### Done (2026-09-22, date windows cap 20)
 
 **`MAX_DATE_WINDOWS` is 20.** A full week fits, so Friday/Saturday

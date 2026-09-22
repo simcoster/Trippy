@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from source.agent.search import match_campsites_by_name
+from source.agent.search.campsites import match_campsites_by_name
 from source.test.test_cases.experiments_schema import SITE_ID
 
 HORSHAT = SITE_ID

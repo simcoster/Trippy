@@ -68,7 +68,7 @@ def _fits_payload(result: dict) -> dict:
 @pytest.fixture
 def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
-        "source.agent.search._query_vec_literal", lambda query: FAKE_VEC
+        "source.agent.search.embed._query_vec_literal", lambda query: FAKE_VEC
     )
     slots = MagicMock(return_value=[dict(SLOT_AC), dict(SLOT_TENT)])
     amenities = MagicMock(
@@ -85,11 +85,11 @@ def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     claims = MagicMock(return_value=[])
     lookup = MagicMock(return_value=[])
     campsites = MagicMock(return_value=[])
-    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
-    monkeypatch.setattr("source.agent.search.search_stated_amenities", amenities)
-    monkeypatch.setattr("source.agent.search.search_review_claims", claims)
-    monkeypatch.setattr("source.agent.search.lookup_campsite_by_name", lookup)
-    monkeypatch.setattr("source.agent.search.search_campsites", campsites)
+    monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.amenities.search_stated_amenities", amenities)
+    monkeypatch.setattr("source.agent.search.claims.search_review_claims", claims)
+    monkeypatch.setattr("source.agent.search.campsites.lookup_campsite_by_name", lookup)
+    monkeypatch.setattr("source.agent.search.campsites.search_campsites", campsites)
     return SimpleNamespace(
         slots=slots,
         amenities=amenities,
@@ -114,7 +114,7 @@ def test_catalog_date_party_ac_intersects_on_type_ids(two_stage: SimpleNamespace
     two_stage.lookup.assert_not_called()
     two_stage.slots.assert_called_once()
     kwargs = two_stage.slots.call_args.kwargs
-    assert kwargs["date_range"] == DATE
+    assert kwargs["date_windows"] == [DATE]
     assert kwargs["site_id"] is None
     assert kwargs["party_size"] == 3
     two_stage.amenities.assert_called_once()

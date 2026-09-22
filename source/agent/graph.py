@@ -40,24 +40,26 @@ from source.agent.prompts import (
     format_extractor_system_prompt,
 )
 from source.agent.recommender.recommend import recommend_from_messages
-from source.agent.search import (
-    _claims_embedder,
-    _open_slots_sql,
-    _price_matches,
-    _price_per_night_constraint,
-    _query_vec_literal,
-    _query_vec_literals,
-    _rate_period_for_stay,
-    _render_sql,
-    lookup_campsite_by_name,
-    search_availability,
-    search_campsites,
-    search_claims,
-    search_open_slots,
-    search_review_claims,
+from source.agent.search.amenities import (
     search_site_amenities,
     search_stated_amenities,
 )
+from source.agent.search.availability import (
+    _open_slots_sql,
+    _price_matches,
+    _price_per_night_constraint,
+    search_availability,
+    search_open_slots,
+)
+from source.agent.search.campsites import lookup_campsite_by_name, search_campsites
+from source.agent.search.claims import search_claims, search_review_claims
+from source.agent.search.embed import (
+    _claims_embedder,
+    _query_vec_literal,
+    _query_vec_literals,
+)
+from source.agent.search.sandbox import _rate_period_for_stay
+from source.agent.search.sql import _render_sql
 from source.agent.timing import stage
 from source.scraper.amenity_enrichment.llm import (
     QWEN_INSTRUCT_MODEL,
@@ -101,7 +103,7 @@ class ChatState(TypedDict):
 
 
 # Re-exports so Streamlit wraps and older tests keep `source.agent.graph.*`.
-# Planner calls `source.agent.search` directly — wrap/patch that module.
+# The planner calls the search submodules directly.
 
 # Do NOT bind_tools on the chat models: extractor/recommender need text/JSON
 # replies. Binding tools made Qwen return empty content + tool_calls, which
@@ -315,7 +317,7 @@ graph = build_graph()
 def __getattr__(name: str):
     """Live binding for search globals that tests/Streamlit still read on graph."""
     if name == "_LAST_OPEN_SLOTS_QUERY":
-        from source.agent import search as search_mod
+        from source.agent.search.availability import _LAST_OPEN_SLOTS_QUERY
 
-        return search_mod._LAST_OPEN_SLOTS_QUERY
+        return _LAST_OPEN_SLOTS_QUERY
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

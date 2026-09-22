@@ -180,7 +180,7 @@ def format_trace(trace: ResolutionTrace) -> str:
 
 
 def vector_literal(values: list[float]) -> str:
-    """pgvector literal, matching `source.agent.search._query_vec_literal`."""
+    """pgvector literal, matching `source.agent.search.embed._query_vec_literal`."""
     return "[" + ",".join(f"{x:.8f}" for x in values) + "]"
 
 

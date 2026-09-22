@@ -41,24 +41,25 @@ def _fits_payload(result: dict) -> dict:
 
 
 def _open_same_unit(monkeypatch) -> MagicMock:
-    slots = MagicMock(
-        side_effect=lambda **kwargs: [
-            {
-                **SLOT,
-                "start": kwargs["date_range"]["start"],
-                "end": kwargs["date_range"]["end"],
-            }
+    def _slots(**kwargs):
+        windows = kwargs.get("date_windows")
+        if not windows:
+            windows = [kwargs["date_range"]]
+        return [
+            {**SLOT, "start": window["start"], "end": window["end"]}
+            for window in windows
         ]
-    )
-    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
+
+    slots = MagicMock(side_effect=_slots)
+    monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
     monkeypatch.setattr(
-        "source.agent.search.search_stated_amenities", MagicMock(return_value=[])
-    )
-    monkeypatch.setattr(
-        "source.agent.search.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.amenities.search_stated_amenities", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.lookup_campsite_by_name", MagicMock(return_value=[])
+        "source.agent.search.claims.search_review_claims", MagicMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        "source.agent.search.campsites.lookup_campsite_by_name", MagicMock(return_value=[])
     )
     return slots
 
@@ -69,12 +70,12 @@ def test_retrieve_runs_once_for_two_dates_of_same_unit(monkeypatch):
     site_amenities = MagicMock(return_value=[])
     rules = MagicMock(return_value=[])
     monkeypatch.setattr(
-        "source.agent.search._query_vec_literals", lambda qs: {q: "[0]" for q in qs}
+        "source.agent.search.embed._query_vec_literals", lambda qs: {q: "[0]" for q in qs}
     )
-    monkeypatch.setattr("source.agent.search.search_stated_amenities", amenities)
-    monkeypatch.setattr("source.agent.search.search_review_claims", claims)
-    monkeypatch.setattr("source.agent.search.search_site_amenities", site_amenities)
-    monkeypatch.setattr("source.agent.search.search_campsite_rules", rules)
+    monkeypatch.setattr("source.agent.search.amenities.search_stated_amenities", amenities)
+    monkeypatch.setattr("source.agent.search.claims.search_review_claims", claims)
+    monkeypatch.setattr("source.agent.search.amenities.search_site_amenities", site_amenities)
+    monkeypatch.setattr("source.agent.search.rules.search_campsite_rules", rules)
     slots = [
         {**SLOT, "start": "2026-09-04", "end": "2026-09-06"},
         {**SLOT, "start": "2026-09-11", "end": "2026-09-13"},
@@ -108,7 +109,7 @@ def test_planner_one_fit_for_same_unit_across_windows(monkeypatch):
 
 def test_planner_keeps_two_fits_for_two_types(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.search_open_slots",
+        "source.agent.search.availability.search_open_slots",
         MagicMock(
             return_value=[
                 {**SLOT, "start": "2026-09-04", "end": "2026-09-06"},
@@ -123,13 +124,13 @@ def test_planner_keeps_two_fits_for_two_types(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "source.agent.search.search_stated_amenities", MagicMock(return_value=[])
+        "source.agent.search.amenities.search_stated_amenities", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.claims.search_review_claims", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.lookup_campsite_by_name", MagicMock(return_value=[])
+        "source.agent.search.campsites.lookup_campsite_by_name", MagicMock(return_value=[])
     )
     payload = planner_fits_payload(
         {
@@ -189,7 +190,7 @@ def test_planner_node_emits_one_fit_for_two_windows(monkeypatch):
             }
         )
     )
-    assert slots.call_count == 2
+    assert slots.call_count == 1
     payload = _fits_payload(result)
     assert len(payload["fits"]) == 1
     assert [d["start"] for d in payload["fits"][0]["dates"]] == [

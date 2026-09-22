@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from source.agent import search
+from source.agent.search import embed
 
 
 def _fake_vec(_texts: list[str], **_kwargs):
@@ -16,9 +16,9 @@ def _fake_vec(_texts: list[str], **_kwargs):
 
 def test_query_vec_literals_uses_query_vec_literal(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search._query_vec_literal", lambda query: f"[{query}]"
+        "source.agent.search.embed._query_vec_literal", lambda query: f"[{query}]"
     )
-    out = search._query_vec_literals(["quiet", "shade", "quiet"])
+    out = embed._query_vec_literals(["quiet", "shade", "quiet"])
     assert out == {"quiet": "[quiet]", "shade": "[shade]"}
 
 
@@ -41,9 +41,9 @@ def test_multiple_query_statements_embed_in_parallel(monkeypatch):
             in_flight -= 1
         return _fake_vec(texts)
 
-    monkeypatch.setattr(search._claims_embedder, "embed", fake_embed)
+    monkeypatch.setattr(embed._claims_embedder, "embed", fake_embed)
     queries = [f"q{i}" for i in range(5)]
-    out = search._query_vec_literals(queries)
+    out = embed._query_vec_literals(queries)
     assert peak == 5
     assert list(out) == queries
 
@@ -66,9 +66,9 @@ def test_query_embed_concurrency_caps_at_five(monkeypatch):
             in_flight -= 1
         return _fake_vec(texts)
 
-    monkeypatch.setattr(search._claims_embedder, "embed", fake_embed)
+    monkeypatch.setattr(embed._claims_embedder, "embed", fake_embed)
     queries = [f"q{i}" for i in range(8)]
-    thread = threading.Thread(target=lambda: search._query_vec_literals(queries))
+    thread = threading.Thread(target=lambda: embed._query_vec_literals(queries))
     thread.start()
     for _ in range(5):
         assert entered.acquire(timeout=2)

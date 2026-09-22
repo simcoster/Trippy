@@ -1,4 +1,4 @@
-"""Date intent parsing, resolve_dates, planner window loop."""
+"""Date intent parsing, resolve_dates, one availability search for every window."""
 
 from __future__ import annotations
 
@@ -116,34 +116,36 @@ def _fits_payload(result: dict) -> dict:
     return json.loads(str(msg.content))
 
 
+def _slots_for_windows(**kwargs):
+    windows = kwargs.get("date_windows")
+    if not windows:
+        windows = [kwargs["date_range"]]
+    return [
+        {**SLOT, "start": window["start"], "end": window["end"]}
+        for window in windows
+    ]
+
+
 @pytest.fixture
 def db_searches(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
-        "source.agent.search._query_vec_literal", lambda query: "[0]"
+        "source.agent.search.embed._query_vec_literal", lambda query: "[0]"
     )
-    slots = MagicMock(
-        side_effect=lambda **kwargs: [
-            {
-                **SLOT,
-                "start": kwargs["date_range"]["start"],
-                "end": kwargs["date_range"]["end"],
-            }
-        ]
-    )
-    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
+    slots = MagicMock(side_effect=_slots_for_windows)
+    monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
     monkeypatch.setattr(
-        "source.agent.search.search_stated_amenities", MagicMock(return_value=[])
+        "source.agent.search.amenities.search_stated_amenities", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.claims.search_review_claims", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.lookup_campsite_by_name", MagicMock(return_value=[])
+        "source.agent.search.campsites.lookup_campsite_by_name", MagicMock(return_value=[])
     )
     return SimpleNamespace(slots=slots)
 
 
-def test_planner_loops_date_windows(db_searches: SimpleNamespace):
+def test_planner_searches_all_windows_at_once(db_searches: SimpleNamespace):
     w1 = {"start": "2026-09-04", "end": "2026-09-06"}
     w2 = {"start": "2026-09-11", "end": "2026-09-13"}
     result = planner_node(
@@ -156,9 +158,8 @@ def test_planner_loops_date_windows(db_searches: SimpleNamespace):
             }
         )
     )
-    assert db_searches.slots.call_count == 2
-    ranges = [c.kwargs["date_range"] for c in db_searches.slots.call_args_list]
-    assert ranges == [w1, w2]
+    assert db_searches.slots.call_count == 1
+    assert db_searches.slots.call_args.kwargs["date_windows"] == [w1, w2]
     payload = _fits_payload(result)
     assert len(payload["fits"]) == 1
     assert payload["fits"][0]["start"] == "2026-09-04"
@@ -166,8 +167,7 @@ def test_planner_loops_date_windows(db_searches: SimpleNamespace):
         "2026-09-04",
         "2026-09-11",
     ]
-    assert isinstance(payload["open_slots_query"], list)
-    assert len(payload["open_slots_query"]) == 2
+    assert isinstance(payload["open_slots_query"], dict)
 
 
 def test_planner_caps_windows_at_four(db_searches: SimpleNamespace):
@@ -190,7 +190,10 @@ def test_planner_caps_windows_at_four(db_searches: SimpleNamespace):
             }
         )
     )
-    assert db_searches.slots.call_count == MAX_DATE_WINDOWS
+    assert db_searches.slots.call_count == 1
+    assert (
+        len(db_searches.slots.call_args.kwargs["date_windows"]) == MAX_DATE_WINDOWS
+    )
     payload = _fits_payload(result)
     assert payload["date_notice"] == DATE_TRUNCATED_NOTICE
     assert len(payload["fits"]) == 1

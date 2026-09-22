@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from source.agent.search.claims import _CLAIMS_BY_SITE_SQL, _CLAIMS_GLOBAL_SQL
 from source.scraper.info_site.breadcrumbs import (
     BREADCRUMB_NOTES,
     snapshot_breadcrumb_claims,
@@ -85,8 +86,6 @@ def test_snapshot_with_no_regions_still_deletes():
 
 
 def test_claim_retrieve_left_joins_reviews():
-    from source.agent.search import _CLAIMS_BY_SITE_SQL, _CLAIMS_GLOBAL_SQL
-
     assert "LEFT JOIN reviews" in _CLAIMS_BY_SITE_SQL
     assert "LEFT JOIN reviews" in _CLAIMS_GLOBAL_SQL
     assert "r.id IS NULL OR r.skip_reason IS NULL" in _CLAIMS_BY_SITE_SQL
