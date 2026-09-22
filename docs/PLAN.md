@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, chat input becomes Reset)
+
+**After a reply the chat input is a primary Reset.** The sidebar
+Reset conversation button is gone. Until there is an assistant turn,
+a bottom dropdown of two example prompts fills the input without
+sending. Reset still does not re-ping models.
+
 ### Done (2026-09-22, chat paragraphs follow the reply's direction)
 
 **Streamlit chat text uses `unicode-bidi: plaintext`.** Each paragraph
