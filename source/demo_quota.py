@@ -18,6 +18,7 @@ from db.connect import connect
 DEFAULT_CAP = 5
 CAP_ENV = "TRIPPY_DEMO_QUERY_CAP"
 PEPPER_ENV = "TRIPPY_DEMO_QUOTA_PEPPER"
+VISITOR_IP_ENV = "TRIPPY_DEMO_VISITOR_IP"
 _IP_HEADER = "cf-connecting-ip"
 
 QUOTA_USED = "You've used your questions. | ניצלת את השאלות."
@@ -81,13 +82,27 @@ def visitor_hash(ip: str, pepper: str) -> str:
     return hashlib.sha256(f"{pepper}:{ip}".encode()).hexdigest()
 
 
+def local_visitor_ip() -> str | None:
+    """Stand-in address for a laptop run that has no Cloudflare header."""
+    value = (os.environ.get(VISITOR_IP_ENV) or "").strip()
+    return value or None
+
+
 def public_visitor_hash(headers: Mapping[str, str]) -> str | None:
-    """Hashed Cloudflare address, or None when this request cannot be capped."""
+    """Hashed visitor address, or None when this request cannot be capped.
+
+    Cloudflare's header wins. `TRIPPY_DEMO_VISITOR_IP` is used only when
+    that header is absent, so a local public UI can exercise the cap.
+    """
     pepper = quota_pepper()
     if not pepper:
         print("error: TRIPPY_DEMO_QUOTA_PEPPER is unset", flush=True)
         return None
     ip = visitor_ip(headers)
+    if not ip:
+        ip = local_visitor_ip()
+        if ip:
+            print("demo quota using TRIPPY_DEMO_VISITOR_IP", flush=True)
     if not ip:
         print("error: CF-Connecting-IP missing", flush=True)
         return None

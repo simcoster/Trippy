@@ -6,6 +6,12 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, local stand-in for the demo visitor address)
+
+**`TRIPPY_DEMO_VISITOR_IP` is used when `CF-Connecting-IP` is absent.**
+The Cloudflare header still wins, so the VM is unchanged while that
+header arrives. Leave the variable unset on the VM.
+
 ### Done (2026-09-22, public demo caps questions per visitor)
 
 **The public UI allows 5 questions total per visitor address.** The count

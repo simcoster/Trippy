@@ -7,6 +7,7 @@ import pytest
 
 from source.demo_quota import (
     PEPPER_ENV,
+    VISITOR_IP_ENV,
     claim_query,
     public_visitor_hash,
     quota_remaining,
@@ -38,12 +39,19 @@ def test_visitor_hash_hides_the_address():
 
 def test_public_visitor_hash_needs_pepper_and_address(monkeypatch, capsys):
     monkeypatch.delenv(PEPPER_ENV, raising=False)
+    monkeypatch.delenv(VISITOR_IP_ENV, raising=False)
     assert public_visitor_hash({"CF-Connecting-IP": _IP}) is None
     assert "TRIPPY_DEMO_QUOTA_PEPPER is unset" in capsys.readouterr().out
 
     monkeypatch.setenv(PEPPER_ENV, _PEPPER)
     assert public_visitor_hash({}) is None
     assert "CF-Connecting-IP missing" in capsys.readouterr().out
+    assert public_visitor_hash({"CF-Connecting-IP": _IP}) == visitor_hash(
+        _IP, _PEPPER
+    )
+
+    monkeypatch.setenv(VISITOR_IP_ENV, "127.0.0.1")
+    assert public_visitor_hash({}) == visitor_hash("127.0.0.1", _PEPPER)
     assert public_visitor_hash({"CF-Connecting-IP": _IP}) == visitor_hash(
         _IP, _PEPPER
     )
