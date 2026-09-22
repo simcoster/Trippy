@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, search package init stays empty)
+
+**`source/agent/search/__init__.py` does not re-export.** Callers import the submodule, the same way `recommender/` does. Supersedes the re-export sentence in the search-package entry below.
+
+### Done (2026-09-22, search package)
+
+**Catalog search lives in `source/agent/search/`.** Sandbox quotes, open slots, campsite names, query embeddings, amenities, rules, and claims are separate modules. `source.agent.search` still re-exports the names the planner calls. `_LAST_OPEN_SLOTS_QUERY` is read from the availability module, because that name is rebound on each search.
+
 ### Done (2026-09-22, one availability SQL for one night or many)
 
 **A single stay uses the same query as several windows.** `date_range` is a one-item `date_windows`. `_open_slots_sql` is that query; the old single-range SQL is gone. Supersedes the split in the entry above.

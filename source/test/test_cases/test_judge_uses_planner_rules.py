@@ -13,8 +13,8 @@ def _payload(*fits: dict) -> dict:
 def test_judge_uses_rules_already_on_the_fit(monkeypatch):
     embed = MagicMock(side_effect=AssertionError("judge must not embed"))
     fetch = MagicMock(side_effect=AssertionError("judge must not search rules"))
-    monkeypatch.setattr("source.agent.search._query_vec_literal", embed)
-    monkeypatch.setattr("source.agent.search.search_campsite_rules", fetch)
+    monkeypatch.setattr("source.agent.search.embed._query_vec_literal", embed)
+    monkeypatch.setattr("source.agent.search.rules.search_campsite_rules", fetch)
     seen: dict = {}
 
     def _fn(*, query, campsite, claims, rules, usage=None):
@@ -49,9 +49,9 @@ def test_judge_uses_rules_already_on_the_fit(monkeypatch):
 
 def test_planner_fetches_rules_with_the_same_query_vector(monkeypatch):
     vec = "[0.1,0.2,0.3]"
-    monkeypatch.setattr("source.agent.search._query_vec_literal", lambda query: vec)
+    monkeypatch.setattr("source.agent.search.embed._query_vec_literal", lambda query: vec)
     monkeypatch.setattr(
-        "source.agent.search.search_open_slots",
+        "source.agent.search.availability.search_open_slots",
         MagicMock(
             return_value=[
                 {
@@ -70,7 +70,7 @@ def test_planner_fetches_rules_with_the_same_query_vector(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "source.agent.search.search_stated_amenities",
+        "source.agent.search.amenities.search_stated_amenities",
         MagicMock(
             return_value=[
                 {
@@ -82,10 +82,10 @@ def test_planner_fetches_rules_with_the_same_query_vector(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "source.agent.search.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.claims.search_review_claims", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.search_site_amenities", MagicMock(return_value=[])
+        "source.agent.search.amenities.search_site_amenities", MagicMock(return_value=[])
     )
     rules = MagicMock(
         return_value=[
@@ -97,7 +97,7 @@ def test_planner_fetches_rules_with_the_same_query_vector(monkeypatch):
             }
         ]
     )
-    monkeypatch.setattr("source.agent.search.search_campsite_rules", rules)
+    monkeypatch.setattr("source.agent.search.rules.search_campsite_rules", rules)
 
     payload = planner_fits_payload(
         {

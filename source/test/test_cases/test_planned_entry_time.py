@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from source.agent.constraints import normalize_constraints, parse_planned_entry_time
-from source.agent.search import _sandbox_quotes_for_slots
+from source.agent.search.sandbox import _sandbox_quotes_for_slots
 from source.price_sandbox.client import QuoteReply, QuoteRequest
 from source.price_sandbox.params import QuoteParams
 
@@ -55,10 +55,10 @@ def test_normalize_lifts_entry_time_off_numeric():
 
 def test_sandbox_quote_sends_planned_entry_time(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.sandbox_url", lambda: "http://127.0.0.1:8503"
+        "source.agent.search.sandbox.sandbox_url", lambda: "http://127.0.0.1:8503"
     )
     monkeypatch.setattr(
-        "source.agent.search.sandbox_reachable", lambda **_: True
+        "source.agent.search.sandbox.sandbox_reachable", lambda **_: True
     )
     seen: list[QuoteRequest] = []
 
@@ -73,7 +73,7 @@ def test_sandbox_quote_sends_planned_entry_time(monkeypatch):
             )
         ]
 
-    monkeypatch.setattr("source.agent.search.quote_replies", fake_replies)
+    monkeypatch.setattr("source.agent.search.sandbox.quote_replies", fake_replies)
     _sandbox_quotes_for_slots(
         [{"campsite_id": 2, "campsite": "חורשת טל", "accommodation_type": "אוהל"}],
         party_size=2,

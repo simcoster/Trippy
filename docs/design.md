@@ -62,7 +62,7 @@ and `accommodation_types`. The planner's two lanes read the JSONB, so
 `rules_ingest.db.sync_campsite_amenity_ids` mirrored site-level rows into
 `campsites.amenities` after every ingest.
 
-`027_drop_amenities_jsonb` ended that. Both lanes in `source/agent/search.py` now
+`027_drop_amenities_jsonb` ended that. Both lanes in `source/agent/search/` now
 join `campsite_rules`, the mirror function is gone, and the four columns and the
 two `*_with_amenity_names` views are dropped.
 
@@ -938,7 +938,7 @@ query, then one sandbox quote. `start` / `end` stay the first night
 so the recommender stay key is unchanged.
 
 The planner retrieve embeds each distinct semantic query statement
-(up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search.py`)
+(up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search/embed.py`)
 and loads the top-5 claims
 **and** the nearest official `campsite_rules` (all categories,
 including polarity false) onto each fit. The 235B judge in

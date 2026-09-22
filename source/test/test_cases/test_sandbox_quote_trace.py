@@ -1,6 +1,6 @@
 """Price-sandbox quotes are recorded for Streamlit / LangSmith."""
 
-from source.agent.search import (
+from source.agent.search.sandbox import (
     _sandbox_quotes_for_slots,
     price_quote_cache,
 )
@@ -10,7 +10,7 @@ from source.price_sandbox.server import MAX_BATCH
 
 
 def test_sandbox_report_skips_when_url_unset(monkeypatch):
-    monkeypatch.setattr("source.agent.search.sandbox_url", lambda: None)
+    monkeypatch.setattr("source.agent.search.sandbox.sandbox_url", lambda: None)
     batch = _sandbox_quotes_for_slots(
         [
             {
@@ -30,10 +30,10 @@ def test_sandbox_report_skips_when_url_unset(monkeypatch):
 
 def test_sandbox_report_per_campsite(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.sandbox_url", lambda: "http://127.0.0.1:8503"
+        "source.agent.search.sandbox.sandbox_url", lambda: "http://127.0.0.1:8503"
     )
     monkeypatch.setattr(
-        "source.agent.search.sandbox_reachable", lambda **_: True
+        "source.agent.search.sandbox.sandbox_reachable", lambda **_: True
     )
 
     def fake_replies(requests: list[QuoteRequest], **_kwargs):
@@ -48,7 +48,7 @@ def test_sandbox_report_per_campsite(monkeypatch):
             )
         ]
 
-    monkeypatch.setattr("source.agent.search.quote_replies", fake_replies)
+    monkeypatch.setattr("source.agent.search.sandbox.quote_replies", fake_replies)
     batch = _sandbox_quotes_for_slots(
         [
             {
@@ -74,13 +74,13 @@ def test_sandbox_report_per_campsite(monkeypatch):
 
 def test_sandbox_report_keeps_jail_error(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.sandbox_url", lambda: "http://127.0.0.1:8503"
+        "source.agent.search.sandbox.sandbox_url", lambda: "http://127.0.0.1:8503"
     )
     monkeypatch.setattr(
-        "source.agent.search.sandbox_reachable", lambda **_: True
+        "source.agent.search.sandbox.sandbox_reachable", lambda **_: True
     )
     monkeypatch.setattr(
-        "source.agent.search.quote_replies",
+        "source.agent.search.sandbox.quote_replies",
         lambda requests, **_: [
             QuoteReply(
                 request_id=requests[0].request_id,
@@ -140,10 +140,10 @@ def test_quote_via_sandbox_chunks_over_max_batch(monkeypatch):
 
 def test_sandbox_quotes_reuse_site_type_weekend(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.sandbox_url", lambda: "http://127.0.0.1:8503"
+        "source.agent.search.sandbox.sandbox_url", lambda: "http://127.0.0.1:8503"
     )
     monkeypatch.setattr(
-        "source.agent.search.sandbox_reachable", lambda **_: True
+        "source.agent.search.sandbox.sandbox_reachable", lambda **_: True
     )
     calls = {"n": 0}
 
@@ -158,7 +158,7 @@ def test_sandbox_quotes_reuse_site_type_weekend(monkeypatch):
             )
         ]
 
-    monkeypatch.setattr("source.agent.search.quote_replies", fake_replies)
+    monkeypatch.setattr("source.agent.search.sandbox.quote_replies", fake_replies)
     slot = {
         "campsite_id": 2,
         "campsite": "חורשת טל",
@@ -183,10 +183,10 @@ def test_sandbox_quotes_reuse_site_type_weekend(monkeypatch):
 
 def test_sandbox_quotes_do_not_leak_across_requests(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.sandbox_url", lambda: "http://127.0.0.1:8503"
+        "source.agent.search.sandbox.sandbox_url", lambda: "http://127.0.0.1:8503"
     )
     monkeypatch.setattr(
-        "source.agent.search.sandbox_reachable", lambda **_: True
+        "source.agent.search.sandbox.sandbox_reachable", lambda **_: True
     )
     calls = {"n": 0}
 
@@ -201,7 +201,7 @@ def test_sandbox_quotes_do_not_leak_across_requests(monkeypatch):
             )
         ]
 
-    monkeypatch.setattr("source.agent.search.quote_replies", fake_replies)
+    monkeypatch.setattr("source.agent.search.sandbox.quote_replies", fake_replies)
     slot = {
         "campsite_id": 2,
         "campsite": "חורשת טל",

@@ -98,18 +98,18 @@ def _capacity(fit: dict) -> int:
 @pytest.fixture
 def vacancy_search(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
-        "source.agent.search._query_vec_literal", lambda query: "[0]"
+        "source.agent.search.embed._query_vec_literal", lambda query: "[0]"
     )
     slots = MagicMock()
-    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
     monkeypatch.setattr(
-        "source.agent.search.search_stated_amenities", MagicMock(return_value=[])
+        "source.agent.search.amenities.search_stated_amenities", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.claims.search_review_claims", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.lookup_campsite_by_name", MagicMock(return_value=[])
+        "source.agent.search.campsites.lookup_campsite_by_name", MagicMock(return_value=[])
     )
     return SimpleNamespace(slots=slots)
 

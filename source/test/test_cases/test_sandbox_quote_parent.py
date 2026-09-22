@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from source.agent.search import _open_slots_sql, _sandbox_quotes_for_slots
+from source.agent.search.availability import _open_slots_sql
+from source.agent.search.sandbox import _sandbox_quotes_for_slots
 from source.price_sandbox.client import QuoteReply, QuoteRequest
 from source.price_sandbox.params import QuoteResult
 from source.price_sandbox.server import load_functions, quote_batch
@@ -106,9 +107,9 @@ def test_quote_unknown_when_parent_is_also_missing(monkeypatch):
 
 def test_sandbox_quotes_send_parent_site_id(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.sandbox_url", lambda: "http://127.0.0.1:8503"
+        "source.agent.search.sandbox.sandbox_url", lambda: "http://127.0.0.1:8503"
     )
-    monkeypatch.setattr("source.agent.search.sandbox_reachable", lambda **_: True)
+    monkeypatch.setattr("source.agent.search.sandbox.sandbox_reachable", lambda **_: True)
     seen: list[QuoteRequest] = []
 
     def fake_replies(requests: list[QuoteRequest], **_kwargs):
@@ -122,7 +123,7 @@ def test_sandbox_quotes_send_parent_site_id(monkeypatch):
             )
         ]
 
-    monkeypatch.setattr("source.agent.search.quote_replies", fake_replies)
+    monkeypatch.setattr("source.agent.search.sandbox.quote_replies", fake_replies)
     batch = _sandbox_quotes_for_slots(
         [
             {

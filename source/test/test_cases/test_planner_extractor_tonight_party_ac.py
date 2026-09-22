@@ -11,14 +11,14 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage, ChatMessage, HumanMessage
 
-from source.agent import search as agent_search
 from source.agent.graph import (
     _open_slots_sql,
     _render_sql,
     planner_node,
     search_open_slots,
 )
-from source.agent.search import (
+from source.agent.search import availability
+from source.agent.search.availability import (
     _CAMPSITE,
     _MAX_OCCUPANCY,
     _PARENT_ID,
@@ -77,7 +77,7 @@ def _planner_payload(result: dict) -> dict:
 @pytest.fixture
 def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(
-        "source.agent.search._query_vec_literal", lambda query: "[0]"
+        "source.agent.search.embed._query_vec_literal", lambda query: "[0]"
     )
     slots = MagicMock(return_value=[dict(SLOT_AC), dict(SLOT_TENT)])
     amenities = MagicMock(
@@ -91,13 +91,13 @@ def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             }
         ]
     )
-    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
-    monkeypatch.setattr("source.agent.search.search_stated_amenities", amenities)
+    monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.amenities.search_stated_amenities", amenities)
     monkeypatch.setattr(
-        "source.agent.search.search_review_claims", MagicMock(return_value=[])
+        "source.agent.search.claims.search_review_claims", MagicMock(return_value=[])
     )
     monkeypatch.setattr(
-        "source.agent.search.lookup_campsite_by_name", MagicMock(return_value=[])
+        "source.agent.search.campsites.lookup_campsite_by_name", MagicMock(return_value=[])
     )
     return SimpleNamespace(slots=slots, amenities=amenities)
 
@@ -255,7 +255,10 @@ def test_open_slots_queries_db_for_extractor_tonight_party_ac(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("DATABASE_URL", "postgresql://mock")
-    monkeypatch.setattr(agent_search, "connect", lambda *_a, **_k: _MockConn())
+    monkeypatch.setattr(
+        "source.agent.search.availability.connect",
+        lambda *_a, **_k: _MockConn(),
+    )
 
     slots = search_open_slots(
         date_range=EXTRACTOR_JSON["date"],
@@ -263,7 +266,7 @@ def test_open_slots_queries_db_for_extractor_tonight_party_ac(
         party_size=3,
         numeric_constraints=EXTRACTOR_JSON["numeric_constraints"],
     )
-    recorded = agent_search._LAST_OPEN_SLOTS_QUERY
+    recorded = availability._LAST_OPEN_SLOTS_QUERY
     assert recorded is not None
     assert recorded.get("skipped") is None
     if slots and slots[0].get("error"):

@@ -213,8 +213,8 @@ def test_upsert_review_returns_none_skip_for_new_row():
     assert skip is None
 
 
-@patch("source.agent.search.connect")
-@patch("source.agent.search.register_vector")
+@patch("source.agent.search.claims.connect")
+@patch("source.agent.search.claims.register_vector")
 def test_search_review_claims_excludes_skipped_reviews(_register_vector, connect):
     conn = MagicMock()
     conn.__enter__.return_value = conn
@@ -223,7 +223,7 @@ def test_search_review_claims_excludes_skipped_reviews(_register_vector, connect
     conn.cursor.return_value.__enter__.return_value = cur
     connect.return_value = conn
 
-    from source.agent.search import search_review_claims
+    from source.agent.search.claims import search_review_claims
 
     with patch.dict(os.environ, {"DATABASE_URL": "postgresql://mock"}):
         search_review_claims("hot showers", embedding="[0.1]")

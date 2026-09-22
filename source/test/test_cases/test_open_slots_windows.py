@@ -1,6 +1,7 @@
 """All stay windows are one availability query and one sandbox quote."""
 
-from source.agent.search import _open_slots_sql, _sandbox_quotes_for_slots
+from source.agent.search.availability import _open_slots_sql
+from source.agent.search.sandbox import _sandbox_quotes_for_slots
 from source.price_sandbox.client import QuoteReply, QuoteRequest
 
 
@@ -25,10 +26,10 @@ def test_windows_sql_is_one_query():
 
 def test_one_quote_covers_weekday_and_weekend(monkeypatch):
     monkeypatch.setattr(
-        "source.agent.search.sandbox_url", lambda: "http://127.0.0.1:8503"
+        "source.agent.search.sandbox.sandbox_url", lambda: "http://127.0.0.1:8503"
     )
     monkeypatch.setattr(
-        "source.agent.search.sandbox_reachable", lambda **_: True
+        "source.agent.search.sandbox.sandbox_reachable", lambda **_: True
     )
     seen: list[list[QuoteRequest]] = []
 
@@ -44,7 +45,7 @@ def test_one_quote_covers_weekday_and_weekend(monkeypatch):
             for item in requests
         ]
 
-    monkeypatch.setattr("source.agent.search.quote_replies", fake_replies)
+    monkeypatch.setattr("source.agent.search.sandbox.quote_replies", fake_replies)
     batch = _sandbox_quotes_for_slots(
         [
             {

@@ -119,19 +119,19 @@ def _by_site(payload: dict, field: str = "fits") -> dict[int, dict]:
 
 @pytest.fixture
 def fridge_db(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
-    monkeypatch.setattr("source.agent.search._query_vec_literal", lambda query: FAKE_VEC)
+    monkeypatch.setattr("source.agent.search.embed._query_vec_literal", lambda query: FAKE_VEC)
     slots = MagicMock(return_value=[dict(SLOT_COMMUNAL), dict(SLOT_IN_ROOM)])
     amenities = MagicMock(return_value=[dict(TYPE_FRIDGE_HIT)])
     site_amenities = MagicMock(return_value=[dict(SITE_FRIDGE_HIT)])
     claims = MagicMock(return_value=[])
     lookup = MagicMock(return_value=[])
     campsites = MagicMock(return_value=[])
-    monkeypatch.setattr("source.agent.search.search_open_slots", slots)
-    monkeypatch.setattr("source.agent.search.search_stated_amenities", amenities)
-    monkeypatch.setattr("source.agent.search.search_site_amenities", site_amenities)
-    monkeypatch.setattr("source.agent.search.search_review_claims", claims)
-    monkeypatch.setattr("source.agent.search.lookup_campsite_by_name", lookup)
-    monkeypatch.setattr("source.agent.search.search_campsites", campsites)
+    monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.amenities.search_stated_amenities", amenities)
+    monkeypatch.setattr("source.agent.search.amenities.search_site_amenities", site_amenities)
+    monkeypatch.setattr("source.agent.search.claims.search_review_claims", claims)
+    monkeypatch.setattr("source.agent.search.campsites.lookup_campsite_by_name", lookup)
+    monkeypatch.setattr("source.agent.search.campsites.search_campsites", campsites)
     return SimpleNamespace(
         slots=slots,
         amenities=amenities,

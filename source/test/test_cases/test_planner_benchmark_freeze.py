@@ -6,7 +6,10 @@ import pytest
 
 from db.experiments import table_name
 from source.agent.dates import today_il
-from source.agent.search import _availability_relation, _open_slots_sql
+from source.agent.search.availability import (
+    _availability_relation,
+    _open_slots_sql,
+)
 
 
 def test_open_slots_sql_uses_frozen_table(monkeypatch: pytest.MonkeyPatch):

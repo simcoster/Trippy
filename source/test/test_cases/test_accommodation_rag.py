@@ -10,7 +10,7 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
-from source.agent.search import search_stated_amenities
+from source.agent.search.amenities import search_stated_amenities
 
 load_dotenv()
 
