@@ -99,6 +99,7 @@ if not hasattr(_recommender_timing, "last_recommend_timing"):
     importlib.reload(_recommender_timing)
 
 import source.agent.graph as agent_graph
+import source.demo_quota as _demo_quota
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
 from source.agent.keepalive import ping_new_session
 from source.agent.recommender.recommend import listen_recommend_text
@@ -112,19 +113,19 @@ from source.agent.tracing import (
     tracing_configured,
 )
 from source.agent.turn_status import SEARCHING, set_turn_status
-from source.demo_quota import (
-    QUOTA_USED,
-    claim_query,
-    public_visitor_hash,
-    quota_remaining,
-    remaining_caption,
-)
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
     chat_usd_per_mtok,
     collect_llm_usage,
 )
+
+importlib.reload(_demo_quota)
+QUOTA_USED = _demo_quota.QUOTA_USED
+claim_query = _demo_quota.claim_query
+public_visitor_hash = _demo_quota.public_visitor_hash
+quota_remaining = _demo_quota.quota_remaining
+remaining_caption = _demo_quota.remaining_caption
 
 HEAVY_PATH_LABELS: dict[HeavyThrough, str] = {
     "extractor": "Extractor only",
@@ -148,6 +149,54 @@ st.markdown(
 [data-testid="stChatMessageContent"] li {
     unicode-bidi: plaintext;
     text-align: start;
+}
+.trippy-questions-left {
+    font-size: 1.15rem;
+    line-height: 1.3;
+    margin: 0 0 0.75rem 0;
+}
+.trippy-questions-left span {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #ff4b4b;
+}
+.st-key-reset_chat button {
+    background-color: #21c354 !important;
+    border-color: #21c354 !important;
+}
+.st-key-reset_chat button:hover,
+.st-key-reset_chat button:focus {
+    background-color: #1a9e43 !important;
+    border-color: #1a9e43 !important;
+    color: #fff !important;
+}
+[data-testid="stSidebarContent"] {
+    display: flex;
+    flex-direction: column;
+}
+[data-testid="stSidebarUserContent"] {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 1rem !important;
+}
+[data-testid="stSidebarUserContent"] > div {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+[data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {
+    flex: 1 1 auto;
+}
+.st-key-github_readme {
+    margin-top: auto;
+}
+.st-key-github_readme a {
+    min-height: 4.5rem;
+    padding-top: 1.15rem;
+    padding-bottom: 1.15rem;
+    font-size: 1.2rem;
+    font-weight: 650;
 }
 </style>
 """,
@@ -1246,7 +1295,6 @@ if _PUBLIC_UI:
                 _quota_open = False
                 st.error(_USER_ERROR)
             else:
-                st.caption(remaining_caption(_quota_left))
                 _quota_open = _quota_left > 0
 else:
     st.caption(
@@ -1259,12 +1307,12 @@ mcp_prompt = ""
 stop_after: HeavyThrough = "recommender"
 with st.sidebar:
     st.header("Session")
-    st.link_button(
-        "GitHub README",
-        "https://github.com/simcoster/Trippy",
-        icon=":material/menu_book:",
-        width="stretch",
-    )
+    if _quota_left is not None:
+        _count, _, _rest = remaining_caption(_quota_left).partition(" ")
+        st.markdown(
+            f"<p class='trippy-questions-left'><span>{_count}</span> {_rest}</p>",
+            unsafe_allow_html=True,
+        )
     if not _PUBLIC_UI:
         stop_after = (
             st.radio(
@@ -1357,6 +1405,14 @@ with st.sidebar:
         else:
             st.info("Send a message to start a conversation.")
 
+    st.link_button(
+        "GitHub README",
+        "https://github.com/simcoster/Trippy",
+        icon=":material/menu_book:",
+        width="stretch",
+        key="github_readme",
+    )
+
 for turn in st.session_state.display:
     with st.chat_message(turn["role"]):
         st.markdown(turn["content"])
@@ -1371,7 +1427,7 @@ for turn in st.session_state.display:
 _can_ask = not _answered and _quota_open
 with st.bottom:
     if _answered:
-        if st.button("Reset", type="primary", width="stretch"):
+        if st.button("Try another question!", type="primary", width="stretch", key="reset_chat"):
             _reset_conversation()
             st.rerun()
     elif _can_ask:

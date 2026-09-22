@@ -6,6 +6,28 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, GitHub link sits at the bottom of the sidebar)
+
+**The GitHub README button is taller and pinned to the bottom of the sidebar.**
+
+### Done (2026-09-22, try another is green)
+
+**The chat reset control reads "try another!" and is green.** Supersedes the blue Reset note below.
+
+### Done (2026-09-22, Reset is blue)
+
+**The chat Reset button uses blue instead of the theme red.**
+
+### Done (2026-09-22, questions left is an English number)
+
+**The sidebar count is English only.** The number is larger and red. The
+line reads `4 questions left`.
+
+### Done (2026-09-22, questions left sits in the sidebar)
+
+**The remaining-question line is in the sidebar under Session.** The main
+column keeps the ask prompt.
+
 ### Done (2026-09-22, local stand-in for the demo visitor address)
 
 **`TRIPPY_DEMO_VISITOR_IP` is used when `CF-Connecting-IP` is absent.**

@@ -110,11 +110,10 @@ def public_visitor_hash(headers: Mapping[str, str]) -> str | None:
 
 
 def remaining_caption(remaining: int) -> str:
-    if remaining <= 0:
-        return "No questions left | לא נשארו שאלות"
     if remaining == 1:
-        return "1 question left | נשארה שאלה אחת"
-    return f"{remaining} questions left | נשארו {remaining} שאלות"
+        return "1 question left"
+    count = max(0, remaining)
+    return f"{count} questions left"
 
 
 def quota_remaining(
