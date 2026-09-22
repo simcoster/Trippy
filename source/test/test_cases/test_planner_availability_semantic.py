@@ -133,7 +133,9 @@ def test_catalog_date_party_ac_intersects_on_type_ids(two_stage: SimpleNamespace
     ]
     fit = payload["fits"][0]
     assert fit["accommodation_type_id"] == 11
-    assert fit["price_per_night"] == 400.0
+    # quote_open_slots replaces the fixture price. 2026-08-30 is a Sunday, so
+    # the stay is weekend_holiday; type 11's unit rate (guest_type "any") is 450.
+    assert fit["price_per_night"] == 450.0
     assert fit["why"] == [
         {
             "query": "air conditioning",

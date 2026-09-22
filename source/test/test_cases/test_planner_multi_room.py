@@ -1,12 +1,11 @@
-"""Planner / vacancy search: compose multiple rooms so occupancy covers the party.
+"""Vacancy search still requires one unit to sleep the party.
 
-Currently fails: stage 1 requires one accommodation type to sleep everyone
-(`at.max_occupancy >= party_size`). A 6-person party cannot take two 4-person
-bungalows even when `availability.room_count >= 2`, and cannot mix a bungalow
-plus a tent at the same site.
+Multi-room stays are not implemented. Open slots keep
+`(max_occupancy IS NULL OR max_occupancy >= party_size)`, and the planner
+does not combine a bungalow and a tent into one stay.
 
 `room_count` on a slot is inventory (how many of that type are free).
-`units` is how many of that type the party should book.
+The planner does not set `units` (how many of that type to book).
 """
 
 from __future__ import annotations
@@ -114,8 +113,8 @@ def vacancy_search(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     return SimpleNamespace(slots=slots)
 
 
-def test_open_slots_sql_does_not_require_one_unit_to_sleep_the_party():
-    """6 guests can take two 4-person bungalows; do not require occupancy >= 6."""
+def test_open_slots_sql_requires_one_unit_to_sleep_the_party():
+    """Multi-room is not implemented: one unit's occupancy must cover 6."""
     sql, params = _open_slots_sql(
         windows=[DATE],
         site_id=None,
@@ -124,8 +123,7 @@ def test_open_slots_sql_does_not_require_one_unit_to_sleep_the_party():
     )
     assert sql is not None
     rendered = _render_sql(sql, params)
-    assert "at.max_occupancy >= 6" not in rendered.replace(" ", ""), rendered
-    assert "(at.max_occupancy IS NULL OR at.max_occupancy >= 6)" not in rendered, (
+    assert "(at.max_occupancy IS NULL OR at.max_occupancy >= 6)" in rendered, (
         rendered
     )
 
@@ -149,7 +147,6 @@ def test_planner_books_two_units_of_same_type_for_party_of_six(
         site_id=None,
         party_size=6,
         numeric_constraints=PARTY_SIX,
-        planned_entry_time=None,
     )
     payload = _fits_payload(result)
     assert len(payload["fits"]) == 1, payload["fits"]
@@ -163,8 +160,8 @@ def test_planner_books_two_units_of_same_type_for_party_of_six(
     assert fit.get("room_count") == 3
 
 
-def test_planner_composes_mixed_types_at_one_site(vacancy_search: SimpleNamespace):
-    """Bungalow (4) + tent (2) at the same park cover a party of 6."""
+def test_planner_keeps_mixed_types_as_separate_fits(vacancy_search: SimpleNamespace):
+    """A bungalow and a tent at one park stay two fits. Multi-room is not implemented."""
     vacancy_search.slots.return_value = [dict(SLOT_BUNGALOW), dict(SLOT_TENT)]
     result = planner_node(
         _constraints_state(
@@ -176,22 +173,12 @@ def test_planner_composes_mixed_types_at_one_site(vacancy_search: SimpleNamespac
         )
     )
     payload = _fits_payload(result)
-    composed = [
-        fit
-        for fit in payload["fits"]
-        if fit.get("campsite_id") == 3 and _capacity(fit) >= 6
-    ]
-    assert len(composed) == 1, payload["fits"]
-    fit = composed[0]
-    type_ids = {
-        int(room["accommodation_type_id"])
-        for room in _fit_units(fit)
-        if room.get("accommodation_type_id") is not None
-    }
-    assert type_ids == {11, 22}, _fit_units(fit)
-    by_type = {
-        int(room["accommodation_type_id"]): int(room["units"])
-        for room in _fit_units(fit)
-    }
-    assert by_type[11] == 1
-    assert by_type[22] == 1
+    fits = [fit for fit in payload["fits"] if fit.get("campsite_id") == 3]
+    assert len(fits) == 2, payload["fits"]
+    by_type = {int(fit["accommodation_type_id"]): fit for fit in fits}
+    assert set(by_type) == {11, 22}
+    for fit in fits:
+        assert fit.get("units") is None
+        assert not fit.get("rooms")
+        assert len(_fit_units(fit)) == 1
+        assert _capacity(fit) < 6

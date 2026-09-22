@@ -6,6 +6,10 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, search returns vacancies; the planner quotes)
+
+**`search_open_slots` only returns vacant rows.** `planner_fits_payload` runs `quote_open_slots` and retrieve together on that list. The judge still waits until both finish. A price limit drops rows after retrieve, so a fit never keeps a slot the quote rejected.
+
 ### Done (2026-09-22, quote batch dedupes worker calls)
 
 **`quote_batch` runs each distinct source and params once, then copies that answer onto every request in the batch.** The client posts the batch as received. Supersedes “posted once” in the four-children entry below.
