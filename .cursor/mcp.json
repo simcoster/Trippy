@@ -9,6 +9,9 @@
         "c:\\dev\\Trippy\\scripts\\streamlit_chat.py"
       ],
       "cwd": "c:\\dev\\Trippy"
+    },
+    "LangSmith": {
+      "url": "https://eu.api.smith.langchain.com/mcp"
     }
   }
 }

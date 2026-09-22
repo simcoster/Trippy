@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, recommender model call is on the trace)
+
+**The Kimi stream keeps the caller’s LangSmith context.** The
+first-token thread was dropping the model run, so the recommender
+node input was the only thing on the trace. The packed prompt is now
+a child of that node.
+
 ### Done (2026-09-22, unstated children are age 10)
 
 **A child with no stated age is quoted as 10.** The recommender says

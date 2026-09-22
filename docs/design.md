@@ -1310,7 +1310,10 @@ from-planner bake ranked **Kimi-K3 then GLM-5.2** above 397B and
 Kimi is the default. If Kimi sends no stream token in 10 s
 (`TRIPPY_KIMI_TTFT_SEC`; 0 disables), the same pack is retried on
 Nemotron Super 120B-A12B (`source/agent/recommender/fallback.py`).
-The first-token deadline lives in `recommender/stream.py`. Model
+The first-token deadline lives in `recommender/stream.py`. That wait
+runs the stream on another thread and copies the caller context, so
+LangSmith still logs the model call (the packed prompt) under the
+recommender node. Model
 thinking-off flags live in `recommender/models.py`; TTFT logging
 lives in `recommender/timing.py`. A caller-injected `chat` does not fall back
 (tests). `TRIPPY_RECOMMENDER_MODEL=super` or `235B`
