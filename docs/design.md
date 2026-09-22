@@ -1273,9 +1273,9 @@ Hebrew, English only if it is mostly English. More than one pick
 also sets `intro`: note that there is more than one option, name
 them, and compare them somewhat. Phrasing is free; render puts that
 above the numbered list. `intro` is null for a single stay.
-A fit's `dates` are all shown. Consecutive one-night windows collapse
-to the check-in span (`24.5–29.5, one night each` / `כל לילה בנפרד`),
-with a booking link per night. After the picks, render appends
+A fit's `dates` are all shown. Several check-ins collapse to ranges
+(`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site, with a note to change the date
+on the booking page when more than one date fits. After the picks, render appends
 `why_not` as a short funnel when a price or amenity filter dropped
 campsites.
 `why` leads with the matching facts, not a recap of the query,
@@ -1318,7 +1318,9 @@ dropped. Empty `fits` become an honest follow-up.
 After vacancies and the judge, each surviving fit gets a
 `booking_url`: `BE_Results.aspx` with `campsites.booking_hotel_id`
 (the parent’s id when the row is a subcamp), the stay dates, and
-`ad1` from extractor party size (`source/agent/booking.py`). That is
+`ad1` and `ch1` from the party (`source/agent/booking.py`). Party size
+counts everyone; stated children are `ch1`, and the adults are the
+remainder, so 2 adults and 2 children is `ad1=2&ch1=2`. That is
 the public search GET the availability scraper already uses — not
 the parks.org.il iframe session. The recommender is told to copy
 `booking_url` from the fit; render looks up the chosen stay and

@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, date ranges and booking party)
+
+**Several fitting dates render as ranges, with one booking link.**
+Check-ins collapse to `21–28.9`, then `11.10–15.10` for a later cluster. The link
+is once per site, with a note to change the date. `ad1` is adults only;
+stated children are `ch1`, so 2+2 is not four adults. Supersedes the
+per-night link in the recommender entry below.
+
 ### Done (2026-09-22, recommender lists every date, top 3, and why not)
 
 **The reply shows 2–3 stays, every fitting night, and a filter funnel.**

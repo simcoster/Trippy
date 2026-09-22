@@ -36,24 +36,57 @@ def _one_nights() -> tuple[StayWindow, ...]:
 
 
 def test_contiguous_one_nights_render_as_one_span():
-    text = render_recommendations([_rec(dates=_one_nights())], query="a pool")
-    assert text.startswith("24.5–29.5, one night each")
-    assert "24.5 https://book/24" in text
-    assert "29.5 https://book/29" in text
+    text = render_recommendations(
+        [_rec(dates=_one_nights(), booking_url="https://book/site")],
+        query="a pool",
+    )
+    assert text.startswith("24–29.5")
+    assert "one night" not in text
+    assert "https://book/site" in text
+    assert "https://book/24" not in text
+    assert "Adjust the date on the booking page." in text
+    assert text.count("https://book/") == 1
 
 
-def test_hebrew_span_says_each_night():
-    text = render_recommendations([_rec(dates=_one_nights())], query="בריכה")
-    assert text.startswith("24.5–29.5, כל לילה בנפרד")
+def test_hebrew_span_says_to_adjust_the_date():
+    text = render_recommendations(
+        [_rec(dates=_one_nights(), booking_url="https://book/site")],
+        query="בריכה",
+    )
+    assert text.startswith("24–29.5")
+    assert "שנו את התאריך בעמוד ההזמנה." in text
 
 
-def test_gapped_nights_stay_listed():
+def test_gapped_nights_are_separate_ranges():
     dates = (
-        StayWindow("2026-05-24", "2026-05-25", ""),
-        StayWindow("2026-05-27", "2026-05-28", ""),
+        StayWindow("2026-09-22", "2026-09-23", "https://book/22"),
+        StayWindow("2026-09-23", "2026-09-24", "https://book/23"),
+        StayWindow("2026-09-24", "2026-09-25", "https://book/24"),
+        StayWindow("2026-09-26", "2026-09-27", "https://book/26"),
+    )
+    text = render_recommendations(
+        [_rec(dates=dates, booking_url="https://book/site")],
+        query="pool",
+    )
+    assert text.startswith("22–24.9, 26.9")
+    assert "22.9–23.9" not in text
+    assert text.count("https://") == 1
+
+
+def test_two_months_keep_a_range_each():
+    dates = tuple(
+        StayWindow(f"2026-09-{day:02d}", f"2026-09-{day + 1:02d}", "")
+        for day in range(21, 29)
+    ) + tuple(
+        StayWindow(
+            f"2026-10-{day:02d}",
+            f"2026-10-{day + 1:02d}" if day < 31 else "2026-11-01",
+            "",
+        )
+        for day in range(11, 16)
     )
     text = render_recommendations([_rec(dates=dates)], query="pool")
-    assert text.startswith("24.5–25.5, 27.5–28.5")
+    assert text.startswith("21–28.9, 11.10–15.10")
 
 
 def test_why_not_follows_the_options():
@@ -127,7 +160,7 @@ def test_why_not_is_rendered_and_kept_out_of_the_model_pack():
         },
         chat=_Chat(),
     )
-    assert result.text.startswith("24.5–25.5, one night each")
+    assert result.text.startswith("24–25.5")
     assert "Why not" in result.text
     assert "→ 2 don't have pool like you requested" in result.text
     assert len(result.recommendations) == 1

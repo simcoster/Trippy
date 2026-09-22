@@ -545,7 +545,9 @@ def render_recommendations(
             lines.append(f"   {labels[i - 1]}")
         if rec.why:
             lines.append(f"   {rec.why}")
-        lines.extend(booking_lines(rec.dates, rec.booking_url))
+        lines.extend(
+            booking_lines(rec.dates, rec.booking_url, hebrew=hebrew)
+        )
         if i < len(recs):
             lines.append("")
     if funnel:

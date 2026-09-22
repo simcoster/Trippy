@@ -39,24 +39,26 @@ def _window_label(window: StayWindow) -> str:
     return start
 
 
-def _format_span(first: date, last: date) -> str:
-    """Same month is `21–28.9`. A month change keeps both: `28.9–2.10`."""
+def _format_span(first: date, last: date, *, lead: bool) -> str:
+    """First span in a month is `21–28.9`. A later span keeps both months: `11.10–15.10`."""
     if first == last:
         return day_month(first.isoformat())
-    if first.month == last.month and first.year == last.year:
+    if lead and first.month == last.month and first.year == last.year:
         return f"{first.day}–{last.day}.{last.month}"
     return f"{day_month(first.isoformat())}–{day_month(last.isoformat())}"
 
 
 def _check_in_spans(windows: Sequence[StayWindow]) -> list[str]:
     """Contiguous check-in days become one range. A gap starts another."""
-    days = sorted(
-        {
-            day
-            for window in windows
-            if (day := _parse_day(window.start)) is not None
-        }
-    )
+    days: list[date] = []
+    seen: set[date] = set()
+    for window in windows:
+        day = _parse_day(window.start)
+        if day is None or day in seen:
+            continue
+        seen.add(day)
+        days.append(day)
+    days.sort()
     if not days:
         return []
     spans: list[str] = []
@@ -66,10 +68,10 @@ def _check_in_spans(windows: Sequence[StayWindow]) -> list[str]:
         if day - previous == timedelta(days=1):
             previous = day
             continue
-        spans.append(_format_span(run_start, previous))
+        spans.append(_format_span(run_start, previous, lead=not spans))
         run_start = day
         previous = day
-    spans.append(_format_span(run_start, previous))
+    spans.append(_format_span(run_start, previous, lead=not spans))
     return spans
 
 
