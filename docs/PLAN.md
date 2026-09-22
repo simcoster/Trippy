@@ -6,6 +6,30 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Open (2026-09-22, graph container)
+
+**TODO: run the graph in its own container; Streamlit talks to it over HTTP.** Today `scripts/streamlit_chat.py` imports the graph, calls `build_graph`, and patches nodes and search functions in-process. The chat client should post a turn and read the reply, not host the agent.
+
+### Done (2026-09-22, quote worker exits after its batch)
+
+**A waiting worker runs one batch, returns the results, and exits.** A replacement is started as soon as that process dies, so the pool stays full and the next batch does not wait on spawn. Supersedes “workers stay up” in the long-lived quote workers entry below.
+
+### Open (2026-09-22, per-quote sandbox children)
+
+**TODO: one short-lived child per quote again.** Four workers stay up and each runs a whole batch with a 10s timeout, because spawning a process per quote used the 0.5s budget on startup (68 quotes, ~9s, every one "price function exceeded time limit"). Bring the per-quote child back once startup is not on that clock.
+
+### Done (2026-09-22, long-lived quote workers)
+
+**A `/quote` batch runs on one long-lived worker, 10 seconds for the batch.** Four workers stay up; a batch that exceeds 10s kills that worker and a new one takes its place. Supersedes four short-lived children in the entry below.
+
+### Done (2026-09-22, weekend is Friday–Saturday)
+
+**A stay is `weekend_holiday` when a night is Friday or Saturday.** Sunday is a weekday; the week starts on Sunday. `_rate_period_for_stay` had used Python's `weekday() >= 5`, which is Saturday and Sunday.
+
+### Done (2026-09-22, search returns vacancies; the planner quotes)
+
+**`search_open_slots` only returns vacant rows.** `planner_fits_payload` runs `quote_open_slots` and retrieve together on that list. The judge still waits until both finish. A price limit drops rows after retrieve, so a fit never keeps a slot the quote rejected.
+
 ### Done (2026-09-22, quote batch dedupes worker calls)
 
 **`quote_batch` runs each distinct source and params once, then copies that answer onto every request in the batch.** The client posts the batch as received. Supersedes “posted once” in the four-children entry below.

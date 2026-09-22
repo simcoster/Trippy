@@ -105,7 +105,6 @@ def test_planner_named_campsite_looks_up_id_then_open_slots(
         numeric_constraints=[
             {"field": "party_size", "operator": "=", "value": 3}
         ],
-        planned_entry_time=None,
     )
     named_site_db.campsites.assert_not_called()
 

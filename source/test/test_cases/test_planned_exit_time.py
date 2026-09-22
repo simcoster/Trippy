@@ -85,7 +85,9 @@ def test_sandbox_quote_sends_planned_exit_time(monkeypatch):
 
 def test_planner_forwards_planned_exit_time(monkeypatch):
     slots = MagicMock(return_value=[])
+    quotes = MagicMock(return_value=[])
     monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
+    monkeypatch.setattr("source.agent.search.availability.quote_open_slots", quotes)
     planner_node(
         {
             "messages": [
@@ -104,4 +106,5 @@ def test_planner_forwards_planned_exit_time(monkeypatch):
             ]
         }
     )
-    assert slots.call_args.kwargs["planned_exit_time"] == "14:00"
+    assert "planned_exit_time" not in slots.call_args.kwargs
+    assert quotes.call_args.kwargs["planned_exit_time"] == "14:00"

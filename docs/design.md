@@ -901,7 +901,7 @@ Arrival is `planned_entry_time` (`HH:MM`), not a date and not a semantic
 query. “אפשר להיכנס אחרי 19” is `19:00` (an hour, not the 19th). Putting
 it in `semantic_constraints` would AND-filter amenities and drop sites
 that never advertise late check-in. The planner forwards
-`planned_entry_time` to `search_open_slots` (None when the extractor
+`planned_entry_time` to `quote_open_slots` (None when the extractor
 did not set a clock; None and omitted are the same default). Sandbox
 `QuoteParams.planned_entry_time` gets it so late-arrival fees apply. Departure is `planned_exit_time` (`HH:MM`) the same way, forwarded only when the extractor set a clock, so a weekend leave after 12:00 can add the late-exit row. It does not yet reject sites whose gate
 / check-in window closes earlier (that still needs a policy match, not
@@ -934,7 +934,9 @@ Retrieve is unique on campsite + accommodation type; the judge is
 unique on campsite + query. The planner emits **one fit per unit**
 across date windows — nights live on `dates` (each with its price
 and booking URL). Vacancies for all of those windows are one SQL
-query, then one sandbox quote. `start` / `end` stay the first night
+query (`search_open_slots` returns those rows and does not quote).
+The planner then runs the sandbox quote and retrieve together.
+The judge still waits until both have finished. `start` / `end` stay the first night
 so the recommender stay key is unchanged.
 
 The planner retrieve embeds each distinct semantic query statement
@@ -1204,8 +1206,11 @@ publishes `127.0.0.1:8503` — an internal-only network drops the
 host bind). Re-run the loader after
 `scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
 other) front end does not own this.
-Each quote runs in a short-lived child with a memory cap and a
-sub-second timeout, four children at a time. The server runs each
+Four workers wait for work. One takes a `/quote` batch, returns, and
+exits; a replacement starts as soon as it dies, so the next batch does
+not wait for a process to spawn. The batch is killed at 10s. TODO: one
+short-lived child per quote again; process startup was eating a 0.5s
+per-quote limit. The server runs each
 distinct source and params once and copies that answer onto every
 request in the batch. A subcamp has no page, so its rate card and
 `quote()` live on the parent. Open slots send that `parent_site_id`,
@@ -1224,7 +1229,8 @@ child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
 קבוצה is deduced from `adults_num + child_num` against that site's
 published occupancy notes, and when the threshold is met it overrides
 identity rates (including Matmon). `is_weekend_or_holiday` stays a caller flag
-(the night is or is not a weekend).
+(the night is or is not a weekend). The week starts on Sunday, so that flag
+is Friday or Saturday only; Sunday is a weekday.
 Fits carry `price_explanation` so the recommender cites the breakdown
 instead of summing. A unit that is vacant on several windows is one
 fit with `dates`, not one fit per night, so retrieve, judge, and
@@ -1406,8 +1412,9 @@ official rules the 235B received; **outputs** are `relevant_claims`,
 `satisfies`, `satisfy_by`, and `reason`. The model does not label each
 rule; `satisfy_by` is the rule-side verdict. Worker threads
 `copy_context()` so those tool runs stay under the Streamlit turn.
-Vacancy SQL is one `search_open_slots` for every stay window, then one
-`price_sandbox_quote` (each campsite’s params, price, and explanation,
+Vacancy SQL is one `search_open_slots` for every stay window. The planner
+then runs `price_sandbox_quote` alongside retrieve (each campsite’s
+params, price, and explanation,
 or why it skipped / fell back; POSTs are chunked at the sandbox
 `MAX_BATCH` of 30 and memoized by site + lodging + party +
 weekday/weekend for that user request only). Query embeddings (`embed_query`

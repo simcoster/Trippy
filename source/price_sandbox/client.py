@@ -14,7 +14,8 @@ from urllib.parse import urljoin
 from .params import QuoteParams, QuoteResult
 from .server import MAX_BATCH
 
-DEFAULT_TIMEOUT_S = 5.0
+# Must outlast execute.DEFAULT_TIMEOUT_S so a batch can return its own timeout.
+DEFAULT_TIMEOUT_S = 15.0
 
 
 def require_healthy_sandbox() -> None:

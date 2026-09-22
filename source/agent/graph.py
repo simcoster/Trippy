@@ -244,7 +244,7 @@ def extractor_node(state: ChatState) -> ChatState:
 
 
 def planner_node(state: ChatState) -> ChatState:
-    """Vacancies + prices, then semantic intersection with evidence."""
+    """Vacancies, then the quote overlaps semantic retrieve. The judge waits."""
     constraints_json = latest_constraints_json(state["messages"])
     payload = planner_fits_payload(constraints_json)
     # Existing planner_node tests mock search, not the 235B judge. Skip the

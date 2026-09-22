@@ -20,6 +20,7 @@ from source.agent.search.sandbox import (
     _sandbox_key_for_slot,
     _sandbox_quotes_for_slots,
     _sandbox_request_id,
+    _SandboxQuoteBatch,
     _slot_rate_period,
 )
 from source.agent.search.sql import _attach_run_sql, _render_sql
@@ -265,21 +266,18 @@ def search_open_slots(
     site_id: int | list[int] | None = None,
     party_size: int | None = None,
     numeric_constraints: list | None = None,
-    planned_entry_time: str | None = None,
-    planned_exit_time: str | None = None,
-    child_num: int | None = None,
-    child_ages: tuple[int, ...] | list[int] | None = None,
     limit: int = OPEN_SLOTS_LIMIT,
 ) -> list[dict]:
     """Catalog vacancies for every stay window in one query.
 
     `date_range` is a one-item `date_windows`. Availability is one-night
     rows; a stay matches only when the type has a row for every night in
-    [start, end). One sandbox quote covers the rows. Party size uses
-    accommodation max_occupancy (scrape is 1-adult). Price filters use
-    quote_night against list_prices. Optional site_id narrows to a named
-    park. `TRIPPY_AVAILABILITY_TABLE` selects the occupancy relation
-    (`availability_frozen` for the planner benchmark).
+    [start, end). Party size uses accommodation max_occupancy (scrape is
+    1-adult). Optional site_id narrows to a named park.
+    `TRIPPY_AVAILABILITY_TABLE` selects the occupancy relation
+    (`availability_frozen` for the planner benchmark). This does not quote.
+    `numeric_constraints` is recorded on the query; `quote_open_slots`
+    applies a price limit.
     """
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
@@ -304,11 +302,9 @@ def search_open_slots(
         _record_open_slots_query({"skipped": built[1]})
         return []
     sql, params = built
-    price_constraint = _price_per_night_constraint(numeric_constraints)
-    rate_period: RatePeriod = "weekday"
     query_record: dict[str, Any] = {
         "sql": _render_sql(sql, params),
-        "price_constraint": price_constraint,
+        "price_constraint": _price_per_night_constraint(numeric_constraints),
         "windows": [
             {"start": item.get("start"), "end": item.get("end")}
             for item in windows
@@ -346,9 +342,28 @@ def search_open_slots(
                 _PARENT_ID: int(parent_raw) if parent_raw is not None else None,
             }
         )
-    type_ids = list({int(s["accommodation_type_id"]) for s in slots})
+    return slots
+
+
+class _GatheredQuotes(NamedTuple):
+    prices: dict[int, list[SimpleNamespace]]
+    batch: _SandboxQuoteBatch
+
+
+def _gather_slot_quotes(
+    slots: list[dict],
+    *,
+    party_size: int | None,
+    rate_period: RatePeriod,
+    planned_entry_time: str | None,
+    planned_exit_time: str | None,
+    child_num: int | None,
+    child_ages: tuple[int, ...] | list[int] | None,
+) -> _GatheredQuotes:
+    """List prices plus the sandbox batch. The planner decides when this runs."""
+    type_ids = list({int(slot["accommodation_type_id"]) for slot in slots})
     prices = _load_list_prices(type_ids)
-    sandbox_batch = _sandbox_quotes_for_slots(
+    batch = _sandbox_quotes_for_slots(
         slots,
         party_size=party_size,
         rate_period=rate_period,
@@ -357,8 +372,39 @@ def search_open_slots(
         child_num=child_num,
         child_ages=child_ages,
     )
-    query_record["sandbox"] = sandbox_batch.report
-    sandbox_quotes = sandbox_batch.by_key
+    return _GatheredQuotes(prices=prices, batch=batch)
+
+
+def quote_open_slots(
+    slots: list[dict],
+    *,
+    party_size: int | None,
+    numeric_constraints: list | None = None,
+    planned_entry_time: str | None = None,
+    planned_exit_time: str | None = None,
+    child_num: int | None = None,
+    child_ages: tuple[int, ...] | list[int] | None = None,
+) -> list[dict]:
+    """Price vacancy rows.
+
+    Copies them so a concurrent retrieve can keep the originals.
+    """
+    rate_period: RatePeriod = "weekday"
+    price_constraint = _price_per_night_constraint(numeric_constraints)
+    working = [dict(slot) for slot in slots]
+    gathered = _gather_slot_quotes(
+        working,
+        party_size=party_size,
+        rate_period=rate_period,
+        planned_entry_time=planned_entry_time,
+        planned_exit_time=planned_exit_time,
+        child_num=child_num,
+        child_ages=child_ages,
+    )
+    record = _LAST_OPEN_SLOTS_QUERY
+    if isinstance(record, dict):
+        record["sandbox"] = gathered.batch.report
+    sandbox_quotes = gathered.batch.by_key
     party = quote_party(
         party_size=party_size,
         child_num=child_num,
@@ -367,11 +413,11 @@ def search_open_slots(
     adults = party.adults_num
     calls_by_id = {
         str(row["request_id"]): row
-        for row in sandbox_batch.report.get("calls") or []
+        for row in gathered.batch.report.get("calls") or []
         if isinstance(row, dict) and row.get("request_id") is not None
     }
     quoted: list[dict] = []
-    for slot in slots:
+    for slot in working:
         slot.pop(_PARENT_ID, None)
         slot_rate = _slot_rate_period(slot, rate_period)
         key = _sandbox_key_for_slot(
@@ -390,7 +436,7 @@ def search_open_slots(
             source = "sandbox"
         else:
             price = _quote_slot_price(
-                prices.get(int(slot["accommodation_type_id"])) or [],
+                gathered.prices.get(int(slot["accommodation_type_id"])) or [],
                 party_size=party_size,
                 rate_period=slot_rate,
                 accommodation_type_id=int(slot["accommodation_type_id"]),
@@ -407,7 +453,8 @@ def search_open_slots(
             continue
         slot["price_per_night"] = price
         quoted.append(slot)
-    query_record["quoted_count"] = len(quoted)
+    if isinstance(record, dict):
+        record["quoted_count"] = len(quoted)
     return quoted
 
 

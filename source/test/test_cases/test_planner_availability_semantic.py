@@ -86,6 +86,10 @@ def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     lookup = MagicMock(return_value=[])
     campsites = MagicMock(return_value=[])
     monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
+    monkeypatch.setattr(
+        "source.agent.search.availability.quote_open_slots",
+        lambda slots, **_kwargs: slots,
+    )
     monkeypatch.setattr("source.agent.search.amenities.search_stated_amenities", amenities)
     monkeypatch.setattr("source.agent.search.claims.search_review_claims", claims)
     monkeypatch.setattr("source.agent.search.campsites.lookup_campsite_by_name", lookup)
@@ -215,7 +219,12 @@ def test_price_constraint_helpers():
 
 
 def test_rate_period_weekend_in_range():
-    assert _rate_period_for_stay(DATE) == "weekend_holiday"
+    """Weekend is Friday–Saturday. Sunday 2026-08-30 starts a weekday stay."""
+    assert _rate_period_for_stay(DATE) == "weekday"
+    assert (
+        _rate_period_for_stay({"start": "2026-08-28", "end": "2026-08-29"})
+        == "weekend_holiday"
+    )
     assert (
         _rate_period_for_stay({"start": "2026-08-31", "end": "2026-09-01"})
         == "weekday"

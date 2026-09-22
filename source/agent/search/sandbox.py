@@ -83,7 +83,8 @@ def _rate_period_for_stay(date_range: dict | None) -> RatePeriod:
     end = _parse_iso_day(date_range.get("end")) or (start + timedelta(days=1))
     day = start
     while day < end:
-        if day.weekday() >= 5:
+        # Friday=4, Saturday=5. Sunday is 6 in Python and is a weekday.
+        if day.weekday() in (4, 5):
             return "weekend_holiday"
         day += timedelta(days=1)
     return "weekday"

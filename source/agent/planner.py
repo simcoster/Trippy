@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextvars
+import threading
 from dataclasses import dataclass
 from typing import Any, NamedTuple, TypeAlias
 
@@ -459,24 +461,48 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         child_kwargs["child_ages"] = tuple(constraints_json["child_ages"])
     if constraints_json.get("planned_exit_time"):
         child_kwargs["planned_exit_time"] = constraints_json["planned_exit_time"]
+    party_size = party_size_from_numeric(numeric)
     with sandbox.price_quote_cache():
         slots = availability.search_open_slots(
             date_windows=windows,
             site_id=site_id,
-            party_size=party_size_from_numeric(numeric),
+            party_size=party_size,
             numeric_constraints=numeric,
-            planned_entry_time=planned_entry_time,
-            **child_kwargs,
         )
-    record = availability._LAST_OPEN_SLOTS_QUERY
-    if not isinstance(record, dict):
-        record = {"windows": windows}
-    payload["open_slots_query"] = record
-    if slots and slots[0].get("error"):
-        payload["error"] = slots[0]["error"]
-        return payload
+        record = availability._LAST_OPEN_SLOTS_QUERY
+        if not isinstance(record, dict):
+            record = {"windows": windows}
+        payload["open_slots_query"] = record
+        if slots and slots[0].get("error"):
+            payload["error"] = slots[0]["error"]
+            return payload
 
-    found = _semantic_why_by_slot(slots, semantic)
+        ctx = contextvars.copy_context()
+        quoted: dict[str, Any] = {}
+
+        def _quote() -> None:
+            try:
+                quoted["slots"] = ctx.run(
+                    lambda: availability.quote_open_slots(
+                        slots,
+                        party_size=party_size,
+                        numeric_constraints=numeric,
+                        planned_entry_time=planned_entry_time,
+                        **child_kwargs,
+                    )
+                )
+            except Exception as exc:
+                quoted["error"] = exc
+
+        thread = threading.Thread(target=_quote, name="price-sandbox-quote")
+        thread.start()
+        try:
+            found = _semantic_why_by_slot(slots, semantic)
+        finally:
+            thread.join()
+        if "error" in quoted:
+            raise quoted["error"]
+        slots = quoted["slots"]
     fits: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
