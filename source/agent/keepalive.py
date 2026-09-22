@@ -9,7 +9,10 @@ import threading
 import time
 from collections.abc import Mapping, MutableMapping
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from datetime import time as wall_time
 from typing import Any, NamedTuple
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import HumanMessage
 
@@ -22,6 +25,9 @@ from source.agent.tracing import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_SEC = 600.0
+_KEEPALIVE_TZ = ZoneInfo("Asia/Jerusalem")
+_KEEPALIVE_START = wall_time(7, 0)
+_KEEPALIVE_END = wall_time(23, 0)
 _PING = "hi"
 _MAX_TOKENS = 5
 _ROLES = ("recommender", "light", "extractor", "embed")
@@ -38,6 +44,17 @@ class KeepaliveTarget(NamedTuple):
     model: str
     chat: Any
     kind: str = "chat"
+
+
+def keepalive_hours_open(moment: datetime | None = None) -> bool:
+    """True from 07:00 until 23:00 in Asia/Jerusalem."""
+    now = moment or datetime.now(_KEEPALIVE_TZ)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=_KEEPALIVE_TZ)
+    else:
+        now = now.astimezone(_KEEPALIVE_TZ)
+    current = now.time()
+    return _KEEPALIVE_START <= current < _KEEPALIVE_END
 
 
 def keepalive_interval_sec() -> float:
@@ -307,7 +324,11 @@ def start_model_keepalive(
     interval_sec: float | None = None,
     blocking: bool = False,
 ) -> None:
-    """Start the interval loop once per process. First ping waits for the interval."""
+    """Start the interval loop once per process. First ping waits for the interval.
+
+    Rounds outside 07:00–23:00 Asia/Jerusalem are skipped. The loop keeps
+    sleeping so the next morning's window still fires.
+    """
     global _started
     with _lock:
         if _started or _keepalive_loop_running():
@@ -329,11 +350,16 @@ def start_model_keepalive(
         while True:
             if interval > 0:
                 time.sleep(interval)
-            try:
-                ping_models(chats=chats, reason="interval")
-            except Exception:
-                print("keepalive round failed", flush=True)
-                logger.warning("keepalive round failed", exc_info=True)
+            if not keepalive_hours_open():
+                skipped = "keepalive skip outside 07:00-23:00 Asia/Jerusalem"
+                print(skipped, flush=True)
+                logger.info(skipped)
+            else:
+                try:
+                    ping_models(chats=chats, reason="interval")
+                except Exception:
+                    print("keepalive round failed", flush=True)
+                    logger.warning("keepalive round failed", exc_info=True)
             if interval <= 0:
                 return
 

@@ -101,7 +101,7 @@ if not hasattr(_recommender_timing, "last_recommend_timing"):
 import source.agent.graph as agent_graph
 import source.demo_quota as _demo_quota
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.keepalive import ping_new_session
+from source.agent.keepalive import ping_new_session, start_model_keepalive
 from source.agent.recommender.recommend import listen_recommend_text
 from source.agent.recommender.timing import last_recommend_timing
 from source.agent.search import amenities, availability, campsites, claims, embed, rules
@@ -798,6 +798,7 @@ def _init_session() -> None:
     if "langsmith_thread_id" not in st.session_state:
         st.session_state.langsmith_thread_id = str(uuid4())
     ping_new_session(st.session_state)
+    start_model_keepalive()
 
 
 _CHAT_INPUT_KEY = "chat_prompt"

@@ -1353,15 +1353,22 @@ instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
 After a reply the chat input is replaced by a primary Reset button, and an
 example-prompt dropdown fills the input without sending. Reset still does
 not re-ping models.
-Streamlit does not start the interval keepalive. Each new browser
-session sends a 5-token `hi` once per **model endpoint**
-(`ping_new_session`; Reset does not): Kimi, the 235B (light and
-extractor share it), and `Qwen3-Embedding-8B`. The same round also
+Streamlit starts the 10-minute keepalive again
+(`start_model_keepalive`, `TRIPPY_KEEPALIVE_INTERVAL_SEC`, default
+600 s; not a measured Nebius idle timeout). The first round waits
+one interval. Rounds run only from 07:00 until 23:00 Asia/Jerusalem;
+outside that the loop sleeps and does not ping. That window is there
+because Kimi-K3 on Token Factory went cold within about 80 minutes
+once the interval was off (2026-09-22: a 6.8 s Kimi recommend, then
+the next two asks got no token in 10 s and fell back to Super).
+Each new browser
+session still sends a 5-token `hi` once per **model endpoint**
+(`ping_new_session`; Reset does not), including outside those hours:
+Kimi, the 235B (light and extractor share it), and `Qwen3-Embedding-8B`.
+The same round also
 sends the claim-judge system prompt alone, so that prefix is hot.
 A retrieve embed
-already counts as that ping. `start_model_keepalive` still exists
-for an explicit interval (`TRIPPY_KEEPALIVE_INTERVAL_SEC`, default
-600 s; not a measured Nebius idle timeout) but nothing starts it.
+already counts as that ping.
 LangSmith: tag `keepalive`, run name `model-keepalive-session`,
 children `keepalive-{role}`. The session round runs those calls on
 worker threads and copies the trace context onto each one, so the
@@ -1452,8 +1459,9 @@ calls, and the user text. `LANGSMITH_API_KEY` in `.env` is enough;
 Local Streamlit (`TRIPPY_PUBLIC_UI` off) prints each node, LLM call, and
 tool to the terminal and a caption under the phase line while the turn runs.
 Project defaults to `trippy` (`LANGSMITH_PROJECT`). Filter tag
-`keepalive` (`model-keepalive-session`) for the one ping a new
-session sends; it is not a graph turn. Traces include the
+`keepalive` (`model-keepalive-session` for a new session,
+`model-keepalive-interval` for the 10-minute round between 07:00 and
+23:00 Asia/Jerusalem); neither is a graph turn. Traces include the
 full query. The planner invokes `claim_judge_tool` (`StructuredTool`,
 same pattern as `resolve_dates`) once per (campsite, request). LangSmith
 shows that tool under the planner node: **inputs** are the claims and

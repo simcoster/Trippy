@@ -82,6 +82,7 @@ def test_failed_role_does_not_skip_others():
 
 def test_start_blocking_zero_interval_pings_once(monkeypatch):
     monkeypatch.setattr(keepalive_mod, "_started", False)
+    monkeypatch.setattr(keepalive_mod, "keepalive_hours_open", lambda moment=None: True)
     seen: list[dict] = []
     binds: list[tuple] = []
     chats = {"recommender": _Chat("kimi", seen, binds)}
@@ -92,6 +93,7 @@ def test_start_blocking_zero_interval_pings_once(monkeypatch):
 
 def test_start_keepalive_repeats_after_interval(monkeypatch):
     monkeypatch.setattr(keepalive_mod, "_started", False)
+    monkeypatch.setattr(keepalive_mod, "keepalive_hours_open", lambda moment=None: True)
     seen: list[dict] = []
     binds: list[tuple] = []
     chats = {"recommender": _Chat("kimi", seen, binds)}
@@ -171,8 +173,8 @@ def test_ping_new_session_once_per_session():
     assert len(seen) == 2
 
 
-def test_streamlit_chat_pings_a_new_session_only():
+def test_streamlit_chat_pings_a_new_session_and_the_interval():
     text = (_ROOT / "scripts" / "streamlit_chat.py").read_text(encoding="utf-8")
-    assert "from source.agent.keepalive import ping_new_session" in text
-    assert "start_model_keepalive()" not in text
+    assert "from source.agent.keepalive import ping_new_session, start_model_keepalive" in text
+    assert "start_model_keepalive()" in text
     assert "ping_new_session(st.session_state)" in text
