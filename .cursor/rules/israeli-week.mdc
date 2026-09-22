@@ -1,0 +1,20 @@
+---
+description: The week starts on Sunday; the weekend is Friday and Saturday
+alwaysApply: true
+---
+
+# Israeli week
+
+The week starts on Sunday. Sunday is a weekday. The weekend is Friday and Saturday.
+
+Python's `date.weekday()` is Monday=0 … Sunday=6. Do not treat `weekday() >= 5` as the weekend: that is Saturday and Sunday. Friday is 4, Saturday is 5.
+
+```python
+# BAD — Saturday and Sunday
+if day.weekday() >= 5:
+    return "weekend_holiday"
+
+# GOOD — Friday and Saturday
+if day.weekday() in (4, 5):
+    return "weekend_holiday"
+```

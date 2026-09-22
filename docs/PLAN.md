@@ -6,6 +6,10 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, weekend is Friday–Saturday)
+
+**A stay is `weekend_holiday` when a night is Friday or Saturday.** Sunday is a weekday; the week starts on Sunday. `_rate_period_for_stay` had used Python's `weekday() >= 5`, which is Saturday and Sunday.
+
 ### Done (2026-09-22, search returns vacancies; the planner quotes)
 
 **`search_open_slots` only returns vacant rows.** `planner_fits_payload` runs `quote_open_slots` and retrieve together on that list. The judge still waits until both finish. A price limit drops rows after retrieve, so a fit never keeps a slot the quote rejected.

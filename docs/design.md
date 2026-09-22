@@ -1226,7 +1226,8 @@ child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
 קבוצה is deduced from `adults_num + child_num` against that site's
 published occupancy notes, and when the threshold is met it overrides
 identity rates (including Matmon). `is_weekend_or_holiday` stays a caller flag
-(the night is or is not a weekend).
+(the night is or is not a weekend). The week starts on Sunday, so that flag
+is Friday or Saturday only; Sunday is a weekday.
 Fits carry `price_explanation` so the recommender cites the breakdown
 instead of summing. A unit that is vacant on several windows is one
 fit with `dates`, not one fit per night, so retrieve, judge, and
