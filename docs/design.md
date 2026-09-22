@@ -1355,7 +1355,8 @@ show in Actions). After every scrape the VM **must** run
 `price-sandbox-loader` so Streamlit sees the new `quote()` sources.
 A missing compose service fails the job; there is no skip. `--if-up`
 is laptop eval and price reload when Compose is not up. `just streamlit`
-does not use it: an unhealthy sandbox refuses the start. Prod
+starts the sandbox, loads quote(), and waits until that container is
+healthy before the UI. Prod
 `just prod-up` loads the sandbox before Streamlit, and Streamlit
 `depends_on` that healthcheck. The prices Actions Summary is `report.md` (stored vs
 failed, gold/AST lines); dumps stay in `~/.trippy-scrape/<timestamp>/`

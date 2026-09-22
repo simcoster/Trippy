@@ -4,10 +4,9 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $Root
 
 if ($args.Count -lt 1 -or [string]::IsNullOrWhiteSpace($args[0])) {
-    throw "usage: restore.ps1 <file.dump|s3://bucket/key>"
+    throw "usage: restore.ps1 <file.dump|s3://bucket/key|latest>"
 }
 $src = $args[0]
-$original = $src
 
 $BackupDir = if ($env:TRIPPY_BACKUP_DIR) { $env:TRIPPY_BACKUP_DIR } else { Join-Path $Root 'backups' }
 $ComposeFile = if ($env:TRIPPY_COMPOSE_FILE) { $env:TRIPPY_COMPOSE_FILE } else { 'docker-compose.yml' }
@@ -27,6 +26,35 @@ if (Test-Path $EnvFile) {
     }
 }
 
+if ($src -eq 'latest') {
+    foreach ($key in @('BACKUP_S3_BUCKET', 'AWS_ENDPOINT_URL', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY')) {
+        $value = [Environment]::GetEnvironmentVariable($key)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            throw "$key is unset in .env (needed to list s3://`$BACKUP_S3_BUCKET/postgres/)"
+        }
+        Set-Item -Path "Env:$key" -Value $value.Trim().TrimEnd("`r")
+    }
+    if (-not (Test-Path $EnvFile)) {
+        throw ".env is required to list object storage"
+    }
+    $listing = docker run --rm `
+        --env-file $EnvFile `
+        amazon/aws-cli `
+        --endpoint-url $env:AWS_ENDPOINT_URL `
+        s3 ls "s3://$($env:BACKUP_S3_BUCKET)/postgres/"
+    if ($LASTEXITCODE -ne 0) { throw "s3 ls failed ($LASTEXITCODE)" }
+    $name = @($listing) | ForEach-Object { ($_ -split '\s+')[-1] } |
+        Where-Object { $_ -match '^trippy-.*\.dump$' } |
+        Sort-Object |
+        Select-Object -Last 1
+    if (-not $name) {
+        throw "no trippy-*.dump under s3://$($env:BACKUP_S3_BUCKET)/postgres/"
+    }
+    $src = "s3://$($env:BACKUP_S3_BUCKET)/postgres/$name"
+    Write-Host "latest dump $src"
+}
+
+$original = $src
 $cleanupTmp = $null
 if ($src.StartsWith('s3://')) {
     if ([string]::IsNullOrWhiteSpace($env:AWS_ENDPOINT_URL)) {
@@ -53,6 +81,14 @@ if (-not (Test-Path $src)) {
     throw "restore.ps1: not a file: $src"
 }
 $srcAbs = (Resolve-Path $src).Path
+
+& docker @Compose up -d --wait db
+if ($LASTEXITCODE -ne 0) { throw "docker compose up db failed ($LASTEXITCODE)" }
+# experiments copies public sequences (nextval defaults). --clean cannot drop
+# those sequences while the schema is there. It is a disposable copy.
+& docker @Compose exec -T db psql -U trippy -d trippy -v ON_ERROR_STOP=1 `
+    -c "DROP SCHEMA IF EXISTS experiments CASCADE"
+if ($LASTEXITCODE -ne 0) { throw "drop experiments failed ($LASTEXITCODE)" }
 
 & docker @Compose cp $srcAbs db:/tmp/trippy-restore.dump
 if ($LASTEXITCODE -ne 0) { throw "docker compose cp failed ($LASTEXITCODE)" }

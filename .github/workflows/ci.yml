@@ -93,9 +93,10 @@ jobs:
       # - planner_multi_room currently fails (unimplemented; docstring says so)
       # Live extractor tests are @pytest.mark.llm; the factory raises
       # LiveLlmDisabled if an unmarked test tries to call Nebius.
+      # @pytest.mark.local hits the laptop price sandbox, which CI does not run.
       - name: pytest
         run: |
-          uv run pytest -m "not llm" -q \
+          uv run pytest -m "not llm and not local" -q \
             --junitxml=reports/pytest.xml \
             --ignore=source/test/test_cases/test_accommodation_amenities.py \
             --ignore=source/test/test_cases/test_accommodation_rag.py \

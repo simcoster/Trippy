@@ -41,6 +41,7 @@ pythonpath = ["."]
 norecursedirs = ["temp", ".venv", "node_modules"]
 markers = [
     "llm: calls a live LLM or embedding model (exclude with -m \"not llm\")",
+    "local: talks to the laptop price sandbox (exclude with -m \"not local\")",
 ]
 
 [tool.ruff]

@@ -111,7 +111,9 @@ Egress **$0.015/GiB** applies when downloading off Nebius. Upload from
 the VM to the bucket is not that line item. No per-object fee on the
 price list.
 
-Laptop: `just backup` / `just restore backups/trippy-….dump` (docker
+Laptop: `just backup` / `just restore backups/trippy-….dump` /
+`just restore-latest` (newest `postgres/trippy-*.dump` in
+`BACKUP_S3_BUCKET`, into local Postgres). docker
 compose cp; do not redirect `pg_dump` in PowerShell). Destructive
 `just scrape-info` / `clear-*` dump first unless
 `TRIPPY_SCHEMA=experiments`. VM: one GitHub Actions dump at 14:00 IDT
@@ -119,7 +121,8 @@ compose cp; do not redirect `pg_dump` in PowerShell). Destructive
 tied to a scrape. [`scripts/cloud/backup.sh`](../scripts/cloud/backup.sh)
 writes under `~/.trippy-backups` (7 days; `gh-actions` cannot write
 `/var/lib/trippy/backups`) and `s3://…/postgres/`.
-Restore: `just restore backups/…` or `s3://trippy-backups/postgres/…`.
+Restore: `just restore backups/…`, `just restore s3://trippy-backups/postgres/…`,
+or `just restore-latest` for the newest object in that prefix.
 
 ### 3. Cloudflare Tunnel
 
@@ -173,7 +176,10 @@ just restore backups/trippy-YYYYMMDDTHHMMSSZ.dump
 ```
 
 That replaces `public` only (`pg_restore --clean --if-exists -n public`).
-`experiments` and `extensions` stay. A new cluster needs `db/init` /
+`extensions` stays. `experiments` is dropped first: its column defaults
+reference `public` sequences, so `--clean` cannot drop those sequences
+while the schema is present. Recreate it with `just setup-experiments copy`.
+A new cluster needs `db/init` /
 Alembic first so `vector` / `pg_trgm` exist.
 
 Do not scrape `public` as a smoke test of the new box.

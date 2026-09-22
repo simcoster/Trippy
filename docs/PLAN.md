@@ -6,6 +6,22 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, streamlit waits for a healthy sandbox)
+
+**`just streamlit` starts `price-sandbox`, loads quote functions, then `docker compose up --wait` until the container is healthy, then the UI.** A load that returns before Docker's next healthcheck no longer starts Streamlit against an unhealthy container.
+
+### Done (2026-09-22, local sandbox test stays off CI)
+
+**`pytest -m local` checks the laptop price sandbox `/health` is ok and `loaded` is at least 1.** CI runs `pytest -m "not llm and not local"` because the runner has no sandbox container.
+
+### Done (2026-09-22, restore drops experiments first)
+
+**`just restore` / `just restore-latest` starts `db` and drops `experiments` before `pg_restore`.** `experiments.availability_frozen.id` defaults to `public.availability_id_seq`, so `--clean` could not drop that sequence. The schema is a disposable copy; `extensions` stays. Supersedes “`experiments` stays” in the restore-latest entry below.
+
+### Done (2026-09-22, restore-latest)
+
+**`just restore-latest` pulls the newest `postgres/trippy-*.dump` from `BACKUP_S3_BUCKET` and restores `public` into local Postgres.** `just restore` still takes an explicit path or `s3://` key. The Nebius console folder `postgres/` is that prefix.
+
 ### Done (2026-09-22, Streamlit requires a healthy sandbox)
 
 **Streamlit does not start unless `/health` is ok.** Local `just streamlit` no longer passes `--if-up`. Prod starts `db` and `price-sandbox`, loads functions, then Streamlit, which `depends_on` `service_healthy`. The loader waits for `service_started` (503 is still listening); waiting for healthy deadlocked the load. `quote_night` remains the fallback only after a run has started. Supersedes “`--if-up` is laptop Streamlit only”.
