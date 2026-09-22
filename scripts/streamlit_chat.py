@@ -180,7 +180,7 @@ def _turn_log(msg: str) -> None:
     try:
         from streamlit.runtime.scriptrunner import get_script_run_ctx
 
-        if get_script_run_ctx() is None:
+        if get_script_run_ctx(suppress_warning=True) is None:
             return
         box.caption(line)
     except Exception:

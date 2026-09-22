@@ -1206,8 +1206,11 @@ publishes `127.0.0.1:8503` — an internal-only network drops the
 host bind). Re-run the loader after
 `scrape-prices`, a sandbox restart, or compose up. A FastAPI (or any
 other) front end does not own this.
-Each quote runs in a short-lived child with a memory cap and a
-sub-second timeout, four children at a time. The server runs each
+Four workers wait for work. One takes a `/quote` batch, returns, and
+exits; a replacement starts as soon as it dies, so the next batch does
+not wait for a process to spawn. The batch is killed at 10s. TODO: one
+short-lived child per quote again; process startup was eating a 0.5s
+per-quote limit. The server runs each
 distinct source and params once and copies that answer onto every
 request in the batch. A subcamp has no page, so its rate card and
 `quote()` live on the parent. Open slots send that `parent_site_id`,
