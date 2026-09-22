@@ -132,6 +132,20 @@ st.set_page_config(
 )
 # Streamlit binds "c" to Clear cache; Ctrl+C in the browser opens that dialog.
 st.set_option("client.toolbarMode", "viewer")
+# A Hebrew paragraph starts on the right; an English one stays on the left.
+# plaintext takes the direction from the first strong letter in that block.
+st.markdown(
+    """
+<style>
+[data-testid="stChatMessageContent"] p,
+[data-testid="stChatMessageContent"] li {
+    unicode-bidi: plaintext;
+    text-align: start;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
 

@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, chat paragraphs follow the reply's direction)
+
+**Streamlit chat text uses `unicode-bidi: plaintext`.** Each paragraph
+and list item in a chat bubble takes its direction from its first
+strong letter, so a Hebrew reply starts on the right and an English
+one stays on the left. The Markdown is unchanged.
+
 ### Done (2026-09-22, why-not does not say the campsites say)
 
 **Why-not states the miss directly.** A price line is campsite slots
