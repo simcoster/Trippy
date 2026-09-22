@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 
 from db.connect import connect
 from db.experiments import table_name
+from source.agent.constraints import quote_party
 from source.agent.dates import iso_day, stay_night_starts
 from source.agent.search.sandbox import (
     _ListPriceQuoteKey,
@@ -215,8 +216,15 @@ def _quote_slot_price(
     party_size: int | None,
     rate_period: RatePeriod,
     accommodation_type_id: int | None = None,
+    child_num: int | None = None,
+    child_ages: tuple[int, ...] | list[int] | None = None,
 ) -> float | None:
-    adults = party_size if party_size and party_size > 0 else 1
+    party = quote_party(
+        party_size=party_size,
+        child_num=child_num,
+        child_ages=child_ages,
+    )
+    adults = party.adults_num
     weekend = rate_period == "weekend_holiday"
     cache_key: _ListPriceQuoteKey | None = None
     if accommodation_type_id is not None:
@@ -224,6 +232,7 @@ def _quote_slot_price(
             accommodation_type_id=accommodation_type_id,
             adults_num=adults,
             weekend=weekend,
+            child_num=party.child_num,
         )
         caches = _quote_caches.get()
         if caches is not None and cache_key in caches.list_price:
@@ -232,7 +241,14 @@ def _quote_slot_price(
         price: float | None = None
     else:
         try:
-            price = float(quote_night(rates, adults=adults, rate_period=rate_period))
+            price = float(
+                quote_night(
+                    rates,
+                    adults=adults,
+                    children=party.child_num,
+                    rate_period=rate_period,
+                )
+            )
         except ValueError:
             price = None
     caches = _quote_caches.get()
@@ -250,6 +266,9 @@ def search_open_slots(
     party_size: int | None = None,
     numeric_constraints: list | None = None,
     planned_entry_time: str | None = None,
+    planned_exit_time: str | None = None,
+    child_num: int | None = None,
+    child_ages: tuple[int, ...] | list[int] | None = None,
     limit: int = OPEN_SLOTS_LIMIT,
 ) -> list[dict]:
     """Catalog vacancies for every stay window in one query.
@@ -334,10 +353,18 @@ def search_open_slots(
         party_size=party_size,
         rate_period=rate_period,
         planned_entry_time=planned_entry_time,
+        planned_exit_time=planned_exit_time,
+        child_num=child_num,
+        child_ages=child_ages,
     )
     query_record["sandbox"] = sandbox_batch.report
     sandbox_quotes = sandbox_batch.by_key
-    adults = party_size if party_size and party_size > 0 else 1
+    party = quote_party(
+        party_size=party_size,
+        child_num=child_num,
+        child_ages=child_ages,
+    )
+    adults = party.adults_num
     calls_by_id = {
         str(row["request_id"]): row
         for row in sandbox_batch.report.get("calls") or []
@@ -352,6 +379,9 @@ def search_open_slots(
             adults=adults,
             fallback_rate=rate_period,
             planned_entry_time=planned_entry_time,
+            child_num=party.child_num,
+            child_ages=party.child_ages,
+            planned_exit_time=planned_exit_time,
         )
         sandbox = sandbox_quotes.get(key)
         if sandbox is not None:
@@ -364,6 +394,8 @@ def search_open_slots(
                 party_size=party_size,
                 rate_period=slot_rate,
                 accommodation_type_id=int(slot["accommodation_type_id"]),
+                child_num=child_num,
+                child_ages=child_ages,
             )
             source = "quote_night"
         traced = calls_by_id.get(_sandbox_request_id(key))

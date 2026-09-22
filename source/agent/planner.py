@@ -452,6 +452,13 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
         site_id = site_ids if len(site_ids) > 1 else site_ids[0]
 
     planned_entry_time = constraints_json.get("planned_entry_time")
+    child_kwargs: dict[str, Any] = {}
+    if constraints_json.get("child_num"):
+        child_kwargs["child_num"] = int(constraints_json["child_num"])
+    if constraints_json.get("child_ages"):
+        child_kwargs["child_ages"] = tuple(constraints_json["child_ages"])
+    if constraints_json.get("planned_exit_time"):
+        child_kwargs["planned_exit_time"] = constraints_json["planned_exit_time"]
     with sandbox.price_quote_cache():
         slots = availability.search_open_slots(
             date_windows=windows,
@@ -459,6 +466,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
             party_size=party_size_from_numeric(numeric),
             numeric_constraints=numeric,
             planned_entry_time=planned_entry_time,
+            **child_kwargs,
         )
     record = availability._LAST_OPEN_SLOTS_QUERY
     if not isinstance(record, dict):

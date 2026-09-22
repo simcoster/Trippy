@@ -903,7 +903,7 @@ it in `semantic_constraints` would AND-filter amenities and drop sites
 that never advertise late check-in. The planner forwards
 `planned_entry_time` to `search_open_slots` (None when the extractor
 did not set a clock; None and omitted are the same default). Sandbox
-`QuoteParams.planned_entry_time` gets it so late-arrival fees apply. It does not yet reject sites whose gate
+`QuoteParams.planned_entry_time` gets it so late-arrival fees apply. Departure is `planned_exit_time` (`HH:MM`) the same way, forwarded only when the extractor set a clock, so a weekend leave after 12:00 can add the late-exit row. It does not yet reject sites whose gate
 / check-in window closes earlier (that still needs a policy match, not
 RAG). The summer-stargazing few-shot used to omit Saturday-afternoon
 arrival; it now emits `12:00`.
@@ -1204,10 +1204,13 @@ sub-second timeout. A subcamp has no page, so its rate card and
 `quote()` live on the parent. Open slots send that `parent_site_id`,
 and `/quote` uses the parent's function when the subcamp id is not
 loaded. `PRICE_SANDBOX_URL` unset or a load miss uses
-`quote_night`. Planner party size is still `adults_num`; `child_num`,
-child ages, and `guest_type` (the rate-card tab; default `רגיל`) stay
-off until the extractor grows those fields. `planned_entry_time` is
-the extractor clock (`HH:MM`) when they said when they will arrive. `child_num` is an explicit
+`quote_night`. The extractor emits `child_num` and `child_ages` (the
+`QuoteParams` fields) when the user names children; the planner passes
+them into the sandbox quote and subtracts `child_num` from `party_size`
+so those children are not also priced as adults. `guest_type` (the
+rate-card tab; default `רגיל`) stays off. `planned_entry_time` is
+the extractor clock (`HH:MM`) when they said when they will arrive;
+`planned_exit_time` is the same for when they will leave. `child_num` is an explicit
 child headcount (toddlers included); `child_ages` only splits toddler /
 child / adult-rate. There is no `is_group` and no Matmon/soldier flags:
 קבוצה is deduced from `adults_num + child_num` against that site's

@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, extractor emits planned_exit_time)
+
+**Departure is `planned_exit_time` (`HH:MM`), forwarded to `QuoteParams` like arrival.** The compiled `quote()` already takes it for the late-exit row. Omitted when the user did not say when they leave. Supersedes the arrival-only clock in the query-extractor section of design.md.
+
+### Done (2026-09-22, extractor emits child_num and child_ages)
+
+**The query extractor emits `child_num` and `child_ages`.** Those are the `QuoteParams` fields the compiled `quote()` already takes. `party_size` stays the whole party for occupancy; the quote subtracts `child_num` from it for `adults_num`. `guest_type` is still unset. Supersedes “child_num and child ages stay off until the extractor grows those fields” in design.md.
+
 ### Done (2026-09-22, search package init stays empty)
 
 **`source/agent/search/__init__.py` does not re-export.** Callers import the submodule, the same way `recommender/` does. Supersedes the re-export sentence in the search-package entry below.

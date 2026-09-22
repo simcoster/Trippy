@@ -95,6 +95,9 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
       }} | null,
       "campsite": "Horashat Tal" | null,
       "planned_entry_time": "19:00" | null,
+      "planned_exit_time": "HH:MM" | null,
+      "child_num": 2 | null,
+      "child_ages": [5, 8] | null,
       "numeric_constraints": [
         {{"field": "price_per_night", "operator": "<=", "value": 500}},
         {{"field": "party_size", "operator": ">=", "value": 3}}
@@ -147,12 +150,19 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
          defaults to 1 if omitted. Never put stay length in semantic_constraints.
        Do NOT put dates in numeric_constraints or semantic_constraints.
     3. numeric_constraints: price, party size, distance (km), rating only — never dates
-       and never clock hours (those are planned_entry_time).
+       and never clock hours (those are planned_entry_time / planned_exit_time).
        Party size ("for 3 people", "3 adults", "ל3 אנשים"):
        {{"field": "party_size", "operator": ">=", "value": 3}}.
        That means occupancy >= N — the listing must fit the party. Never use
        "=" or "<=" for this phrasing. "<=" is for price ("under 500") or an
        explicit party maximum ("up to 3", "maximum 3", "עד 3 אנשים").
+       Children are separate from that total. `child_num` is how many
+       children they named (toddlers included). `child_ages` is the integer
+       ages they stated, in that order. "2 adults and 2 kids" → child_num 2,
+       child_ages null, party_size still >= 4. "kids aged 5 and 8" →
+       child_num 2, child_ages [5, 8]. Do not invent ages. Omit both when
+       they did not mention children. Do not put ages or the child count
+       in numeric_constraints.
     4. campsite: only when the user names a specific park to stay at
        (e.g. "2 rooms in Horshat Tal" → "Horashat Tal" / "חורשת טל").
        Do NOT put that name in semantic_constraints.
@@ -175,6 +185,10 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
        date and never semantic_constraints. "אחרי 19" is 19:00 (an hour,
        not the 19th). Afternoon / צהריים → "12:00". Evening / ערב →
        "18:00". Omit planned_entry_time when they did not say a time.
+       Departure / check-out ("לצאת ב-14", "leave at 14:00", "יציאה בצהריים")
+       is planned_exit_time as "HH:MM", with the same hour rules. It is not
+       the arrival clock and not semantic. Omit it when they did not say
+       when they will leave.
        Every item carries a "locus":
        - "room" when the feature must be inside the booked unit / private:
          "מקרר בחדר", "fridge in the room", "private shower", "מקלחת פרטית",
@@ -242,6 +256,17 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     }}
 
     Example:
+    Input: "נצא ב-14"
+    Output:
+    {{
+      "date_intent": null,
+      "campsite": null,
+      "planned_exit_time": "14:00",
+      "numeric_constraints": [],
+      "semantic_constraints": []
+    }}
+
+    Example:
     Input: "Thursday to Saturday"
     Output:
     {{
@@ -271,6 +296,8 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     {{
       "date_intent": {{"kind": "on", "on": "tomorrow", "nights": 1}},
       "campsite": null,
+      "child_num": 2,
+      "child_ages": null,
       "numeric_constraints": [
         {{"field": "party_size", "operator": ">=", "value": 4}}
       ],
@@ -278,6 +305,20 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
         {{"query": "pools for children", "locus": "site"}},
         {{"query": "fridge", "locus": "site"}}
       ]
+    }}
+
+    Example:
+    Input: "2 adults and kids aged 5 and 8"
+    Output:
+    {{
+      "date_intent": null,
+      "campsite": null,
+      "child_num": 2,
+      "child_ages": [5, 8],
+      "numeric_constraints": [
+        {{"field": "party_size", "operator": ">=", "value": 4}}
+      ],
+      "semantic_constraints": []
     }}
 
     Example:
