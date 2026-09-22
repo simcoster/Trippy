@@ -676,3 +676,22 @@ class SitePriceFunction(Base):
     )
 
     campsite: Mapped[Campsite] = relationship(back_populates="site_price_function")
+
+
+class DemoQueryQuota(Base):
+    """Lifetime public-demo question count for one hashed visitor address.
+
+    `visitor_hash` is SHA-256 of a pepper plus Cloudflare's connecting IP.
+    The raw address is not stored. `query_count` does not reset.
+    """
+
+    __tablename__ = "demo_query_quota"
+
+    visitor_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    query_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

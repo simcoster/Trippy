@@ -1386,7 +1386,11 @@ input; `--from-planner` re-runs recommend only.
 Phase 1 lives on one Nebius CPU VM in `eu-north1` (Finland): Compose
 Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
-Cloudflare Tunnel for HTTPS. Laptop `just streamlit` binds **8502** so
+Cloudflare Tunnel for HTTPS. The public UI allows 5 questions total
+per visitor address (`TRIPPY_DEMO_QUERY_CAP`) and shows how many are
+left. `demo_query_quota` stores a SHA-256 of `TRIPPY_DEMO_QUOTA_PEPPER`
+plus Cloudflare's `CF-Connecting-IP`, not the address. The count does
+not reset. Local Streamlit is not capped. Laptop `just streamlit` binds **8502** so
 an SSH `-L 8501` to the VM does not steal `localhost:8501`. The
 `price-sandbox` container evaluates compiled `quote()` functions.
 A one-shot loader (`price-sandbox-loader` / `just load-price-sandbox`)

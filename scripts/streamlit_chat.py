@@ -112,6 +112,13 @@ from source.agent.tracing import (
     tracing_configured,
 )
 from source.agent.turn_status import SEARCHING, set_turn_status
+from source.demo_quota import (
+    QUOTA_USED,
+    claim_query,
+    public_visitor_hash,
+    quota_remaining,
+    remaining_caption,
+)
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
@@ -1220,8 +1227,27 @@ _ASK_PLACEHOLDER = (
 st.title("Trippy camping ⛺" if _PUBLIC_UI else "Trippy camping ⛺ (local)")
 if _db_error:
     st.error(_db_error)
+_quota_open = True
+_visitor_hash: str | None = None
+_quota_left: int | None = None
 if _PUBLIC_UI:
     st.caption(_ASK_PLACEHOLDER)
+    if not _db_error:
+        _visitor_hash = public_visitor_hash(st.context.headers)
+        if _visitor_hash is None:
+            _quota_open = False
+            st.error(_USER_ERROR)
+        else:
+            try:
+                _quota_left = quota_remaining(_visitor_hash)
+            except Exception as exc:
+                _report_error(exc)
+                _visitor_hash = None
+                _quota_open = False
+                st.error(_USER_ERROR)
+            else:
+                st.caption(remaining_caption(_quota_left))
+                _quota_open = _quota_left > 0
 else:
     st.caption(
         f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
@@ -1342,12 +1368,13 @@ for turn in st.session_state.display:
             with st.expander("LangGraph trace", expanded=False):
                 _render_trace(turn["trace"])
 
+_can_ask = not _answered and _quota_open
 with st.bottom:
     if _answered:
         if st.button("Reset", type="primary", width="stretch"):
             _reset_conversation()
             st.rerun()
-    else:
+    elif _can_ask:
         st.selectbox(
             "Example prompts",
             _EXAMPLE_PROMPTS,
@@ -1359,13 +1386,35 @@ with st.bottom:
         )
 
 submitted = (
-    st.chat_input(_ASK_PLACEHOLDER, key=_CHAT_INPUT_KEY) if not _answered else None
+    st.chat_input(_ASK_PLACEHOLDER, key=_CHAT_INPUT_KEY) if _can_ask else None
 )
 prompt = submitted or mcp_prompt
 if prompt:
     st.session_state.display.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
+
+    _blocked: str | None = None
+    if _PUBLIC_UI and not _db_error:
+        if _visitor_hash is None:
+            _blocked = _USER_ERROR
+        elif (_quota_left or 0) <= 0:
+            _blocked = QUOTA_USED
+        else:
+            try:
+                _decision = claim_query(_visitor_hash)
+            except Exception as exc:
+                _blocked = _report_error(exc)
+            else:
+                if not _decision.allowed:
+                    _blocked = QUOTA_USED
+    if _blocked is not None:
+        with st.chat_message("assistant"):
+            st.markdown(_blocked)
+        st.session_state.display.append(
+            {"role": "assistant", "content": _blocked, "trace": []}
+        )
+        st.rerun()
 
     with st.chat_message("assistant"):
         phase = (
