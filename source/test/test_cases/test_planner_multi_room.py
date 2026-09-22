@@ -149,6 +149,7 @@ def test_planner_books_two_units_of_same_type_for_party_of_six(
         site_id=None,
         party_size=6,
         numeric_constraints=PARTY_SIX,
+        planned_entry_time=None,
     )
     payload = _fits_payload(result)
     assert len(payload["fits"]) == 1, payload["fits"]

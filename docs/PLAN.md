@@ -6,6 +6,21 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, always forward planned_entry_time)
+
+**Planner always passes `planned_entry_time`.** Omitting it when unset
+needed an extra kwargs dict so exact mock matches would still pass.
+`search_open_slots` already treats None the same as omitted; tests now
+include `planned_entry_time=None`. Supersedes “omit unset
+planned_entry_time” below. design.md “Query extractor: date_intent”.
+
+### Done (2026-09-22, omit unset planned_entry_time)
+
+**Planner does not pass `planned_entry_time=None`.** `search_open_slots`
+already defaults it. Forwarding None made mock assertions miss the
+kwarg and would hide a missing default. Only pass the clock when the
+extractor set one. design.md “Query extractor: date_intent”.
+
 ### Done (2026-09-22, resolve_dates is not a tool)
 
 **Extractor does not wrap `resolve_dates` as a LangChain tool.** It was

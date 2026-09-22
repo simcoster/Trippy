@@ -445,6 +445,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
 
     slots: list[dict] = []
     query_records: list[Any] = []
+    planned_entry_time = constraints_json.get("planned_entry_time")
     with search.price_quote_cache():
         for window in windows:
             part = search.search_open_slots(
@@ -452,7 +453,7 @@ def planner_fits_payload(constraints_json: dict) -> dict[str, Any]:
                 site_id=site_id,
                 party_size=party_size_from_numeric(numeric),
                 numeric_constraints=numeric,
-                planned_entry_time=constraints_json.get("planned_entry_time"),
+                planned_entry_time=planned_entry_time
             )
             record = search._LAST_OPEN_SLOTS_QUERY
             if not isinstance(record, dict):

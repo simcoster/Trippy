@@ -900,11 +900,13 @@ the desert on a packed Hebrew ask until a few-shot of `לשבוע הבא בחמ�
 Arrival is `planned_entry_time` (`HH:MM`), not a date and not a semantic
 query. “אפשר להיכנס אחרי 19” is `19:00` (an hour, not the 19th). Putting
 it in `semantic_constraints` would AND-filter amenities and drop sites
-that never advertise late check-in. The planner passes the clock to
-sandbox `QuoteParams.planned_entry_time` so late-arrival fees apply. It
-does not yet reject sites whose gate / check-in window closes earlier
-(that still needs a policy match, not RAG). The summer-stargazing few-shot
-used to omit Saturday-afternoon arrival; it now emits `12:00`.
+that never advertise late check-in. The planner forwards
+`planned_entry_time` to `search_open_slots` (None when the extractor
+did not set a clock; None and omitted are the same default). Sandbox
+`QuoteParams.planned_entry_time` gets it so late-arrival fees apply. It does not yet reject sites whose gate
+/ check-in window closes earlier (that still needs a policy match, not
+RAG). The summer-stargazing few-shot used to omit Saturday-afternoon
+arrival; it now emits `12:00`.
 
 ## Named campsite lookup
 
