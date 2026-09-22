@@ -206,17 +206,23 @@ st.markdown(
 }
 .st-key-github_readme_top {
     position: absolute;
-    top: 7.5rem;
-    right: 0;
+    top: 8rem;
+    right: 1rem;
     width: auto !important;
     z-index: 2;
+}
+@media (min-width: calc(736px + 8rem)) {
+    .st-key-github_readme_top {
+        right: 5rem;
+    }
 }
 .st-key-github_readme_top a {
     white-space: nowrap;
     width: auto;
-    min-height: 0;
-    padding: 0.15rem 0.5rem;
-    font-size: 0.8rem;
+    min-height: 3.625rem;
+    padding: 0 0.9rem;
+    font-size: 1rem;
+    line-height: 1.2;
 }
 </style>
 """,
