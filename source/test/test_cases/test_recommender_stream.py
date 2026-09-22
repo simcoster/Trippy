@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from source.agent.recommender import listen_recommend_text, recommend_from_payload
+from source.agent.recommender.recommend import (
+    listen_recommend_text,
+    recommend_from_payload,
+)
 from source.scraper.amenity_enrichment.llm import collect_llm_usage
 
 

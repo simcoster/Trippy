@@ -9,7 +9,7 @@ from source.agent.booking import (
     attach_booking_urls,
     booking_results_url,
 )
-from source.agent.recommender import (
+from source.agent.recommender.recommend import (
     compact_fit,
     recommend_from_payload,
     render_recommendations,

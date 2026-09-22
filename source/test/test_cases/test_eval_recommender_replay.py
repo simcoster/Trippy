@@ -2,7 +2,7 @@
 
 import pytest
 
-from source.agent.recommender import Recommendation, RecommendResult
+from source.agent.recommender.recommend import Recommendation, RecommendResult
 from source.eval.run import (
     payload_from_pack,
     planner_pack,

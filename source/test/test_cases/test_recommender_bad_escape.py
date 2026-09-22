@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from source.agent.recommender import (
+from source.agent.recommender.recommend import (
     parse_recommender_payload,
     recommend_from_payload,
 )

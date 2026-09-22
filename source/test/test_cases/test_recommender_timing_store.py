@@ -3,7 +3,8 @@
 from contextvars import copy_context
 from types import SimpleNamespace
 
-from source.agent.recommender import last_recommend_timing, recommend_from_payload
+from source.agent.recommender.recommend import recommend_from_payload
+from source.agent.recommender.timing import last_recommend_timing
 
 
 class _Chat:

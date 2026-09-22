@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from source.agent.recommender import (
+from source.agent.recommender.recommend import (
     Recommendation,
     parse_recommender_payload,
     recommend_from_payload,

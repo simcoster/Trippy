@@ -39,7 +39,7 @@ from source.agent.prompts import (
     format_cleaning_prompt,
     format_extractor_system_prompt,
 )
-from source.agent.recommender import recommend_from_messages
+from source.agent.recommender.recommend import recommend_from_messages
 from source.agent.search import (
     _claims_embedder,
     _open_slots_sql,

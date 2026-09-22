@@ -36,11 +36,11 @@ from source.agent.claim_judge import (
     judge_model,
 )
 from source.agent.graph import extractor_node, planner_node
-from source.agent.recommender import (
+from source.agent.recommender.models import recommender_model
+from source.agent.recommender.recommend import (
     pack_recommender_input,
     recommend_from_payload,
     recommendation_row,
-    recommender_model,
 )
 from source.agent.timing import (
     STAGE_ORDER,

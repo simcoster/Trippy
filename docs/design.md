@@ -1217,7 +1217,7 @@ the recommender pack run once for that site+type.
 
 ## Recommender
 
-`recommender_node` (`source/agent/recommender.py`) is a Kimi-K3
+`recommender_node` (`source/agent/recommender/`) is a Kimi-K3
 JSON picker, temperature 0, thinking off (`moonshotai/Kimi-K3`,
 `TRIPPY_RECOMMENDER_MODEL`; extra_body `reasoning_effort=none`).
 It does not search. The planner payload is already the candidate
@@ -1262,7 +1262,13 @@ five longest recs vs 235B `pitch`/`outlets`; experiments.md
 from-planner bake ranked **Kimi-K3 then GLM-5.2** above 397B and
 235B on spoken `why` (experiments.md 2026-09-12 §1–§2): 235B and
 397B coin or garble Hebrew; GLM is close (`משוערפים`, `מקררון`);
-Kimi is the default. `TRIPPY_RECOMMENDER_MODEL=super` or `235B`
+Kimi is the default. If Kimi sends no stream token in 10 s
+(`TRIPPY_KIMI_TTFT_SEC`; 0 disables), the same pack is retried on
+Nemotron Super 120B-A12B (`source/agent/recommender/fallback.py`).
+The first-token deadline lives in `recommender/stream.py`. Model
+thinking-off flags live in `recommender/models.py`; TTFT logging
+lives in `recommender/timing.py`. A caller-injected `chat` does not fall back
+(tests). `TRIPPY_RECOMMENDER_MODEL=super` or `235B`
 opts back. Thinking stays off on Kimi (`reasoning_effort=none`);
 Super still uses `/no_think` plus
 `chat_template_kwargs.enable_thinking=false`.
@@ -1299,9 +1305,7 @@ A retrieve embed already counts as that ping; the interval skip
 does not call Nebius again while the last embed is still inside
 `TRIPPY_KEEPALIVE_INTERVAL_SEC`. LangSmith: tag `keepalive`, run names `model-keepalive-session`
 and `model-keepalive-interval`, children `keepalive-{role}`. Stdout
-prints the ping and the reply (or `keepalive failed`). The one-shot
-`warmup_recommender` helper is still there for tests; Streamlit no
-longer uses it.
+prints the ping and the reply (or `keepalive failed`).
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them
 (experiments.md 2026-09-10 §7). Each recommend dump stores

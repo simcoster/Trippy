@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from source.agent.recommender import recommend_from_payload
+from source.agent.recommender.recommend import recommend_from_payload
 from source.eval.run import _recommend_dump, format_recommend_ttft
 from source.scraper.amenity_enrichment.llm import langchain_chat_usage
 

@@ -11,7 +11,7 @@ from source.agent.booking import attach_booking_urls, booking_results_url
 from source.agent.claim_judge import apply_claim_rule_judgements
 from source.agent.graph import planner_node
 from source.agent.planner import _semantic_why_by_slot, planner_fits_payload
-from source.agent.recommender import compact_fit
+from source.agent.recommender.recommend import compact_fit
 
 SLOT = {
     "campsite_id": 8,

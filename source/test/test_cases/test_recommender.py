@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from langchain_core.messages import AIMessage, ChatMessage, HumanMessage
 
 from source.agent.prompts import EMPTY_REPLY_FALLBACK
-from source.agent.recommender import (
+from source.agent.recommender.recommend import (
     compact_fit,
     latest_planner_payload,
     pack_recommender_input,

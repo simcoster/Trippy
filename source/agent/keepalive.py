@@ -72,7 +72,7 @@ def _unique_by_model(targets: list[KeepaliveTarget]) -> tuple[KeepaliveTarget, .
 
 def _default_targets() -> tuple[KeepaliveTarget, ...]:
     from source.agent.graph import _extractor_chat, light_model
-    from source.agent.recommender import _recommender_chat, recommender_model
+    from source.agent.recommender.models import _recommender_chat, recommender_model
     from source.agent.search import _claims_embedder
     from source.scraper.amenity_enrichment.llm import instruct_chat_model
 
