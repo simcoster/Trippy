@@ -198,10 +198,84 @@ st.markdown(
     font-size: 1.2rem;
     font-weight: 650;
 }
+[data-testid="stMainBlockContainer"] {
+    position: relative;
+}
+[data-testid="stMainBlockContainer"] h1 {
+    padding-right: 7rem;
+}
+.st-key-github_readme_top {
+    position: absolute;
+    top: 8rem;
+    right: 1rem;
+    width: auto !important;
+    z-index: 2;
+}
+@media (min-width: calc(736px + 8rem)) {
+    .st-key-github_readme_top {
+        right: 5rem;
+    }
+}
+.st-key-github_readme_top a {
+    white-space: nowrap;
+    width: auto;
+    min-height: 3.625rem;
+    padding: 0 0.9rem;
+    font-size: 1rem;
+    line-height: 1.2;
+}
+@keyframes trippy-ask-flash {
+    0%, 45% {
+        background-color: #fff;
+        box-shadow: 0 0 0 2px rgba(255, 75, 75, 0.45);
+    }
+    22%, 100% {
+        background-color: rgb(240, 242, 246);
+        box-shadow: none;
+    }
+}
+@keyframes trippy-ask-bold {
+    0%, 45% {
+        font-weight: 700;
+        color: rgb(49, 51, 63);
+    }
+    100% {
+        font-weight: 400;
+    }
+}
+.st-key-example_prompt .react-aria-ComboBox > div,
+[data-testid="stChatInput"] > div {
+    animation: trippy-ask-flash 1.8s ease;
+}
+.st-key-example_prompt input::placeholder,
+[data-testid="stChatInputTextArea"]::placeholder {
+    animation: trippy-ask-bold 1.8s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+    .st-key-example_prompt .react-aria-ComboBox > div,
+    [data-testid="stChatInput"] > div,
+    .st-key-example_prompt input::placeholder,
+    [data-testid="stChatInputTextArea"]::placeholder {
+        animation: none;
+    }
+}
 </style>
 """,
     unsafe_allow_html=True,
 )
+if _PUBLIC_UI:
+    st.markdown(
+        """
+<style>
+[data-testid="stSidebar"],
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stExpandSidebarButton"] {
+    display: none !important;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
 
@@ -1273,30 +1347,45 @@ _ASK_PLACEHOLDER = (
     "Ask me about a camping stay | שאל אותי על שהייה באתרי קמפינג"
 )
 
-st.title("Trippy camping ⛺" if _PUBLIC_UI else "Trippy camping ⛺ (local)")
-if _db_error:
-    st.error(_db_error)
+def _show_questions_left(remaining: int) -> None:
+    count, _, rest = remaining_caption(remaining).partition(" ")
+    st.markdown(
+        f"<p class='trippy-questions-left'><span>{count}</span> {rest}</p>",
+        unsafe_allow_html=True,
+    )
+
+
 _quota_open = True
 _visitor_hash: str | None = None
 _quota_left: int | None = None
-if _PUBLIC_UI:
-    st.caption(_ASK_PLACEHOLDER)
-    if not _db_error:
-        _visitor_hash = public_visitor_hash(st.context.headers)
-        if _visitor_hash is None:
+if _PUBLIC_UI and not _db_error:
+    _visitor_hash = public_visitor_hash(st.context.headers)
+    if _visitor_hash is None:
+        _quota_open = False
+    else:
+        try:
+            _quota_left = quota_remaining(_visitor_hash)
+        except Exception as exc:
+            _report_error(exc)
+            _visitor_hash = None
             _quota_open = False
-            st.error(_USER_ERROR)
         else:
-            try:
-                _quota_left = quota_remaining(_visitor_hash)
-            except Exception as exc:
-                _report_error(exc)
-                _visitor_hash = None
-                _quota_open = False
-                st.error(_USER_ERROR)
-            else:
-                _quota_open = _quota_left > 0
-else:
+            _quota_open = _quota_left > 0
+
+st.link_button(
+    "README",
+    "https://github.com/simcoster/Trippy",
+    icon=":material/menu_book:",
+    key="github_readme_top",
+)
+st.title("Trippy camping ⛺" if _PUBLIC_UI else "Trippy camping ⛺ (local)")
+if _db_error:
+    st.error(_db_error)
+elif _PUBLIC_UI and _visitor_hash is None:
+    st.error(_USER_ERROR)
+if _quota_left is not None:
+    _show_questions_left(_quota_left)
+elif not _PUBLIC_UI:
     st.caption(
         f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
         f"`{(os.environ.get('TRIPPY_SCHEMA') or 'public')}`."
@@ -1305,15 +1394,11 @@ else:
 
 mcp_prompt = ""
 stop_after: HeavyThrough = "recommender"
-with st.sidebar:
-    st.header("Session")
-    if _quota_left is not None:
-        _count, _, _rest = remaining_caption(_quota_left).partition(" ")
-        st.markdown(
-            f"<p class='trippy-questions-left'><span>{_count}</span> {_rest}</p>",
-            unsafe_allow_html=True,
-        )
-    if not _PUBLIC_UI:
+if not _PUBLIC_UI:
+    with st.sidebar:
+        st.header("Session")
+        if _quota_left is not None:
+            _show_questions_left(_quota_left)
         stop_after = (
             st.radio(
                 "Heavy path",
@@ -1340,7 +1425,6 @@ with st.sidebar:
         else:
             st.caption("LangSmith off — set `LANGSMITH_API_KEY` to record turns.")
 
-    if not _PUBLIC_UI:
         st.divider()
         st.subheader("MCP prompt")
         st.caption("streamlit-mcp cannot drive chat_input. Send from here.")
@@ -1405,13 +1489,13 @@ with st.sidebar:
         else:
             st.info("Send a message to start a conversation.")
 
-    st.link_button(
-        "GitHub README",
-        "https://github.com/simcoster/Trippy",
-        icon=":material/menu_book:",
-        width="stretch",
-        key="github_readme",
-    )
+        st.link_button(
+            "GitHub README",
+            "https://github.com/simcoster/Trippy",
+            icon=":material/menu_book:",
+            width="stretch",
+            key="github_readme",
+        )
 
 for turn in st.session_state.display:
     with st.chat_message(turn["role"]):

@@ -1388,7 +1388,8 @@ Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. The public UI allows 5 questions total
 per visitor address (`TRIPPY_DEMO_QUERY_CAP`) and shows how many are
-left in the sidebar. `demo_query_quota` stores a SHA-256 of `TRIPPY_DEMO_QUOTA_PEPPER`
+left under the title. A small README link sits at the top right.
+The public page has no sidebar. `demo_query_quota` stores a SHA-256 of `TRIPPY_DEMO_QUOTA_PEPPER`
 plus Cloudflare's `CF-Connecting-IP`, not the address. The count does
 not reset. Local Streamlit is not capped. `TRIPPY_DEMO_VISITOR_IP`
 stands in for the header when it is absent, so a laptop can try the

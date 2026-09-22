@@ -6,6 +6,19 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, public page has no sidebar)
+
+**The public UI no longer shows a sidebar.** The question count and the small README button stay in the header. The local harness still uses the sidebar for traces and the heavy path.
+
+### Done (2026-09-22, ask fields flash on load)
+
+**The example-prompt dropdown and the chat box flash white, and their placeholder text goes bold, once when they appear.**
+
+### Done (2026-09-22, question count under the title)
+
+**The ask-me line under the title is the question count.** The same line
+stays in the sidebar. A small README button sits at the top right.
+
 ### Done (2026-09-22, GitHub link sits at the bottom of the sidebar)
 
 **The GitHub README button is taller and pinned to the bottom of the sidebar.**
