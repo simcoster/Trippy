@@ -198,6 +198,26 @@ st.markdown(
     font-size: 1.2rem;
     font-weight: 650;
 }
+[data-testid="stMainBlockContainer"] {
+    position: relative;
+}
+[data-testid="stMainBlockContainer"] h1 {
+    padding-right: 7rem;
+}
+.st-key-github_readme_top {
+    position: absolute;
+    top: 7.5rem;
+    right: 0;
+    width: auto !important;
+    z-index: 2;
+}
+.st-key-github_readme_top a {
+    white-space: nowrap;
+    width: auto;
+    min-height: 0;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.8rem;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -1273,30 +1293,45 @@ _ASK_PLACEHOLDER = (
     "Ask me about a camping stay | שאל אותי על שהייה באתרי קמפינג"
 )
 
-st.title("Trippy camping ⛺" if _PUBLIC_UI else "Trippy camping ⛺ (local)")
-if _db_error:
-    st.error(_db_error)
+def _show_questions_left(remaining: int) -> None:
+    count, _, rest = remaining_caption(remaining).partition(" ")
+    st.markdown(
+        f"<p class='trippy-questions-left'><span>{count}</span> {rest}</p>",
+        unsafe_allow_html=True,
+    )
+
+
 _quota_open = True
 _visitor_hash: str | None = None
 _quota_left: int | None = None
-if _PUBLIC_UI:
-    st.caption(_ASK_PLACEHOLDER)
-    if not _db_error:
-        _visitor_hash = public_visitor_hash(st.context.headers)
-        if _visitor_hash is None:
+if _PUBLIC_UI and not _db_error:
+    _visitor_hash = public_visitor_hash(st.context.headers)
+    if _visitor_hash is None:
+        _quota_open = False
+    else:
+        try:
+            _quota_left = quota_remaining(_visitor_hash)
+        except Exception as exc:
+            _report_error(exc)
+            _visitor_hash = None
             _quota_open = False
-            st.error(_USER_ERROR)
         else:
-            try:
-                _quota_left = quota_remaining(_visitor_hash)
-            except Exception as exc:
-                _report_error(exc)
-                _visitor_hash = None
-                _quota_open = False
-                st.error(_USER_ERROR)
-            else:
-                _quota_open = _quota_left > 0
-else:
+            _quota_open = _quota_left > 0
+
+st.link_button(
+    "README",
+    "https://github.com/simcoster/Trippy",
+    icon=":material/menu_book:",
+    key="github_readme_top",
+)
+st.title("Trippy camping ⛺" if _PUBLIC_UI else "Trippy camping ⛺ (local)")
+if _db_error:
+    st.error(_db_error)
+elif _PUBLIC_UI and _visitor_hash is None:
+    st.error(_USER_ERROR)
+if _quota_left is not None:
+    _show_questions_left(_quota_left)
+elif not _PUBLIC_UI:
     st.caption(
         f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
         f"`{(os.environ.get('TRIPPY_SCHEMA') or 'public')}`."
@@ -1308,11 +1343,7 @@ stop_after: HeavyThrough = "recommender"
 with st.sidebar:
     st.header("Session")
     if _quota_left is not None:
-        _count, _, _rest = remaining_caption(_quota_left).partition(" ")
-        st.markdown(
-            f"<p class='trippy-questions-left'><span>{_count}</span> {_rest}</p>",
-            unsafe_allow_html=True,
-        )
+        _show_questions_left(_quota_left)
     if not _PUBLIC_UI:
         stop_after = (
             st.radio(
