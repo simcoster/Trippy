@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from langchain_core.tools import StructuredTool
 from langsmith import traceable
 from pgvector.psycopg import register_vector
+from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
 from db.connect import connect
@@ -151,6 +152,17 @@ def _stay_window(date_range: dict) -> _StayWindow | None:
     )
 
 
+_STAY_START = "stay_start"
+_STAY_END = "stay_end"
+_SITE_ID = "site_id"
+_CAMPSITE = "campsite"
+_ROOM_COUNT = "room_count"
+_TYPE_ID = "type_id"
+_TYPE_NAME = "type_name"
+_MAX_OCCUPANCY = "max_occupancy"
+_PARENT_ID = "parent_id"
+
+
 def _open_slots_sql(
     *,
     windows: list[dict],
@@ -172,44 +184,46 @@ def _open_slots_sql(
         ids = [int(x) for x in site_id]
         if not ids:
             return None, "empty_site_ids"
-        filters.append("a.site_id = ANY(%s)")
+        filters.append(f"a.{_SITE_ID} = ANY(%s)")
         filter_params.append(ids)
     elif site_id is not None:
-        filters.append("a.site_id = %s")
+        filters.append(f"a.{_SITE_ID} = %s")
         filter_params.append(int(site_id))
     if party_size is not None:
-        filters.append("(at.max_occupancy IS NULL OR at.max_occupancy >= %s)")
+        filters.append(
+            f"(at.{_MAX_OCCUPANCY} IS NULL OR at.{_MAX_OCCUPANCY} >= %s)"
+        )
         filter_params.append(int(party_size))
     where = ""
     if filters:
         where = "  WHERE " + " AND ".join(filters) + "\n"
     rel = _availability_relation()
     sql = (
-        "SELECT stay_start, stay_end, site_id, campsite, room_count,\n"
-        "       type_id, type_name, max_occupancy, parent_id\n"
+        f"SELECT {_STAY_START}, {_STAY_END}, {_SITE_ID}, {_CAMPSITE}, {_ROOM_COUNT},\n"
+        f"       {_TYPE_ID}, {_TYPE_NAME}, {_MAX_OCCUPANCY}, {_PARENT_ID}\n"
         "FROM (\n"
-        "  SELECT w.stay_start, w.stay_end, a.site_id, c.name AS campsite,\n"
-        "         MIN(a.room_count) AS room_count, at.id AS type_id,\n"
-        "         at.name AS type_name, at.max_occupancy, c.parent_id,\n"
+        f"  SELECT w.{_STAY_START}, w.{_STAY_END}, a.{_SITE_ID}, c.name AS {_CAMPSITE},\n"
+        f"         MIN(a.{_ROOM_COUNT}) AS {_ROOM_COUNT}, at.id AS {_TYPE_ID},\n"
+        f"         at.name AS {_TYPE_NAME}, at.{_MAX_OCCUPANCY}, c.{_PARENT_ID},\n"
         "         ROW_NUMBER() OVER (\n"
-        "           PARTITION BY w.stay_start, w.stay_end ORDER BY at.id\n"
+        f"           PARTITION BY w.{_STAY_START}, w.{_STAY_END} ORDER BY at.id\n"
         "         ) AS rn\n"
         "  FROM unnest(%s::date[], %s::date[], %s::int[])\n"
-        "    AS w(stay_start, stay_end, night_count)\n"
+        f"    AS w({_STAY_START}, {_STAY_END}, night_count)\n"
         f"  JOIN {rel} a\n"
-        "    ON a.start_date >= w.stay_start\n"
-        "   AND a.start_date < w.stay_end\n"
+        f"    ON a.start_date >= w.{_STAY_START}\n"
+        f"   AND a.start_date < w.{_STAY_END}\n"
         "   AND a.end_date = a.start_date + 1\n"
         "  JOIN accommodation_types at ON at.id = a.accommodation_type_id\n"
-        "  JOIN campsites c ON c.id = a.site_id\n"
+        f"  JOIN campsites c ON c.id = a.{_SITE_ID}\n"
         f"{where}"
-        "  GROUP BY w.stay_start, w.stay_end, w.night_count,\n"
-        "           a.site_id, c.name, at.id, at.name, at.max_occupancy,\n"
-        "           c.parent_id\n"
+        f"  GROUP BY w.{_STAY_START}, w.{_STAY_END}, w.night_count,\n"
+        f"           a.{_SITE_ID}, c.name, at.id, at.name, at.{_MAX_OCCUPANCY},\n"
+        f"           c.{_PARENT_ID}\n"
         "  HAVING COUNT(DISTINCT a.start_date) = w.night_count\n"
         ") q\n"
         "WHERE rn <= %s\n"
-        "ORDER BY stay_start, type_id"
+        f"ORDER BY {_STAY_START}, {_TYPE_ID}"
     )
     params: list[Any] = [
         [stay.start for stay in stays],
@@ -506,12 +520,12 @@ def _sandbox_quotes_for_slots(
             {
                 "request_id": _sandbox_request_id(key),
                 "campsite_id": key.campsite_id,
-                "campsite": slot.get("campsite"),
+                "campsite": slot.get(_CAMPSITE),
                 "lodging": key.lodging,
                 "adults_num": key.adults_num,
                 "is_weekend_or_holiday": key.weekend,
                 "planned_entry_time": key.planned_entry_time,
-                "parent_site_id": slot.get("parent_id"),
+                "parent_site_id": slot.get(_PARENT_ID),
             }
         )
     by_key: dict[_SandboxQuoteKey, QuoteResult] = {}
@@ -630,7 +644,7 @@ def search_open_slots(
     try:
         with stage("sql"):
             with connect(db_url) as conn:
-                with conn.cursor() as cur:
+                with conn.cursor(row_factory=dict_row) as cur:
                     cur.execute(sql, params)
                     rows = cur.fetchall()
     except Exception as e:
@@ -640,20 +654,21 @@ def search_open_slots(
 
     slots: list[dict] = []
     for row in rows:
-        occupancy = int(row[7]) if row[7] is not None else None
-        parent_raw = row[8] if len(row) > 8 else None
+        occupancy_raw = row[_MAX_OCCUPANCY]
+        occupancy = int(occupancy_raw) if occupancy_raw is not None else None
+        parent_raw = row[_PARENT_ID]
         slots.append(
             {
-                "campsite_id": int(row[2]),
-                "campsite": row[3],
-                "start": iso_day(row[0]),
-                "end": iso_day(row[1]),
-                "room_count": int(row[4]),
-                "accommodation_type_id": int(row[5]),
-                "accommodation_type": row[6],
-                "max_occupancy": occupancy,
+                "campsite_id": int(row[_SITE_ID]),
+                _CAMPSITE: row[_CAMPSITE],
+                "start": iso_day(row[_STAY_START]),
+                "end": iso_day(row[_STAY_END]),
+                _ROOM_COUNT: int(row[_ROOM_COUNT]),
+                "accommodation_type_id": int(row[_TYPE_ID]),
+                "accommodation_type": row[_TYPE_NAME],
+                _MAX_OCCUPANCY: occupancy,
                 "occupancy_unknown": occupancy is None,
-                "parent_id": int(parent_raw) if parent_raw is not None else None,
+                _PARENT_ID: int(parent_raw) if parent_raw is not None else None,
             }
         )
     type_ids = list({int(s["accommodation_type_id"]) for s in slots})
@@ -674,7 +689,7 @@ def search_open_slots(
     }
     quoted: list[dict] = []
     for slot in slots:
-        slot.pop("parent_id", None)
+        slot.pop(_PARENT_ID, None)
         slot_rate = _slot_rate_period(slot, rate_period)
         key = _sandbox_key_for_slot(
             slot,

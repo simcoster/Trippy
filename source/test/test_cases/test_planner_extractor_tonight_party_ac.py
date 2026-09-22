@@ -18,6 +18,17 @@ from source.agent.graph import (
     planner_node,
     search_open_slots,
 )
+from source.agent.search import (
+    _CAMPSITE,
+    _MAX_OCCUPANCY,
+    _PARENT_ID,
+    _ROOM_COUNT,
+    _SITE_ID,
+    _STAY_END,
+    _STAY_START,
+    _TYPE_ID,
+    _TYPE_NAME,
+)
 
 EXTRACTOR_JSON = {
     "date": {"start": "2026-08-30", "end": "2026-09-01"},
@@ -161,8 +172,7 @@ def test_open_slots_sql_for_extractor_tonight_party_ac():
 
 
 # One-night availability rows the mock DB holds for 2026-08-30 → 2026-09-01.
-# Result columns match search_open_slots: start, end, site_id, campsite,
-# rooms, type_id, type, occ.
+# The query result uses the SQL column names.
 _MOCK_NIGHTS = [
     (3, "Park A", date(2026, 8, 30), date(2026, 8, 31), 2, 11, "בונגלו עם מזגן", 4),
     (3, "Park A", date(2026, 8, 31), date(2026, 9, 1), 1, 11, "בונגלו עם מזגן", 4),
@@ -170,11 +180,11 @@ _MOCK_NIGHTS = [
 ]
 
 
-def _mock_availability_result(sql: str, params: list) -> list[tuple]:
+def _mock_availability_result(sql: str, params: list) -> list[dict]:
     starts, ends, counts = params[0], params[1], params[2]
     stay_start, stay_end, night_count = starts[0], ends[0], counts[0]
     limit = params[-1]
-    party_size = params[-2] if "max_occupancy" in sql else None
+    party_size = params[-2] if _MAX_OCCUPANCY in sql else None
     kept: list[tuple] = []
     for row in _MOCK_NIGHTS:
         start, end, occ = row[2], row[3], row[7]
@@ -188,29 +198,30 @@ def _mock_availability_result(sql: str, params: list) -> list[tuple]:
     grouped: dict[tuple, list[tuple]] = {}
     for row in kept:
         grouped.setdefault((row[0], row[1], row[5], row[6], row[7]), []).append(row)
-    out: list[tuple] = []
+    out: list[dict] = []
     for key, rows in grouped.items():
         if len({row[2] for row in rows}) != night_count:
             continue
         out.append(
-            (
-                min(row[2] for row in rows),
-                max(row[3] for row in rows),
-                key[0],
-                key[1],
-                min(row[4] for row in rows),
-                key[2],
-                key[3],
-                key[4],
-            )
+            {
+                _STAY_START: min(row[2] for row in rows),
+                _STAY_END: max(row[3] for row in rows),
+                _SITE_ID: key[0],
+                _CAMPSITE: key[1],
+                _ROOM_COUNT: min(row[4] for row in rows),
+                _TYPE_ID: key[2],
+                _TYPE_NAME: key[3],
+                _MAX_OCCUPANCY: key[4],
+                _PARENT_ID: None,
+            }
         )
-    out.sort(key=lambda row: (row[0], row[5]))
+    out.sort(key=lambda row: (row[_STAY_START], row[_TYPE_ID]))
     return out[:limit]
 
 
 class _MockCursor:
     def __init__(self) -> None:
-        self._rows: list[tuple] = []
+        self._rows: list[dict] = []
 
     def execute(self, sql: str, params=None) -> None:
         params = list(params or [])
@@ -219,7 +230,7 @@ class _MockCursor:
         else:
             self._rows = []
 
-    def fetchall(self) -> list[tuple]:
+    def fetchall(self) -> list[dict]:
         return self._rows
 
     def __enter__(self) -> Self:
@@ -230,7 +241,7 @@ class _MockCursor:
 
 
 class _MockConn:
-    def cursor(self) -> _MockCursor:
+    def cursor(self, **_kwargs) -> _MockCursor:
         return _MockCursor()
 
     def __enter__(self) -> Self:
