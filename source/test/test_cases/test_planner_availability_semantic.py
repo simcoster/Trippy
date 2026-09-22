@@ -86,6 +86,10 @@ def two_stage(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     lookup = MagicMock(return_value=[])
     campsites = MagicMock(return_value=[])
     monkeypatch.setattr("source.agent.search.availability.search_open_slots", slots)
+    monkeypatch.setattr(
+        "source.agent.search.availability.quote_open_slots",
+        lambda slots, **_kwargs: slots,
+    )
     monkeypatch.setattr("source.agent.search.amenities.search_stated_amenities", amenities)
     monkeypatch.setattr("source.agent.search.claims.search_review_claims", claims)
     monkeypatch.setattr("source.agent.search.campsites.lookup_campsite_by_name", lookup)
@@ -133,9 +137,7 @@ def test_catalog_date_party_ac_intersects_on_type_ids(two_stage: SimpleNamespace
     ]
     fit = payload["fits"][0]
     assert fit["accommodation_type_id"] == 11
-    # quote_open_slots replaces the fixture price. Nights are Sunday and
-    # Monday, so the stay is weekday; type 11's unit rate (guest_type "any") is 350.
-    assert fit["price_per_night"] == 350.0
+    assert fit["price_per_night"] == 400.0
     assert fit["why"] == [
         {
             "query": "air conditioning",

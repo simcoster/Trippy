@@ -6,6 +6,10 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Open (2026-09-22, graph container)
+
+**TODO: run the graph in its own container; Streamlit talks to it over HTTP.** Today `scripts/streamlit_chat.py` imports the graph, calls `build_graph`, and patches nodes and search functions in-process. The chat client should post a turn and read the reply, not host the agent.
+
 ### Done (2026-09-22, quote worker exits after its batch)
 
 **A waiting worker runs one batch, returns the results, and exits.** A replacement is started as soon as that process dies, so the pool stays full and the next batch does not wait on spawn. Supersedes “workers stay up” in the long-lived quote workers entry below.
