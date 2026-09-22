@@ -9,10 +9,7 @@ import pytest
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 
-from source.agent.dates import (
-    WEEK_TRUNCATED_NOTICE,
-    resolve_dates,
-)
+from source.agent.dates import resolve_dates
 from source.agent.prompts import EXTRACTOR_SYSTEM_PROMPT
 
 load_dotenv()
@@ -37,13 +34,16 @@ def test_prompt_contains_next_week_shot():
 
 def test_resolve_next_week_from_monday_keeps_weekend():
     resolved = resolve_dates(kind="week", when="next", nights=1, today=MONDAY)
-    assert resolved["truncated"] is True
-    assert resolved["notice"] == WEEK_TRUNCATED_NOTICE
+    assert resolved["truncated"] is False
+    assert resolved["notice"] is None
     assert resolved["windows"] == [
         {"start": "2026-09-21", "end": "2026-09-22"},
         {"start": "2026-09-22", "end": "2026-09-23"},
+        {"start": "2026-09-23", "end": "2026-09-24"},
+        {"start": "2026-09-24", "end": "2026-09-25"},
         {"start": "2026-09-25", "end": "2026-09-26"},
         {"start": "2026-09-26", "end": "2026-09-27"},
+        {"start": "2026-09-27", "end": "2026-09-28"},
     ]
 
 
@@ -63,12 +63,15 @@ def test_on_today_with_horizon_enumerates_not_one_night():
     resolved = resolve_dates(
         kind="on", on="today", horizon_days=7, nights=1, today=MONDAY
     )
-    assert resolved["truncated"] is True
+    assert resolved["truncated"] is False
     assert [w["start"] for w in resolved["windows"]] == [
         "2026-09-14",
         "2026-09-15",
         "2026-09-16",
         "2026-09-17",
+        "2026-09-18",
+        "2026-09-19",
+        "2026-09-20",
     ]
 
 

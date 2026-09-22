@@ -64,17 +64,15 @@ def test_tuesday_in_three_weeks():
 
 def test_weekend_coming_month_caps_at_four_and_notices():
     resolved = resolve_dates(
-        kind="weekend", horizon_days=40, today=MONDAY
+        kind="weekend", horizon_days=160, today=MONDAY
     )
     assert resolved["truncated"] is True
     assert resolved["notice"] == DATE_TRUNCATED_NOTICE
     assert len(resolved["windows"]) == MAX_DATE_WINDOWS
     starts = [w["start"] for w in resolved["windows"]]
     assert starts == [
-        "2026-09-04",
-        "2026-09-11",
-        "2026-09-18",
-        "2026-09-25",
+        (date(2026, 9, 4) + timedelta(days=7 * i)).isoformat()
+        for i in range(MAX_DATE_WINDOWS)
     ]
     for window in resolved["windows"]:
         assert window["end"] > window["start"]
@@ -178,7 +176,7 @@ def test_planner_caps_windows_at_four(db_searches: SimpleNamespace):
             "start": (date(2026, 9, 4) + timedelta(days=7 * i)).isoformat(),
             "end": (date(2026, 9, 6) + timedelta(days=7 * i)).isoformat(),
         }
-        for i in range(5)
+        for i in range(MAX_DATE_WINDOWS + 1)
     ]
     result = planner_node(
         _constraints_state(
@@ -243,7 +241,7 @@ def test_extractor_truncation_notice_from_tool(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(agent_graph, "today_il", lambda today=None: MONDAY)
     llm_json = {
-        "date_intent": {"kind": "weekend", "horizon_days": 40, "nights": 2},
+        "date_intent": {"kind": "weekend", "horizon_days": 160, "nights": 2},
         "campsite": None,
         "numeric_constraints": [],
         "semantic_constraints": [],
@@ -257,4 +255,4 @@ def test_extractor_truncation_notice_from_tool(monkeypatch: pytest.MonkeyPatch):
     payload = json.loads(result["messages"][0].content)
     assert payload["date_truncated"] is True
     assert payload["date_notice"] == DATE_TRUNCATED_NOTICE
-    assert len(payload["date_windows"]) == 4
+    assert len(payload["date_windows"]) == MAX_DATE_WINDOWS

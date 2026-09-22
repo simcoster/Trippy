@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, date windows cap 20)
+
+**`MAX_DATE_WINDOWS` is 20.** A full week fits, so Friday/Saturday
+preference no longer trims `kind=week`. A longer horizon still
+truncates and says so. Supersedes “the planner caps at 4 windows”
+in design.md. `test_date_resolve.py`, `test_extractor_next_week.py`.
+
 ### Done (2026-09-22, recommender warmup removed)
 
 **`warmup_recommender` is gone.** Keepalive and the Kimi→Super
