@@ -89,33 +89,42 @@ def test_two_months_keep_a_range_each():
     assert text.startswith("21–28.9, 11.10–15.10")
 
 
-def test_why_not_follows_the_options():
+def test_why_not_names_the_other_sites():
     steps = [
-        {"stage": "availability", "count": 11},
-        {"stage": "price", "count": 8},
-        {"stage": "missing", "count": 6, "query": "pool"},
+        {
+            "stage": "missing",
+            "count": 3,
+            "query": "pools",
+            "sites": ["site_1", "site_2", "site_3"],
+        }
     ]
     text = render_recommendations([_rec()], query="a pool", why_not=steps)
-    assert "Why not" in text
-    assert "11 campsites have availability" in text
-    assert "→ 8 are in the price range" in text
-    assert "→ 6 don't have pool like you requested" in text
-    assert text.index("1. אכזיב") < text.index("Why not")
+    sentence = (
+        "3 other sites have availability [site_1, site_2, site_3] "
+        "but they don't have pools."
+    )
+    assert sentence in text
+    assert "Why not" not in text
+    assert text.index("1. אכזיב") < text.index(sentence)
 
 
 def test_hebrew_why_not():
     steps = [
-        {"stage": "availability", "count": 11},
-        {"stage": "price", "count": 8},
-        {"stage": "missing", "count": 6, "query": "בריכה"},
+        {
+            "stage": "missing",
+            "count": 3,
+            "query": "בריכות לילדים",
+            "sites": ["אתר א", "אתר ב", "אתר ג"],
+        }
     ]
     text = render_recommendations([], empty="אין מקום", query="בריכה", why_not=steps)
+    sentence = (
+        "3 אתרים נוספים עם זמינות [אתר א, אתר ב, אתר ג] אבל אין להם בריכות לילדים."
+    )
     assert "אין מקום" in text
-    assert "למה לא" in text
-    assert "11 אתרי קמפינג עם זמינות" in text
-    assert "→ 8 בטווח המחיר" in text
-    assert "→ 6 בלי בריכה כמו שביקשת" in text
-    assert text.index("אין מקום") < text.index("למה לא")
+    assert sentence in text
+    assert "Why not" not in text
+    assert text.index("אין מקום") < text.index("3 אתרים")
 
 
 def test_why_not_is_rendered_and_kept_out_of_the_model_pack():
@@ -153,16 +162,22 @@ def test_why_not_is_rendered_and_kept_out_of_the_model_pack():
                 }
             ],
             "why_not": [
-                {"stage": "availability", "count": 4},
-                {"stage": "missing", "count": 2, "query": "pool"},
+                {
+                    "stage": "missing",
+                    "count": 2,
+                    "query": "pool",
+                    "sites": ["דרום", "צפון"],
+                }
             ],
             "rejected": [{"campsite_id": 9}],
         },
         chat=_Chat(),
     )
     assert result.text.startswith("24–25.5")
-    assert "Why not" in result.text
-    assert "→ 2 don't have pool like you requested" in result.text
+    assert (
+        "2 other sites have availability [דרום, צפון] but they don't have pool."
+        in result.text
+    )
     assert len(result.recommendations) == 1
     assert len(result.recommendations[0].dates) == 2
 

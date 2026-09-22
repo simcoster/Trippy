@@ -1241,10 +1241,10 @@ fit with `dates`, not one fit per night, so retrieve, judge, and
 the recommender pack run once for that site+type. A price limit
 removes those nights from `fits` and keeps them on `rejected` with
 `reason: price` (every such unit, not only the five-row semantic
-sample). `why_not` on the payload counts campsites: how many had a
-vacancy, how many of those stay inside the price range when the user
-set one, then how many of the remainder miss each requested amenity.
-The model does not see `why_not` or `rejected`; render prints the funnel.
+sample). `why_not` names the other campsites that had a vacancy and
+were left out, grouped by price or by the amenity they miss. The model
+does not see `why_not` or `rejected`; render writes that sentence in
+the query's language.
 
 ## Recommender
 
@@ -1276,8 +1276,9 @@ above the numbered list. `intro` is null for a single stay.
 A fit's `dates` are all shown. Several check-ins collapse to ranges
 (`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site, with a note to change the date
 on the booking page when more than one date fits. After the picks, render appends
-`why_not` as a short funnel when a price or amenity filter dropped
-campsites.
+`why_not` in the query's language: other available sites by name, and
+why they were left out (`3 other sites have availability [A, B, C] but
+they don't have pools`).
 `why` leads with the matching facts, not a recap of the query,
 dates, or party (those are on the stay line). If listing and reviews
 agree the asked thing exists, say it once — reviews add quality or

@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, why-not names the other sites)
+
+**The why-not line names the other available campsites and the reason.**
+In the query's language: "3 other sites have availability [A, B, C] but
+they don't have pools." Price misses are the same shape. Supersedes the
+count funnel in the recommender entry below.
+
 ### Done (2026-09-22, date ranges and booking party)
 
 **Several fitting dates render as ranges, with one booking link.**

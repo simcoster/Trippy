@@ -466,6 +466,23 @@ def _missed_queries_by_site(rejected: list[dict]) -> dict[int, set[str]]:
     return missed
 
 
+def _site_names(ids: set[int], rows: list[dict]) -> list[str]:
+    """Campsite names for `ids`, in the order `rows` first mentions them."""
+    names: list[str] = []
+    seen: set[int] = set()
+    for row in rows:
+        cid = row.get("campsite_id")
+        if cid is None:
+            continue
+        cid = int(cid)
+        if cid not in ids or cid in seen:
+            continue
+        seen.add(cid)
+        name = str(row.get("campsite") or "").strip() or str(cid)
+        names.append(name)
+    return names
+
+
 def _why_not_steps(
     *,
     open_slots: list[dict],
@@ -475,12 +492,19 @@ def _why_not_steps(
     semantic: list,
     price_queried: bool,
 ) -> list[dict[str, Any]]:
-    """Campsite funnel: availability, price range, then each missed ask."""
+    """Other available campsites, named, grouped by why they were left out."""
     available = _campsite_ids(open_slots)
     in_price = _campsite_ids(priced_slots)
     fit_sites = _campsite_ids(fits)
     missed = _missed_queries_by_site(semantic_rejected)
-    missing_steps: list[dict[str, Any]] = []
+    steps: list[dict[str, Any]] = []
+    if price_queried and len(in_price) < len(available):
+        outside = available - in_price
+        names = _site_names(outside, open_slots)
+        if names:
+            steps.append(
+                {"stage": "price", "count": len(names), "sites": names}
+            )
     remaining = set(in_price)
     for group in semantic_locus_groups(semantic):
         label = _query_label(group.get("label"))
@@ -493,19 +517,17 @@ def _why_not_steps(
         }
         if not failed:
             continue
-        missing_steps.append(
-            {"stage": "missing", "count": len(failed), "query": label}
-        )
+        names = _site_names(failed, semantic_rejected)
+        if names:
+            steps.append(
+                {
+                    "stage": "missing",
+                    "count": len(names),
+                    "query": label,
+                    "sites": names,
+                }
+            )
         remaining -= failed
-    price_dropped = price_queried and len(in_price) < len(available)
-    if not price_dropped and not missing_steps:
-        return []
-    steps: list[dict[str, Any]] = [
-        {"stage": "availability", "count": len(available)}
-    ]
-    if price_queried:
-        steps.append({"stage": "price", "count": len(in_price)})
-    steps.extend(missing_steps)
     return steps
 
 

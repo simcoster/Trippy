@@ -130,8 +130,12 @@ def test_price_and_amenity_funnel_counts_campsites(monkeypatch):
     assert {row["accommodation_type_id"] for row in price_rows} == {33, 34}
     assert payload["rejected_count"] == 3
     assert payload["why_not"] == [
-        {"stage": "availability", "count": 3},
-        {"stage": "price", "count": 2},
-        {"stage": "missing", "count": 1, "query": "pool"},
+        {"stage": "price", "count": 1, "sites": ["Pricey"]},
+        {
+            "stage": "missing",
+            "count": 1,
+            "query": "pool",
+            "sites": ["Dry"],
+        },
     ]
     assert "price_rejected" not in payload["open_slots_query"]
