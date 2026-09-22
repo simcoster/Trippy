@@ -1191,7 +1191,12 @@ regen on תל ערד (3096 vs 3080 included 36) and still missed;
 
 At quote time a one-shot loader (`just load-price-sandbox`, prod
 `price-sandbox-loader`) reads `site_price_functions` and `POST /load`s
-into the `price-sandbox` container (cap 30), then exits. Streamlit /
+into the `price-sandbox` container (cap 30), then exits. `/health` is
+503 `ok: false` until that load stores at least one function. Docker's
+healthcheck is urlopen, so an empty container stays unhealthy and does
+not count as up. The loader treats 503 as "process is listening" so it
+can still push; zero rows is a failed load, not a healthy sandbox.
+Streamlit /
 the planner only send params (`POST /quote`). The sandbox has no
 Postgres, no `.env`, no internet (internal `quote` network in prod;
 laptop also joins a non-internal `quote-host` network so Docker
@@ -1203,8 +1208,9 @@ Each quote runs in a short-lived child with a memory cap and a
 sub-second timeout. A subcamp has no page, so its rate card and
 `quote()` live on the parent. Open slots send that `parent_site_id`,
 and `/quote` uses the parent's function when the subcamp id is not
-loaded. `PRICE_SANDBOX_URL` unset or a load miss uses
-`quote_night`. The extractor emits `child_num` and `child_ages` (the
+loaded. Streamlit, local and prod, exits unless that `/health` is ok.
+`quote_night` is only the fallback when the sandbox stops answering
+during a run that already started. The extractor emits `child_num` and `child_ages` (the
 `QuoteParams` fields) when the user names children; the planner passes
 them into the sandbox quote and subtracts `child_num` from `party_size`
 so those children are not also priced as adults. `guest_type` (the
@@ -1348,7 +1354,10 @@ SSH is `.github/actions/scrape-job` (not a workflow, so it does not
 show in Actions). After every scrape the VM **must** run
 `price-sandbox-loader` so Streamlit sees the new `quote()` sources.
 A missing compose service fails the job; there is no skip. `--if-up`
-is laptop Streamlit only, when Compose is not up. The prices Actions Summary is `report.md` (stored vs
+is laptop eval and price reload when Compose is not up. `just streamlit`
+does not use it: an unhealthy sandbox refuses the start. Prod
+`just prod-up` loads the sandbox before Streamlit, and Streamlit
+`depends_on` that healthcheck. The prices Actions Summary is `report.md` (stored vs
 failed, gold/AST lines); dumps stay in `~/.trippy-scrape/<timestamp>/`
 on the VM. One dump per day at 14:00 IDT (`backup.yml`): `pg_dump -n
 public -Fc` to `~/.trippy-backups` and Nebius object storage

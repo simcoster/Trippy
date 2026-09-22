@@ -192,16 +192,17 @@ scrape-all:
     just scrape-availability
 
 # Local Streamlit agent. 8502 so an SSH -L 8501 to the VM does not steal the tab.
-# Loads quote() into the sandbox if compose is up; otherwise quote_night.
+# Refuses to start unless the sandbox is healthy (functions loaded).
 streamlit:
-    just load-price-sandbox -- --if-up --wait-s 3
+    just load-price-sandbox -- --wait-s 15
     uv run python -m streamlit run scripts/streamlit_chat.py --server.port 8502
 
-# VM: long-running db + streamlit + tunnel, then fill the sandbox
+# VM: sandbox first, load quote(), then Streamlit (it depends on a healthy sandbox).
 [unix]
 prod-up:
-    docker compose -f docker-compose.prod.yml --env-file .env up -d
+    docker compose -f docker-compose.prod.yml --env-file .env up -d db price-sandbox
     just prod-load-sandbox
+    docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 # VM: POST site_price_functions into price-sandbox (one-shot, then exit)
 [unix]

@@ -55,6 +55,11 @@ services:
     networks:
       - default
       - quote
+    depends_on:
+      db:
+        condition: service_healthy
+      price-sandbox:
+        condition: service_healthy
     command:
       - /app/.venv/bin/streamlit
       - run
@@ -114,6 +119,7 @@ services:
       PRICE_SANDBOX_PORT: "8503"
     networks:
       - quote
+    # 503 until a quote() is loaded, so an empty process stays unhealthy.
     healthcheck:
       test:
         [
@@ -143,7 +149,7 @@ services:
       db:
         condition: service_healthy
       price-sandbox:
-        condition: service_healthy
+        condition: service_started
     command:
       - /app/.venv/bin/python
       - -m

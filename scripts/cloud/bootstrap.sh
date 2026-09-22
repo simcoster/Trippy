@@ -41,9 +41,10 @@ rm -f /etc/cron.d/trippy-backup
 
 cd "${ROOT}"
 docker compose -f docker-compose.prod.yml --env-file .env build
-docker compose -f docker-compose.prod.yml --env-file .env up -d
+docker compose -f docker-compose.prod.yml --env-file .env up -d db price-sandbox
 docker compose -f docker-compose.prod.yml --env-file .env --profile scrape run --rm scrape migrate
 docker compose -f docker-compose.prod.yml --env-file .env --profile load run --rm price-sandbox-loader
+docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 echo "compose is up. GitHub Actions SSHs as gh-actions (see docs/cloud.md)."
 echo "Dump public schema: just backup   (or /usr/local/sbin/trippy-backup)"

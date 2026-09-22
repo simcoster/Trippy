@@ -57,6 +57,18 @@ def load_functions(entries: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def health_status() -> tuple[int, dict[str, Any]]:
+    """Ready only when at least one quote() is loaded.
+
+    Docker's healthcheck uses urlopen, which fails on a non-200, so an
+    empty process stays unhealthy until the loader pushes functions.
+    """
+    loaded = len(_functions)
+    if loaded == 0:
+        return 503, {"ok": False, "loaded": 0, "error": "no functions loaded"}
+    return 200, {"ok": True, "loaded": loaded}
+
+
 def _optional_site_id(value: Any) -> int | None:
     if value is None or value == "":
         return None
@@ -125,10 +137,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path == "/health":
-            self._write_json(
-                200,
-                {"ok": True, "loaded": len(_functions)},
-            )
+            status, body = health_status()
+            self._write_json(status, body)
             return
         self._write_json(404, {"ok": False, "error": "not found"})
 

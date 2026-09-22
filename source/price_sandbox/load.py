@@ -32,7 +32,7 @@ def wait_for_sandbox(
 ) -> bool:
     deadline = time.monotonic() + max(0.0, wait_s)
     while True:
-        if sandbox_reachable(base_url=base_url):
+        if sandbox_reachable(base_url=base_url, require_loaded=False):
             return True
         if time.monotonic() >= deadline:
             return False
@@ -98,6 +98,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     loaded = result.get("loaded") or []
     rejected = result.get("rejected") or []
+    if not loaded:
+        print(
+            "price-sandbox loader: no functions loaded; sandbox stays unhealthy",
+            file=sys.stderr,
+        )
+        return 1
     print(
         f"price-sandbox loader: loaded {len(loaded)} function(s) "
         f"from {result.get('n_db', 0)} row(s)",

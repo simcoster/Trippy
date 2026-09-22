@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -14,6 +15,26 @@ from .params import QuoteParams, QuoteResult
 from .server import MAX_BATCH
 
 DEFAULT_TIMEOUT_S = 5.0
+
+
+def require_healthy_sandbox() -> None:
+    """Exit unless /health reports loaded functions.
+
+    Streamlit calls this once per process. A sandbox that dies later is
+    the quote_night fallback; startup does not start without a healthy one.
+    """
+    if os.environ.get("TRIPPY_SANDBOX_CHECKED") == "1":
+        return
+    url = sandbox_url()
+    if url and sandbox_reachable():
+        os.environ["TRIPPY_SANDBOX_CHECKED"] = "1"
+        return
+    where = url or "PRICE_SANDBOX_URL is not set"
+    print(
+        f"price sandbox is not healthy ({where}); refusing to start.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
 
 
 def sandbox_url() -> str | None:
@@ -177,12 +198,28 @@ def quote_via_sandbox(
     return out
 
 
-def sandbox_reachable(*, base_url: str | None = None) -> bool:
+def sandbox_reachable(
+    *, base_url: str | None = None, require_loaded: bool = True
+) -> bool:
+    """True when /health says functions are loaded.
+
+    The loader passes `require_loaded=False`: HTTP 503 means the process
+    is up but empty, so it can still POST /load. Callers that quote keep
+    the default and skip an empty sandbox. Docker's healthcheck does not
+    use this; urlopen fails on 503, so the container stays unhealthy.
+    """
     url = (base_url or sandbox_url() or "").rstrip("/")
     if not url:
         return False
     try:
         with urllib.request.urlopen(urljoin(url + "/", "health"), timeout=1.5) as response:
-            return response.status == 200
-    except (urllib.error.URLError, TimeoutError, OSError):
+            if response.status != 200:
+                return False
+            if not require_loaded:
+                return True
+            body = json.loads(response.read().decode("utf-8"))
+            return bool(body.get("ok")) and int(body.get("loaded") or 0) > 0
+    except urllib.error.HTTPError as exc:
+        return (not require_loaded) and exc.code == 503
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError, ValueError):
         return False

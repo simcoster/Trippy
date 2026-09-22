@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, Streamlit requires a healthy sandbox)
+
+**Streamlit does not start unless `/health` is ok.** Local `just streamlit` no longer passes `--if-up`. Prod starts `db` and `price-sandbox`, loads functions, then Streamlit, which `depends_on` `service_healthy`. The loader waits for `service_started` (503 is still listening); waiting for healthy deadlocked the load. `quote_night` remains the fallback only after a run has started. Supersedes “`--if-up` is laptop Streamlit only”.
+
+### Done (2026-09-22, empty price sandbox is not healthy)
+
+**`/health` is 503 until at least one `quote()` is loaded.** `ok: true` with `loaded: 0` let Docker mark the container up, and every quote then returned `unknown site`. urlopen fails on 503, so the container stays unhealthy. The loader still connects on 503 to POST `/load`, and exits 1 when that push stores nothing. Supersedes “empty until load” as a healthy state.
+
 ### Done (2026-09-22, extractor emits planned_exit_time)
 
 **Departure is `planned_exit_time` (`HH:MM`), forwarded to `QuoteParams` like arrival.** The compiled `quote()` already takes it for the late-exit row. Omitted when the user did not say when they leave. Supersedes the arrival-only clock in the query-extractor section of design.md.
