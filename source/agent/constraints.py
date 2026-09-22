@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from source.agent.dates import (
     _as_stay_range,
@@ -210,7 +210,10 @@ def parse_constraints_dict(raw: str | dict[str, Any] | None) -> dict[str, Any]:
 
 
 _ENTRY_TIME_FIELDS = frozenset({"planned_entry_time", "entry_time"})
+_EXIT_TIME_FIELDS = frozenset({"planned_exit_time", "exit_time"})
 _ENTRY_TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?$")
+_CHILD_NUM_FIELD = "child_num"
+_CHILD_AGES_FIELD = "child_ages"
 
 
 def parse_planned_entry_time(value: Any) -> str | None:
@@ -232,6 +235,68 @@ def parse_planned_entry_time(value: Any) -> str | None:
     if 0 <= hour <= 23 and 0 <= minute <= 59:
         return f"{hour:02d}:{minute:02d}"
     return None
+
+
+def parse_child_num(value: Any) -> int | None:
+    """Child headcount. Missing and non-integers are absent, not zero."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    if count < 0:
+        return None
+    return count
+
+
+def parse_child_ages(value: Any) -> tuple[int, ...] | None:
+    """Integer ages in stated order. One age may arrive as a bare number."""
+    if value is None or isinstance(value, bool):
+        return None
+    raw = value if isinstance(value, (list, tuple)) else (value,)
+    ages: list[int] = []
+    for item in raw:
+        if isinstance(item, bool):
+            return None
+        try:
+            age = int(item)
+        except (TypeError, ValueError):
+            return None
+        if age < 0:
+            return None
+        ages.append(age)
+    return tuple(ages)
+
+
+class QuoteParty(NamedTuple):
+    adults_num: int
+    child_num: int
+    child_ages: tuple[int, ...]
+
+
+def quote_party(
+    *,
+    party_size: int | None,
+    child_num: int | None = None,
+    child_ages: tuple[int, ...] | list[int] | None = None,
+) -> QuoteParty:
+    """Split a party into the quote() headcounts.
+
+    `party_size` is everyone. Stated children come off that total so they
+    are not priced as extra adults. No party and no children stays one adult.
+    """
+    ages = tuple(int(age) for age in (child_ages or ()))
+    children = int(child_num) if child_num else 0
+    if children < 0:
+        children = 0
+    if not children and ages:
+        children = len(ages)
+    if party_size and party_size > 0:
+        adults = max(int(party_size) - children, 0) if children else int(party_size)
+    else:
+        adults = 1
+    return QuoteParty(adults_num=adults, child_num=children, child_ages=ages)
 
 
 def normalize_constraints(
@@ -285,8 +350,12 @@ def normalize_constraints(
                 }
 
     # Strip date-like numeric junk (field containing date). Lift a clock
-    # hour off numeric leftovers onto planned_entry_time.
+    # hour off numeric leftovers onto planned_entry_time. The same for
+    # child_num / child_ages when the model filed them as numeric rows.
     entry = parse_planned_entry_time(parsed.get("planned_entry_time"))
+    exit_at = parse_planned_entry_time(parsed.get("planned_exit_time"))
+    child_num = parse_child_num(parsed.get("child_num"))
+    child_ages = parse_child_ages(parsed.get("child_ages"))
     cleaned_numeric: list[Any] = []
     for item in numeric:
         if isinstance(item, dict):
@@ -294,6 +363,18 @@ def normalize_constraints(
             if field in _ENTRY_TIME_FIELDS:
                 if entry is None:
                     entry = parse_planned_entry_time(item.get("value"))
+                continue
+            if field in _EXIT_TIME_FIELDS:
+                if exit_at is None:
+                    exit_at = parse_planned_entry_time(item.get("value"))
+                continue
+            if field == _CHILD_NUM_FIELD:
+                if child_num is None:
+                    child_num = parse_child_num(item.get("value"))
+                continue
+            if field == _CHILD_AGES_FIELD:
+                if child_ages is None:
+                    child_ages = parse_child_ages(item.get("value"))
                 continue
             if "date" in field or field in {"start", "end", "night", "check_in"}:
                 if not (used_resolved and used_resolved.get("windows")):
@@ -315,6 +396,14 @@ def normalize_constraints(
     apply_resolved_dates(out, used_resolved)
     if entry:
         out["planned_entry_time"] = entry
+    if exit_at:
+        out["planned_exit_time"] = exit_at
+    if child_ages and child_num is None:
+        child_num = len(child_ages)
+    if child_num:
+        out["child_num"] = child_num
+    if child_ages:
+        out["child_ages"] = list(child_ages)
     return out
 
 

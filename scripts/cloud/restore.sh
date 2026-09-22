@@ -39,8 +39,27 @@ fi
 
 src="${1:-}"
 if [ -z "$src" ]; then
-  echo "usage: restore.sh <file.dump|s3://bucket/key>" >&2
+  echo "usage: restore.sh <file.dump|s3://bucket/key|latest>" >&2
   exit 2
+fi
+
+if [ "$src" = "latest" ]; then
+  BACKUP_S3_BUCKET=$(printf '%s' "${BACKUP_S3_BUCKET:-}" | tr -d '\r')
+  AWS_ENDPOINT_URL=$(printf '%s' "${AWS_ENDPOINT_URL:-}" | tr -d '\r')
+  : "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET is required to find the latest dump}"
+  : "${AWS_ENDPOINT_URL:?AWS_ENDPOINT_URL is required to find the latest dump}"
+  listing=$(docker run --rm \
+    --env-file "${ROOT}/.env" \
+    amazon/aws-cli \
+    --endpoint-url "${AWS_ENDPOINT_URL}" \
+    s3 ls "s3://${BACKUP_S3_BUCKET}/postgres/")
+  name=$(printf '%s\n' "$listing" | awk '{print $NF}' | grep -E '^trippy-.*\.dump$' | sort | tail -n 1)
+  if [ -z "$name" ]; then
+    echo "restore.sh: no trippy-*.dump under s3://${BACKUP_S3_BUCKET}/postgres/" >&2
+    exit 1
+  fi
+  src="s3://${BACKUP_S3_BUCKET}/postgres/${name}"
+  echo "latest dump ${src}"
 fi
 
 cleanup_tmp=""
@@ -63,6 +82,11 @@ if [ ! -f "$src" ]; then
   exit 2
 fi
 
+${COMPOSE} up -d --wait db
+# experiments copies public sequences (nextval defaults). --clean cannot drop
+# those sequences while the schema is there. It is a disposable copy.
+${COMPOSE} exec -T db psql -U trippy -d trippy -v ON_ERROR_STOP=1 \
+  -c "DROP SCHEMA IF EXISTS experiments CASCADE"
 ${COMPOSE} cp "$src" db:/tmp/trippy-restore.dump
 ${COMPOSE} exec -T db pg_restore -U trippy -d trippy --clean --if-exists \
   --exit-on-error -n public /tmp/trippy-restore.dump
@@ -70,4 +94,4 @@ ${COMPOSE} exec -T db rm -f /tmp/trippy-restore.dump
 if [ -n "$cleanup_tmp" ]; then
   rm -f "$cleanup_tmp"
 fi
-echo "restored public schema from ${1}"
+echo "restored public schema from ${src}"

@@ -6,6 +6,46 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, quote batch dedupes worker calls)
+
+**`quote_batch` runs each distinct source and params once, then copies that answer onto every request in the batch.** The client posts the batch as received. Supersedes “posted once” in the four-children entry below.
+
+### Done (2026-09-22, four short-lived quote children)
+
+**`/quote` runs at most four child processes at a time; each evaluates one `quote()` and exits.** Identical site and params are posted once, and every request id gets that answer. Supersedes one-at-a-time children in the price-sandbox section of design.md.
+
+### Done (2026-09-22, streamlit waits for a healthy sandbox)
+
+**`just streamlit` starts `price-sandbox`, loads quote functions, then `docker compose up --wait` until the container is healthy, then the UI.** A load that returns before Docker's next healthcheck no longer starts Streamlit against an unhealthy container.
+
+### Done (2026-09-22, local sandbox test stays off CI)
+
+**`pytest -m local` checks the laptop price sandbox `/health` is ok and `loaded` is at least 1.** CI runs `pytest -m "not llm and not local"` because the runner has no sandbox container.
+
+### Done (2026-09-22, restore drops experiments first)
+
+**`just restore` / `just restore-latest` starts `db` and drops `experiments` before `pg_restore`.** `experiments.availability_frozen.id` defaults to `public.availability_id_seq`, so `--clean` could not drop that sequence. The schema is a disposable copy; `extensions` stays. Supersedes “`experiments` stays” in the restore-latest entry below.
+
+### Done (2026-09-22, restore-latest)
+
+**`just restore-latest` pulls the newest `postgres/trippy-*.dump` from `BACKUP_S3_BUCKET` and restores `public` into local Postgres.** `just restore` still takes an explicit path or `s3://` key. The Nebius console folder `postgres/` is that prefix.
+
+### Done (2026-09-22, Streamlit requires a healthy sandbox)
+
+**Streamlit does not start unless `/health` is ok.** Local `just streamlit` no longer passes `--if-up`. Prod starts `db` and `price-sandbox`, loads functions, then Streamlit, which `depends_on` `service_healthy`. The loader waits for `service_started` (503 is still listening); waiting for healthy deadlocked the load. `quote_night` remains the fallback only after a run has started. Supersedes “`--if-up` is laptop Streamlit only”.
+
+### Done (2026-09-22, empty price sandbox is not healthy)
+
+**`/health` is 503 until at least one `quote()` is loaded.** `ok: true` with `loaded: 0` let Docker mark the container up, and every quote then returned `unknown site`. urlopen fails on 503, so the container stays unhealthy. The loader still connects on 503 to POST `/load`, and exits 1 when that push stores nothing. Supersedes “empty until load” as a healthy state.
+
+### Done (2026-09-22, extractor emits planned_exit_time)
+
+**Departure is `planned_exit_time` (`HH:MM`), forwarded to `QuoteParams` like arrival.** The compiled `quote()` already takes it for the late-exit row. Omitted when the user did not say when they leave. Supersedes the arrival-only clock in the query-extractor section of design.md.
+
+### Done (2026-09-22, extractor emits child_num and child_ages)
+
+**The query extractor emits `child_num` and `child_ages`.** Those are the `QuoteParams` fields the compiled `quote()` already takes. `party_size` stays the whole party for occupancy; the quote subtracts `child_num` from it for `adults_num`. `guest_type` is still unset. Supersedes “child_num and child ages stay off until the extractor grows those fields” in design.md.
+
 ### Done (2026-09-22, search package init stays empty)
 
 **`source/agent/search/__init__.py` does not re-export.** Callers import the submodule, the same way `recommender/` does. Supersedes the re-export sentence in the search-package entry below.

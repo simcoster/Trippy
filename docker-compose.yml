@@ -19,8 +19,9 @@ services:
     networks:
       - default
 
-  # Prices sandbox. Empty until `just load-price-sandbox` (or `just streamlit`,
-  # which loads if this container is up). `quote` stays isolated from
+  # Prices sandbox. /health is 503 until `just load-price-sandbox` (or
+  # `just streamlit`) pushes at least one quote(), so Docker leaves the
+  # container unhealthy while it is empty. `quote` stays isolated from
   # Postgres. `quote-host` is non-internal so Docker will publish
   # 127.0.0.1:8503 (an internal-only network drops host port bindings).
   price-sandbox:

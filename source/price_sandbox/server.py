@@ -6,12 +6,12 @@ import json
 import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import urlparse
 
 from .ast_check import PriceFunctionError, compile_quote
-from .execute import run_quote
-from .params import QuoteParams
+from .execute import QuoteCall, run_quotes
+from .params import QuoteParams, QuoteResult
 
 MAX_FUNCTIONS = 30
 MAX_BATCH = 30
@@ -57,6 +57,18 @@ def load_functions(entries: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def health_status() -> tuple[int, dict[str, Any]]:
+    """Ready only when at least one quote() is loaded.
+
+    Docker's healthcheck uses urlopen, which fails on a non-200, so an
+    empty process stays unhealthy until the loader pushes functions.
+    """
+    loaded = len(_functions)
+    if loaded == 0:
+        return 503, {"ok": False, "loaded": 0, "error": "no functions loaded"}
+    return 200, {"ok": True, "loaded": loaded}
+
+
 def _optional_site_id(value: Any) -> int | None:
     if value is None or value == "":
         return None
@@ -66,16 +78,24 @@ def _optional_site_id(value: Any) -> int | None:
         return None
 
 
+class _QueuedQuote(NamedTuple):
+    index: int
+    request_id: Any
+    site_id: int
+    call: QuoteCall
+
+
 def quote_batch(items: list[dict[str, Any]]) -> dict[str, Any]:
     if len(items) > MAX_BATCH:
         return {"ok": False, "error": f"at most {MAX_BATCH} quotes per request"}
-    results: list[dict[str, Any]] = []
-    for item in items:
+    results: list[dict[str, Any] | None] = [None] * len(items)
+    pending: list[_QueuedQuote] = []
+    for index, item in enumerate(items):
         request_id = item.get("id")
         try:
             site_id = int(item["site_id"])
         except (KeyError, TypeError, ValueError):
-            results.append({"id": request_id, "ok": False, "error": "site_id required"})
+            results[index] = {"id": request_id, "ok": False, "error": "site_id required"}
             continue
         source = _functions.get(site_id)
         if source is None:
@@ -83,23 +103,48 @@ def quote_batch(items: list[dict[str, Any]]) -> dict[str, Any]:
             if parent_site_id is not None:
                 source = _functions.get(parent_site_id)
         if source is None:
-            results.append({"id": request_id, "ok": False, "error": "unknown site"})
+            results[index] = {"id": request_id, "ok": False, "error": "unknown site"}
             continue
         try:
             params = QuoteParams.from_mapping(item.get("params") or {})
-            quoted = run_quote(source, params)
-        except Exception as exc:
-            results.append({"id": request_id, "ok": False, "error": str(exc)})
+        except (TypeError, ValueError) as exc:
+            results[index] = {"id": request_id, "ok": False, "error": str(exc)}
             continue
-        results.append(
-            {
-                "id": request_id,
-                "ok": True,
-                "site_id": site_id,
-                "price": quoted.price,
-                "explanation": quoted.explanation,
-            }
+        pending.append(
+            _QueuedQuote(
+                index=index,
+                request_id=request_id,
+                site_id=site_id,
+                call=QuoteCall(source=source, params=params),
+            )
         )
+    unique: list[_QueuedQuote] = []
+    alias: list[int] = []
+    first_of: dict[QuoteCall, int] = {}
+    for row in pending:
+        slot = first_of.get(row.call)
+        if slot is None:
+            slot = len(unique)
+            first_of[row.call] = slot
+            unique.append(row)
+        alias.append(slot)
+    outcomes = run_quotes([row.call for row in unique]) if unique else []
+    for row, slot in zip(pending, alias):
+        outcome = outcomes[slot]
+        if isinstance(outcome, QuoteResult):
+            results[row.index] = {
+                "id": row.request_id,
+                "ok": True,
+                "site_id": row.site_id,
+                "price": outcome.price,
+                "explanation": outcome.explanation,
+            }
+            continue
+        results[row.index] = {
+            "id": row.request_id,
+            "ok": False,
+            "error": str(outcome),
+        }
     return {"ok": True, "results": results}
 
 
@@ -125,10 +170,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path == "/health":
-            self._write_json(
-                200,
-                {"ok": True, "loaded": len(_functions)},
-            )
+            status, body = health_status()
+            self._write_json(status, body)
             return
         self._write_json(404, {"ok": False, "error": "not found"})
 

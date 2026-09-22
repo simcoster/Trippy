@@ -36,6 +36,7 @@ if str(_ROOT) not in sys.path:
 
 # Patch ssl.create_default_context before LangChain imports (Windows OpenSSL).
 import source.scraper.tls as _tls  # noqa: F401
+from source.price_sandbox.client import require_healthy_sandbox
 
 # Suppress Pydantic V1 compatibility warning with Python 3.14+
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
@@ -52,6 +53,8 @@ from langchain_core.messages import (
 from langchain_core.outputs import LLMResult
 
 load_dotenv(_ROOT / ".env")
+
+require_healthy_sandbox()
 
 # Read from the file on every Streamlit rerun. load_dotenv() does not
 # override a value already in os.environ, so editing .env used to no-op.

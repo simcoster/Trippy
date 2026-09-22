@@ -169,10 +169,20 @@ backup:
 restore dump:
     powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/cloud/restore.ps1 {{ quote(dump) }}
 
+# Newest trippy-*.dump under s3://$BACKUP_S3_BUCKET/postgres/ into local Postgres.
+[windows]
+restore-latest:
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/cloud/restore.ps1 latest
+
 # Restore public schema from a local dump or s3://bucket/key. Leaves experiments alone.
 [unix]
 restore dump:
     sh scripts/cloud/restore.sh {{ quote(dump) }}
+
+# Newest trippy-*.dump under s3://$BACKUP_S3_BUCKET/postgres/ into local Postgres.
+[unix]
+restore-latest:
+    sh scripts/cloud/restore.sh latest
 
 [private]
 [windows]
@@ -192,16 +202,19 @@ scrape-all:
     just scrape-availability
 
 # Local Streamlit agent. 8502 so an SSH -L 8501 to the VM does not steal the tab.
-# Loads quote() into the sandbox if compose is up; otherwise quote_night.
+# Start the sandbox, push quote(), wait until Docker reports it healthy, then the UI.
 streamlit:
-    just load-price-sandbox -- --if-up --wait-s 3
+    docker compose up -d price-sandbox
+    just load-price-sandbox -- --wait-s 15
+    docker compose up -d --wait --wait-timeout 60 price-sandbox
     uv run python -m streamlit run scripts/streamlit_chat.py --server.port 8502
 
-# VM: long-running db + streamlit + tunnel, then fill the sandbox
+# VM: sandbox first, load quote(), then Streamlit (it depends on a healthy sandbox).
 [unix]
 prod-up:
-    docker compose -f docker-compose.prod.yml --env-file .env up -d
+    docker compose -f docker-compose.prod.yml --env-file .env up -d db price-sandbox
     just prod-load-sandbox
+    docker compose -f docker-compose.prod.yml --env-file .env up -d
 
 # VM: POST site_price_functions into price-sandbox (one-shot, then exit)
 [unix]

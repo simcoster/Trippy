@@ -10,6 +10,7 @@ from typing import Any, NamedTuple
 
 from langsmith import traceable
 
+from source.agent.constraints import quote_party
 from source.agent.dates import _parse_iso_day
 from source.price_sandbox.client import (
     QuoteRequest,
@@ -27,6 +28,9 @@ class _SandboxQuoteKey(NamedTuple):
     adults_num: int
     weekend: bool
     planned_entry_time: str | None = None
+    child_num: int = 0
+    child_ages: tuple[int, ...] = ()
+    planned_exit_time: str | None = None
 
 
 class _SandboxQuoteBatch(NamedTuple):
@@ -38,6 +42,7 @@ class _ListPriceQuoteKey(NamedTuple):
     accommodation_type_id: int
     adults_num: int
     weekend: bool
+    child_num: int = 0
 
 
 class _QuoteCaches(NamedTuple):
@@ -108,10 +113,17 @@ def _quote_sandbox_batch(
             params=QuoteParams(
                 lodging=str(call["lodging"]),
                 adults_num=int(call["adults_num"]),
+                child_num=int(call.get("child_num") or 0),
+                child_ages=tuple(int(age) for age in (call.get("child_ages") or ())),
                 is_weekend_or_holiday=bool(call["is_weekend_or_holiday"]),
                 planned_entry_time=(
                     str(call["planned_entry_time"]).strip()
                     if call.get("planned_entry_time")
+                    else None
+                ),
+                planned_exit_time=(
+                    str(call["planned_exit_time"]).strip()
+                    if call.get("planned_exit_time")
                     else None
                 ),
             ),
@@ -143,7 +155,12 @@ def _sandbox_request_id(key: _SandboxQuoteKey) -> str:
         f"{key.campsite_id}:{key.lodging}:{key.adults_num}:{int(key.weekend)}"
     )
     if key.planned_entry_time:
-        return f"{req_id}:{key.planned_entry_time}"
+        req_id = f"{req_id}:{key.planned_entry_time}"
+    if key.planned_exit_time:
+        req_id = f"{req_id}:x{key.planned_exit_time}"
+    if key.child_num or key.child_ages:
+        ages = ",".join(str(age) for age in key.child_ages)
+        req_id = f"{req_id}:c{key.child_num}:{ages}"
     return req_id
 
 
@@ -162,14 +179,21 @@ def _sandbox_key_for_slot(
     adults: int,
     fallback_rate: RatePeriod,
     planned_entry_time: str | None,
+    child_num: int = 0,
+    child_ages: tuple[int, ...] = (),
+    planned_exit_time: str | None = None,
 ) -> _SandboxQuoteKey:
     entry = str(planned_entry_time).strip() if planned_entry_time else None
+    exit_at = str(planned_exit_time).strip() if planned_exit_time else None
     return _SandboxQuoteKey(
         campsite_id=int(slot["campsite_id"]),
         lodging=str(slot.get("accommodation_type") or ""),
         adults_num=adults,
         weekend=_slot_rate_period(slot, fallback_rate) == "weekend_holiday",
         planned_entry_time=entry,
+        child_num=child_num,
+        child_ages=child_ages,
+        planned_exit_time=exit_at,
     )
 
 
@@ -179,11 +203,19 @@ def _sandbox_quotes_for_slots(
     party_size: int | None,
     rate_period: RatePeriod,
     planned_entry_time: str | None = None,
+    planned_exit_time: str | None = None,
+    child_num: int | None = None,
+    child_ages: tuple[int, ...] | list[int] | None = None,
 ) -> _SandboxQuoteBatch:
     from source.agent.search.availability import _CAMPSITE, _PARENT_ID
 
     url = sandbox_url()
-    adults = party_size if party_size and party_size > 0 else 1
+    party = quote_party(
+        party_size=party_size,
+        child_num=child_num,
+        child_ages=child_ages,
+    )
+    adults = party.adults_num
     calls: list[dict[str, Any]] = []
     keys: list[_SandboxQuoteKey] = []
     seen_keys: set[_SandboxQuoteKey] = set()
@@ -193,6 +225,9 @@ def _sandbox_quotes_for_slots(
             adults=adults,
             fallback_rate=rate_period,
             planned_entry_time=planned_entry_time,
+            child_num=party.child_num,
+            child_ages=party.child_ages,
+            planned_exit_time=planned_exit_time,
         )
         if key in seen_keys:
             continue
@@ -205,8 +240,11 @@ def _sandbox_quotes_for_slots(
                 "campsite": slot.get(_CAMPSITE),
                 "lodging": key.lodging,
                 "adults_num": key.adults_num,
+                "child_num": key.child_num,
+                "child_ages": list(key.child_ages),
                 "is_weekend_or_holiday": key.weekend,
                 "planned_entry_time": key.planned_entry_time,
+                "planned_exit_time": key.planned_exit_time,
                 "parent_site_id": slot.get(_PARENT_ID),
             }
         )
