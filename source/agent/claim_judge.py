@@ -306,7 +306,7 @@ def _judge_system() -> str:
     return CLAIM_JUDGE_SYSTEM
 
 
-def warmup_claim_judge() -> None:
+def warmup_claim_judge() -> str | None:
     """Session ping: the system prompt alone, so the judge prefix is hot."""
     model = judge_model()
     started = time.perf_counter()
@@ -338,6 +338,7 @@ def warmup_claim_judge() -> None:
     )
     print(done, flush=True)
     logger.info(done)
+    return text
 
 
 def _no_think_kwargs() -> dict[str, Any]:

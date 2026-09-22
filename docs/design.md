@@ -1357,7 +1357,11 @@ already counts as that ping. `start_model_keepalive` still exists
 for an explicit interval (`TRIPPY_KEEPALIVE_INTERVAL_SEC`, default
 600 s; not a measured Nebius idle timeout) but nothing starts it.
 LangSmith: tag `keepalive`, run name `model-keepalive-session`,
-children `keepalive-{role}`. Stdout prints the ping and the reply
+children `keepalive-{role}`. The session round runs those calls on
+worker threads and copies the trace context onto each one, so the
+replies hang off that parent the way `model-keepalive-interval`
+already does. The claim-judge system-prompt ping is raw HTTP, so its
+reply is written as a `keepalive-claim_judge` child. Stdout prints the ping and the reply
 (or `keepalive failed`).
 `just run-eval -- --recommender` dumps those recs into
 `reports/evals/` without scoring them

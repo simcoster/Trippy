@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, session keepalive replies nest like the interval)
+
+**Session pings copy the LangSmith context onto their worker threads.**
+Interval traces already showed `keepalive-light` and
+`keepalive-recommender` under the parent. Session traces left those
+same calls as separate roots, and the claim-judge reply was absent.
+The judge reply is now a child too.
+
 ### Done (2026-09-22, recommender model call is on the trace)
 
 **The Kimi stream keeps the caller’s LangSmith context.** The
