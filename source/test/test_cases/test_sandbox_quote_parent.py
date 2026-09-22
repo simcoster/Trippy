@@ -5,6 +5,7 @@ from __future__ import annotations
 from source.agent.search.availability import _open_slots_sql
 from source.agent.search.sandbox import _sandbox_quotes_for_slots
 from source.price_sandbox.client import QuoteReply, QuoteRequest
+from source.price_sandbox.execute import QuoteCall
 from source.price_sandbox.params import QuoteResult
 from source.price_sandbox.server import load_functions, quote_batch
 
@@ -34,11 +35,11 @@ def test_quote_uses_parent_when_subcamp_is_not_loaded(monkeypatch):
     load_functions([{"site_id": 2, "source": parent, "sha256": "p"}])
     seen: list[str] = []
 
-    def fake_run(source, _params, **_kwargs):
-        seen.append(source)
-        return QuoteResult(price=10.0, explanation="parent")
+    def fake_run(calls: list[QuoteCall], **_kwargs):
+        seen.extend(call.source for call in calls)
+        return [QuoteResult(price=10.0, explanation="parent") for _call in calls]
 
-    monkeypatch.setattr("source.price_sandbox.server.run_quote", fake_run)
+    monkeypatch.setattr("source.price_sandbox.server.run_quotes", fake_run)
     payload = quote_batch(
         [
             {
@@ -65,11 +66,11 @@ def test_quote_keeps_subcamp_function_when_it_is_loaded(monkeypatch):
     )
     seen: list[str] = []
 
-    def fake_run(source, _params, **_kwargs):
-        seen.append(source)
-        return QuoteResult(price=7.0, explanation="child")
+    def fake_run(calls: list[QuoteCall], **_kwargs):
+        seen.extend(call.source for call in calls)
+        return [QuoteResult(price=7.0, explanation="child") for _call in calls]
 
-    monkeypatch.setattr("source.price_sandbox.server.run_quote", fake_run)
+    monkeypatch.setattr("source.price_sandbox.server.run_quotes", fake_run)
     payload = quote_batch(
         [
             {
@@ -88,9 +89,9 @@ def test_quote_unknown_when_parent_is_also_missing(monkeypatch):
     load_functions([])
 
     def fake_run(*_args, **_kwargs):
-        raise AssertionError("run_quote")
+        raise AssertionError("run_quotes")
 
-    monkeypatch.setattr("source.price_sandbox.server.run_quote", fake_run)
+    monkeypatch.setattr("source.price_sandbox.server.run_quotes", fake_run)
     payload = quote_batch(
         [
             {

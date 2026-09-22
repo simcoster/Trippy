@@ -128,7 +128,7 @@ def quote_batch(items: list[dict[str, Any]]) -> dict[str, Any]:
             first_of[row.call] = slot
             unique.append(row)
         alias.append(slot)
-    outcomes = run_quotes([row.call for row in unique])
+    outcomes = run_quotes([row.call for row in unique]) if unique else []
     for row, slot in zip(pending, alias):
         outcome = outcomes[slot]
         if isinstance(outcome, QuoteResult):
