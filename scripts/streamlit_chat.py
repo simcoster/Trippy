@@ -670,10 +670,26 @@ def _init_session() -> None:
     ping_new_session(st.session_state)
 
 
+_CHAT_INPUT_KEY = "chat_prompt"
+_EXAMPLE_PROMPT_KEY = "example_prompt"
+_EXAMPLE_PROMPTS = (
+    "אנחנו מחפשים מקום לשני מבוגרים בשבוע הבא בין שלישי לחמישי ללילה אחד, עם לפחות 2 שירותי נכים.",
+    "we're looking for a place for 2 adults and 2 kids for one next week somewhere on Tuesday-Thursday , with pools for the kids and a fridge for up to 300 nis",
+)
+
+
 def _reset_conversation() -> None:
     st.session_state.graph_messages = []
     st.session_state.display = []
     st.session_state.langsmith_thread_id = str(uuid4())
+    st.session_state.pop(_EXAMPLE_PROMPT_KEY, None)
+    st.session_state.pop(_CHAT_INPUT_KEY, None)
+
+
+def _apply_example_prompt() -> None:
+    picked = st.session_state.get(_EXAMPLE_PROMPT_KEY)
+    if isinstance(picked, str) and picked:
+        st.session_state[_CHAT_INPUT_KEY] = picked
 
 
 def _message_preview(msg: BaseMessage, max_len: int = 400) -> str:
@@ -1249,9 +1265,6 @@ with st.sidebar:
             st.caption(f"LangSmith project `{project_name()}`.")
         else:
             st.caption("LangSmith off — set `LANGSMITH_API_KEY` to record turns.")
-    if st.button("Reset conversation", width="stretch"):
-        _reset_conversation()
-        st.rerun()
 
     if not _PUBLIC_UI:
         st.divider()
@@ -1329,9 +1342,26 @@ for turn in st.session_state.display:
             with st.expander("LangGraph trace", expanded=False):
                 _render_trace(turn["trace"])
 
-prompt = (
-    st.chat_input(_ASK_PLACEHOLDER, disabled=_answered) or mcp_prompt
+with st.bottom:
+    if _answered:
+        if st.button("Reset", type="primary", width="stretch"):
+            _reset_conversation()
+            st.rerun()
+    else:
+        st.selectbox(
+            "Example prompts",
+            _EXAMPLE_PROMPTS,
+            index=None,
+            placeholder="Example prompts",
+            label_visibility="collapsed",
+            key=_EXAMPLE_PROMPT_KEY,
+            on_change=_apply_example_prompt,
+        )
+
+submitted = (
+    st.chat_input(_ASK_PLACEHOLDER, key=_CHAT_INPUT_KEY) if not _answered else None
 )
+prompt = submitted or mcp_prompt
 if prompt:
     st.session_state.display.append({"role": "user", "content": prompt})
     with st.chat_message("user"):

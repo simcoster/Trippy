@@ -1350,6 +1350,9 @@ once availability returns (N is distinct site + unit type), then
 Ranking when recommend is called. Recommend usage is
 `role="recommend"`. `client.toolbarMode` is `viewer` so Ctrl+C in the page copies
 instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
+After a reply the chat input is replaced by a primary Reset button, and an
+example-prompt dropdown fills the input without sending. Reset still does
+not re-ping models.
 Streamlit does not start the interval keepalive. Each new browser
 session sends a 5-token `hi` once per **model endpoint**
 (`ping_new_session`; Reset does not): Kimi, the 235B (light and
