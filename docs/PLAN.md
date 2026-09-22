@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, claim-judge keepalive reply is posted)
+
+**The session judge ping is posted as its own run.** `emit_child_span`
+ended the child in memory and never sent it, so `keepalive-claim_judge`
+was missing while the Kimi and light runs, which post themselves,
+showed up.
+
 ### Done (2026-09-22, session keepalive replies nest like the interval)
 
 **Session pings copy the LangSmith context onto their worker threads.**
