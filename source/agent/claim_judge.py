@@ -210,6 +210,26 @@ def _why_query(entry: dict[str, Any]) -> str | None:
     return None
 
 
+def _why_after_judge(
+    why: list[dict[str, Any]],
+    relevant_by_query: dict[str, set[str]],
+) -> list[dict[str, Any]]:
+    """Claim rows stay only when the judge named them in relevant_claims."""
+    kept: list[dict[str, Any]] = []
+    for entry in why:
+        if not isinstance(entry, dict):
+            continue
+        claim = entry.get("claim")
+        if not isinstance(claim, str) or not claim.strip():
+            kept.append(entry)
+            continue
+        query = _why_query(entry)
+        allowed = relevant_by_query.get(query, set()) if query else set()
+        if _norm(claim) in allowed:
+            kept.append(entry)
+    return kept
+
+
 def _compact_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for claim in claims:
@@ -909,6 +929,7 @@ def apply_claim_rule_judgements(
         verdicts: list[dict[str, Any]] = []
         retrieved: list[dict[str, Any]] = []
         relevant_norm: set[str] = set()
+        relevant_by_query: dict[str, set[str]] = {}
         drop = False
         drop_reason = ""
         for query in queries:
@@ -924,7 +945,14 @@ def apply_claim_rule_judgements(
             )
             verdict = cache[key]
             verdicts.append({"query": query, **verdict})
-            relevant_norm.update(_norm(t) for t in verdict.get("relevant_claims") or [])
+            named = {
+                _norm(text)
+                for text in verdict.get("relevant_claims") or []
+                if isinstance(text, str)
+            }
+            relevant_by_query[query] = named
+            relevant_norm.update(named)
+        passed_why = _why_after_judge(why, relevant_by_query)
         for entry in why:
             query = _why_query(entry)
             if query is None:
@@ -936,6 +964,7 @@ def apply_claim_rule_judgements(
                 break
         evidence = [c for c in claims if _norm(str(c.get("claim") or "")) in relevant_norm]
         fit = dict(fit)
+        fit["why"] = passed_why
         if evidence:
             fit["review_claims"] = evidence
         elif "review_claims" in fit:
@@ -945,7 +974,9 @@ def apply_claim_rule_judgements(
         if verdicts:
             fit["claim_judge"] = verdicts
         if drop:
-            why_out = list(why) + [{"reason": "claim_not_verified", "detail": drop_reason}]
+            why_out = list(passed_why) + [
+                {"reason": "claim_not_verified", "detail": drop_reason}
+            ]
             extra_rejected.append({**fit, "why": why_out})
             continue
         kept.append(fit)

@@ -32,14 +32,6 @@
             "price_explanation": "2 מבוגר [76.0], 2 ילד [58.0] []; רגיל",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "Two pools are open.",
-                    "date": "2026-09-04",
-                    "days_ago": 18,
-                    "distance": -0.8082532286643982,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
@@ -47,13 +39,6 @@
             ],
             "score": 5.7212656660926475,
             "review_claims": [
-                {
-                    "query": "pools for children",
-                    "claim": "Two pools are open.",
-                    "date": "2026-09-04",
-                    "days_ago": 18,
-                    "is_positive": true
-                },
                 {
                     "query": "pools for children",
                     "claim": "There is a natural water pool, lakes, and streams for young children to play in.",
@@ -67,13 +52,6 @@
                     "date": "2026-05-19",
                     "days_ago": 126,
                     "is_positive": true
-                },
-                {
-                    "query": "pools for children",
-                    "claim": "Two pools are closed.",
-                    "date": "2026-09-04",
-                    "days_ago": 18,
-                    "is_positive": false
                 }
             ],
             "campsite_rules": {
@@ -87,7 +65,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (6)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 1,
@@ -98,7 +76,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (13 תאי מקלחות נשים ו- 14 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 1,
@@ -109,7 +87,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "אין מקור מים, ללא מקלחת ושירותים.",
                         "accommodation_type_id": 5,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 1,
@@ -120,7 +98,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "אין מקור מים, ללא מקלחת ושירותים.",
                         "accommodation_type_id": 6,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 1,
@@ -131,7 +109,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (200)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     }
                 ],
                 "fridge": [
@@ -301,14 +279,12 @@
                 {
                     "query": "pools for children",
                     "relevant_claims": [
-                        "Two pools are open.",
                         "There is a natural water pool, lakes, and streams for young children to play in.",
-                        "There are shallow and deep pools with a lifeguard on duty.",
-                        "Two pools are closed."
+                        "There are shallow and deep pools with a lifeguard on duty."
                     ],
                     "satisfies": true,
                     "satisfy_by": "claim",
-                    "reason": "pools mentioned in claims"
+                    "reason": "pools for children mentioned"
                 },
                 {
                     "query": "fridge",
@@ -375,14 +351,6 @@
             "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "Lifeguards are present on site.",
-                    "date": "2026-09-13",
-                    "days_ago": 9,
-                    "distance": -0.6919704675674438,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
@@ -416,7 +384,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (7)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 37,
@@ -427,7 +395,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות (7 תאי מקלחות נשים ו- 4 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 37,
@@ -438,7 +406,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (80)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 37,
@@ -449,7 +417,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (10 תאי שירותי נשים ו- 8 תאי שירותי גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     },
                     {
                         "campsite_id": 37,
@@ -460,7 +428,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "לינת שטח באוהלים פרטיים",
                         "accommodation_type_id": 8,
-                        "distance": -0.62779700756073
+                        "distance": -0.6251458525657654
                     }
                 ],
                 "fridge": [
@@ -624,7 +592,7 @@
                     ],
                     "satisfies": true,
                     "satisfy_by": "claim",
-                    "reason": "shallow water for children"
+                    "reason": "natural pool suits children"
                 },
                 {
                     "query": "fridge",
@@ -685,14 +653,6 @@
             "price_explanation": "2 מבוגרים [76.0] + 2 ילדים [58.0] + (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "Lifeguards are present on site.",
-                    "date": "2026-09-13",
-                    "days_ago": 9,
-                    "distance": -0.6919704675674438,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
@@ -726,7 +686,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "2 חושות מחוברות עם דלת מקשרת שבכל חדר: 3 מיטות, מזרנים, שירותים, מקלחת עם מים חמים, קומקום חשמלי, תאורה, מיני מקרר, מזגן.",
                         "accommodation_type_id": 14,
-                        "distance": -0.6451560258865356
+                        "distance": -0.6426448225975037
                     },
                     {
                         "campsite_id": 38,
@@ -737,7 +697,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (5)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 38,
@@ -748,7 +708,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "2 חושות מחוברות עם דלת מקשרת שבכל חדר: 3 מיטות, מזרנים, שירותים, מקלחת עם מים חמים, קומקום חשמלי, תאורה, מיני מקרר, מזגן.",
                         "accommodation_type_id": 14,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 38,
@@ -759,7 +719,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "בכל חושה: 4 מיטות, מזרנים, שירותים, מקלחת עם מים חמים, קומקום חשמלי, תאורה, מיני מקרר, מזגן.",
                         "accommodation_type_id": 13,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 38,
@@ -770,7 +730,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (9 תאי מקלחות נשים ו- 9 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     }
                 ],
                 "fridge": [
@@ -930,7 +890,7 @@
                     ],
                     "satisfies": true,
                     "satisfy_by": "claim",
-                    "reason": "shallow water for children"
+                    "reason": "natural pool has shallow water"
                 },
                 {
                     "query": "fridge",
@@ -939,7 +899,7 @@
                     ],
                     "satisfies": true,
                     "satisfy_by": "rule",
-                    "reason": "fridge provided by rule"
+                    "reason": "fridge provided officially"
                 }
             ]
         },
@@ -979,7 +939,7 @@
                     "claim": "The health pools are about half a meter high and suitable for children of almost all ages.",
                     "date": "2026-08-26",
                     "days_ago": 27,
-                    "distance": -0.6994598507881165,
+                    "distance": -0.6988940834999084,
                     "is_positive": true
                 },
                 {
@@ -1037,7 +997,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מוקדי מדורה (3)",
                         "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
+                        "distance": -0.6409116983413696
                     },
                     {
                         "campsite_id": 13,
@@ -1048,7 +1008,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (15)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 13,
@@ -1059,7 +1019,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (5 תאי מקלחות נשים ו- 8 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 13,
@@ -1070,7 +1030,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "מקלחות מים חמים (5 תאי מקלחות נשים ו- 8 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6378976702690125
+                        "distance": -0.6358848810195923
                     },
                     {
                         "campsite_id": 13,
@@ -1081,7 +1041,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "הונגשו בחניון הלילה: חניה, שירותים, שביל לאזור הקמת אוהלים ולמטבח, חדרי צוות ומאהל קבוצתי, פינות פיקניק",
                         "accommodation_type_id": null,
-                        "distance": -0.6334753036499023
+                        "distance": -0.6306997537612915
                     }
                 ],
                 "fridge": [
@@ -1282,344 +1242,6 @@
                     "reason": "fridge provided officially"
                 }
             ]
-        },
-        {
-            "campsite_id": 8,
-            "campsite": "חניון לילה גן לאומי מעיין חרוד",
-            "accommodation_type_id": 28,
-            "accommodation_type": "לינת שטח באוהלים פרטיים",
-            "start": "2026-09-24",
-            "end": "2026-09-25",
-            "dates": [
-                {
-                    "start": "2026-09-24",
-                    "end": "2026-09-25",
-                    "room_count": 4,
-                    "price_per_night": 268.0,
-                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
-                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
-                },
-                {
-                    "start": "2026-09-25",
-                    "end": "2026-09-26",
-                    "room_count": 4,
-                    "price_per_night": 268.0,
-                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
-                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
-                },
-                {
-                    "start": "2026-09-26",
-                    "end": "2026-09-27",
-                    "room_count": 4,
-                    "price_per_night": 268.0,
-                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
-                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
-                },
-                {
-                    "start": "2026-09-27",
-                    "end": "2026-09-28",
-                    "room_count": 4,
-                    "price_per_night": 268.0,
-                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
-                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
-                }
-            ],
-            "room_count": 4,
-            "max_occupancy": null,
-            "occupancy_unknown": true,
-            "price_per_night": 268.0,
-            "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
-            "why": [
-                {
-                    "query": "pools for children",
-                    "claim": "The site is suitable for very young children.",
-                    "date": "2026-09-16",
-                    "days_ago": 6,
-                    "distance": -0.7169215679168701,
-                    "is_positive": true
-                },
-                {
-                    "query": "fridge",
-                    "site_amenity": "refrigerator",
-                    "distance": -0.9840019941329956
-                }
-            ],
-            "score": -0.8792383103853308,
-            "review_claims": [
-                {
-                    "query": "pools for children",
-                    "claim": "The pool is shallow and designated for children.",
-                    "date": "2026-08-06",
-                    "days_ago": 47,
-                    "is_positive": false
-                },
-                {
-                    "query": "pools for children",
-                    "claim": "The pools are very shallow and suitable only for young children and toddlers.",
-                    "date": "2026-08-18",
-                    "days_ago": 35,
-                    "is_positive": false
-                },
-                {
-                    "query": "pools for children",
-                    "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
-                    "date": "2026-08-18",
-                    "days_ago": 35,
-                    "is_positive": false
-                }
-            ],
-            "campsite_rules": {
-                "pools for children": [
-                    {
-                        "campsite_id": 8,
-                        "subject": "bonfire_stations",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": null,
-                        "qualifier_unit": 0,
-                        "evidence_span": "מוקדי מדורה (בתיאום עם צוות הגן)",
-                        "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "drinking_water_fountain",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 18.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "ברזיות מים לשתייה (18)",
-                        "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "shower",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 24.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "מקלחות מים חמים (12 תאי מקלחות נשים ו- 12 תאי מקלחות גברים)",
-                        "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "picnic_benches_and_tables",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 100.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "ספסלים ושולחנות פיקניק (100)",
-                        "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "toilets",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 31.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "שירותים (17 תאי שירותי נשים ו- 14 תאי שירותי גברים)",
-                        "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
-                    }
-                ],
-                "fridge": [
-                    {
-                        "campsite_id": 8,
-                        "subject": "refrigerator",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 10.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "מקררים (10)",
-                        "accommodation_type_id": null,
-                        "distance": -0.9840019941329956
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "freezers",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 2.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "מקפיא (2)",
-                        "accommodation_type_id": null,
-                        "distance": -0.853297770023346
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "field_kitchen",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 2.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "מטבח שדה (2)",
-                        "accommodation_type_id": null,
-                        "distance": -0.7938756942749023
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "coolers",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": 1.0,
-                        "qualifier_unit": 1,
-                        "evidence_span": "מֵקַרים (קולרים) (1)",
-                        "accommodation_type_id": null,
-                        "distance": -0.7661970853805542
-                    },
-                    {
-                        "campsite_id": 8,
-                        "subject": "mattress",
-                        "category": 1,
-                        "polarity": true,
-                        "qualifier": null,
-                        "qualifier_unit": 0,
-                        "evidence_span": "לינה במתחם pitch האוהל כולל מזרנים, שולחן פרטי צמוד לאוהל וחיבור חשמל.",
-                        "accommodation_type_id": 29,
-                        "distance": -0.6651463508605957
-                    }
-                ]
-            },
-            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0",
-            "booking_hotel_id": "15_1",
-            "retrieved": [
-                {
-                    "query": "pools for children",
-                    "claims": [
-                        {
-                            "claim": "The pool is shallow and designated for children.",
-                            "is_positive": false
-                        },
-                        {
-                            "claim": "The pools are very shallow and suitable only for young children and toddlers.",
-                            "is_positive": false
-                        },
-                        {
-                            "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
-                            "is_positive": false
-                        },
-                        {
-                            "claim": "The site is suitable for very young children.",
-                            "is_positive": true
-                        },
-                        {
-                            "claim": "The water is pleasant at the site.",
-                            "is_positive": true
-                        }
-                    ],
-                    "rules": [
-                        {
-                            "subject": "bonfire_stations",
-                            "polarity": true,
-                            "evidence_span": "מוקדי מדורה (בתיאום עם צוות הגן)"
-                        },
-                        {
-                            "subject": "drinking_water_fountain",
-                            "polarity": true,
-                            "evidence_span": "ברזיות מים לשתייה (18)",
-                            "qualifier": 18.0
-                        },
-                        {
-                            "subject": "shower",
-                            "polarity": true,
-                            "evidence_span": "מקלחות מים חמים (12 תאי מקלחות נשים ו- 12 תאי מקלחות גברים)",
-                            "qualifier": 24.0
-                        },
-                        {
-                            "subject": "picnic_benches_and_tables",
-                            "polarity": true,
-                            "evidence_span": "ספסלים ושולחנות פיקניק (100)",
-                            "qualifier": 100.0
-                        },
-                        {
-                            "subject": "toilets",
-                            "polarity": true,
-                            "evidence_span": "שירותים (17 תאי שירותי נשים ו- 14 תאי שירותי גברים)",
-                            "qualifier": 31.0
-                        }
-                    ]
-                },
-                {
-                    "query": "fridge",
-                    "claims": [
-                        {
-                            "claim": "The pool is shallow and designated for children.",
-                            "is_positive": false
-                        },
-                        {
-                            "claim": "The pools are very shallow and suitable only for young children and toddlers.",
-                            "is_positive": false
-                        },
-                        {
-                            "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
-                            "is_positive": false
-                        },
-                        {
-                            "claim": "The site is suitable for very young children.",
-                            "is_positive": true
-                        },
-                        {
-                            "claim": "The water is pleasant at the site.",
-                            "is_positive": true
-                        }
-                    ],
-                    "rules": [
-                        {
-                            "subject": "refrigerator",
-                            "polarity": true,
-                            "evidence_span": "מקררים (10)",
-                            "qualifier": 10.0
-                        },
-                        {
-                            "subject": "freezers",
-                            "polarity": true,
-                            "evidence_span": "מקפיא (2)",
-                            "qualifier": 2.0
-                        },
-                        {
-                            "subject": "field_kitchen",
-                            "polarity": true,
-                            "evidence_span": "מטבח שדה (2)",
-                            "qualifier": 2.0
-                        },
-                        {
-                            "subject": "coolers",
-                            "polarity": true,
-                            "evidence_span": "מֵקַרים (קולרים) (1)",
-                            "qualifier": 1.0
-                        },
-                        {
-                            "subject": "mattress",
-                            "polarity": true,
-                            "evidence_span": "לינה במתחם pitch האוהל כולל מזרנים, שולחן פרטי צמוד לאוהל וחיבור חשמל."
-                        }
-                    ]
-                }
-            ],
-            "claim_judge": [
-                {
-                    "query": "pools for children",
-                    "relevant_claims": [
-                        "The pool is shallow and designated for children.",
-                        "The pools are very shallow and suitable only for young children and toddlers.",
-                        "The pools are not suitable for children aged 8 and up or teenagers."
-                    ],
-                    "satisfies": true,
-                    "satisfy_by": "claim",
-                    "reason": "pools shallow for children"
-                },
-                {
-                    "query": "fridge",
-                    "relevant_claims": [],
-                    "satisfies": true,
-                    "satisfy_by": "rule",
-                    "reason": "fridge provided officially"
-                }
-            ]
         }
     ],
     "rejected": [
@@ -1687,19 +1309,14 @@
             "price_explanation": "2 adults [64.0]; 2 children [47.0] [ages ]; (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "The camping site is family-friendly.",
-                    "date": "2026-08-28",
-                    "days_ago": 25,
-                    "distance": -0.6527684926986694,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
                 },
-                { "reason": "claim_not_verified", "detail": "no pool mention" }
+                {
+                    "reason": "claim_not_verified",
+                    "detail": "no pool or water feature"
+                }
             ],
             "score": 6.509597967734357,
             "campsite_rules": {
@@ -1713,7 +1330,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "כל זוג חדרים חולקים: מקלחת, שירותים, מטבחון הכולל: מקרר קטן, קומקום חשמלי ומיקרוגל.",
                         "accommodation_type_id": 63,
-                        "distance": -0.6686164140701294
+                        "distance": -0.667340099811554
                     },
                     {
                         "campsite_id": 17,
@@ -1724,7 +1341,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "חמתקני בעירה (36)",
                         "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
+                        "distance": -0.6409116983413696
                     },
                     {
                         "campsite_id": 17,
@@ -1735,7 +1352,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "החדר כולל: 6 מיטות קומותיים, מזרנים, שמיכות וכריות, מקלחת, שירותים, מזגן.",
                         "accommodation_type_id": 62,
-                        "distance": -0.6411616206169128
+                        "distance": -0.6387693881988525
                     },
                     {
                         "campsite_id": 17,
@@ -1746,7 +1363,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "החדר כולל: 3 מיטות קומותיים, מזרנים, שמיכות וכריות, מזגן.",
                         "accommodation_type_id": 63,
-                        "distance": -0.6411616206169128
+                        "distance": -0.6387693881988525
                     },
                     {
                         "campsite_id": 17,
@@ -1757,7 +1374,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (2)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     }
                 ],
                 "fridge": [
@@ -1917,14 +1534,14 @@
                     "relevant_claims": [],
                     "satisfies": false,
                     "satisfy_by": null,
-                    "reason": "no pool mention"
+                    "reason": "no pool or water feature"
                 },
                 {
                     "query": "fridge",
                     "relevant_claims": [],
                     "satisfies": true,
                     "satisfy_by": "rule",
-                    "reason": "official listing provides fridges"
+                    "reason": "official fridge provided"
                 }
             ]
         },
@@ -1968,14 +1585,6 @@
             "price_explanation": "2 adults [64.0] 2 children [47.0] (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "Sinks are available.",
-                    "date": "2026-07-23",
-                    "days_ago": 61,
-                    "distance": -0.6872686147689819,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
@@ -2013,7 +1622,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מוקדי מדורה (1)",
                         "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
+                        "distance": -0.6409116983413696
                     },
                     {
                         "campsite_id": 15,
@@ -2024,7 +1633,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (3)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 15,
@@ -2035,7 +1644,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (9 תאי מקלחות ו- 1 תא מונגש)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 15,
@@ -2046,7 +1655,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (25)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 15,
@@ -2057,7 +1666,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (5 תאי שירותי נשים ו- 5 תאי שירותי גברים ו- 7 תאי שירותי נשים וגברים כאחד)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     }
                 ],
                 "fridge": [
@@ -2267,14 +1876,6 @@
             "price_explanation": "2 adults [64.0], 2 toddler [free] (ages 0, 0) (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "The site has sinks for washing dishes.",
-                    "date": "2026-07-31",
-                    "days_ago": 53,
-                    "distance": -0.6389888525009155,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
@@ -2284,7 +1885,7 @@
                     "detail": "no pool or child water feature"
                 }
             ],
-            "score": 5.490815286867059,
+            "score": 3.68231413039264,
             "review_claims": [
                 {
                     "query": "fridge",
@@ -2312,7 +1913,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (2)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 5,
@@ -2323,7 +1924,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (4 תאי מקלחות נשים ו-4 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 5,
@@ -2334,7 +1935,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (22)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 5,
@@ -2345,7 +1946,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (5 תאי שירותי נשים ו- 5 תאי שירותי גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     },
                     {
                         "campsite_id": 5,
@@ -2356,7 +1957,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "לינת שטח באוהלים פרטיים",
                         "accommodation_type_id": 20,
-                        "distance": -0.62779700756073
+                        "distance": -0.6251458525657654
                     }
                 ],
                 "fridge": [
@@ -2528,7 +2129,7 @@
                     ],
                     "satisfies": true,
                     "satisfy_by": "both",
-                    "reason": "fridge provided and claimed"
+                    "reason": "fridge claimed and provided"
                 }
             ]
         },
@@ -2571,14 +2172,6 @@
             "price_per_night": 222.0,
             "price_explanation": "2 מבוגרים [64.0], 2 ילדים [47.0], (רגיל)",
             "why": [
-                {
-                    "query": "pools for children",
-                    "claim": "The tents are spacious.",
-                    "date": "2026-05-13",
-                    "days_ago": 132,
-                    "distance": -0.6103758811950684,
-                    "is_positive": true
-                },
                 {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
@@ -2624,7 +2217,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מוקדי מדורה (2)",
                         "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
+                        "distance": -0.6409116983413696
                     },
                     {
                         "campsite_id": 16,
@@ -2635,7 +2228,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (15)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 16,
@@ -2646,7 +2239,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (5 תאי מקלחות נשים ו- 5 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 16,
@@ -2657,7 +2250,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (50)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 16,
@@ -2668,7 +2261,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (10 תאי שירותי נשים ו- 7 תאי שירותי גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     }
                 ],
                 "fridge": [
@@ -2843,7 +2436,7 @@
                     ],
                     "satisfies": true,
                     "satisfy_by": "both",
-                    "reason": "fridge granted by claims and rules"
+                    "reason": "fridge provided in rules and claims"
                 }
             ]
         },
@@ -2879,22 +2472,11 @@
             "price_explanation": "2 adults [64.0] + 2 toddler [free] [ages 0, 0]; רגיל",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "Coolers with cold drinking water are available.",
-                    "date": "2026-07-04",
-                    "days_ago": 80,
-                    "distance": -0.6131254434585571,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
                 },
-                {
-                    "reason": "claim_not_verified",
-                    "detail": "no pool or water feature"
-                }
+                { "reason": "claim_not_verified", "detail": "no pool mention" }
             ],
             "score": 3.0771641273626704,
             "review_claims": [
@@ -2917,7 +2499,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מוקדי מדורה (2)",
                         "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
+                        "distance": -0.6409116983413696
                     },
                     {
                         "campsite_id": 12,
@@ -2928,7 +2510,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (4)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 12,
@@ -2939,7 +2521,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים  (4 תאי מקלחות נשים ו- 4 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6378976702690125
+                        "distance": -0.6358848810195923
                     },
                     {
                         "campsite_id": 12,
@@ -2950,7 +2532,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (30)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 12,
@@ -2961,7 +2543,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (6 תאי שירותי נשים ו- 3 תאי שירותי גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     }
                 ],
                 "fridge": [
@@ -3122,7 +2704,7 @@
                     "relevant_claims": [],
                     "satisfies": false,
                     "satisfy_by": null,
-                    "reason": "no pool or water feature"
+                    "reason": "no pool mention"
                 },
                 {
                     "query": "fridge",
@@ -3167,21 +2749,13 @@
             "price_explanation": "2 adults [64.0]; 2 children [47.0] ['age 10', 'age 10']",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "The site has showers.",
-                    "date": "2026-07-12",
-                    "days_ago": 72,
-                    "distance": -0.6477125883102417,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
                 },
                 {
                     "reason": "claim_not_verified",
-                    "detail": "no pools mentioned"
+                    "detail": "no pool or child water feature"
                 }
             ],
             "score": 2.5797863480905496,
@@ -3205,7 +2779,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "החדר כולל: מיטות, מזרנים, שירותים, מקלחת מים חמים, מזגן",
                         "accommodation_type_id": 24,
-                        "distance": -0.6451560258865356
+                        "distance": -0.6426448225975037
                     },
                     {
                         "campsite_id": 6,
@@ -3216,7 +2790,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "החדר כולל: מיטות, מזרנים, שירותים, מקלחת מים חמים, מזגן",
                         "accommodation_type_id": 23,
-                        "distance": -0.6451560258865356
+                        "distance": -0.6426448225975037
                     },
                     {
                         "campsite_id": 6,
@@ -3227,7 +2801,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "החדר כולל: מיטות, מזרנים, שירותים, מקלחת מים חמים, מזגן",
                         "accommodation_type_id": 25,
-                        "distance": -0.6451560258865356
+                        "distance": -0.6426448225975037
                     },
                     {
                         "campsite_id": 6,
@@ -3238,7 +2812,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (1)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 6,
@@ -3249,7 +2823,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (7 תאי מקלחות נשים ו- 7 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     }
                 ],
                 "fridge": [
@@ -3409,7 +2983,7 @@
                     "relevant_claims": [],
                     "satisfies": false,
                     "satisfy_by": null,
-                    "reason": "no pools mentioned"
+                    "reason": "no pool or child water feature"
                 },
                 {
                     "query": "fridge",
@@ -3462,24 +3036,16 @@
             "price_explanation": "2 adults [47.0]; 2 children [35.0] (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "Campfires are allowed.",
-                    "date": "2025-10-20",
-                    "days_ago": 337,
-                    "distance": -0.6206249594688416,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
                 },
                 {
                     "reason": "claim_not_verified",
-                    "detail": "no pool or child water feature"
+                    "detail": "no pool or water feature"
                 }
             ],
-            "score": 2.0835048777500975,
+            "score": 2.028888424039055,
             "review_claims": [
                 {
                     "query": "fridge",
@@ -3500,7 +3066,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (10 במתחם ראשי 10 מתחם משני ו- 6 במתחם הדס)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 4,
@@ -3511,7 +3077,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (10 במתחם ראשי ו- 7 במתחם משני)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 4,
@@ -3522,7 +3088,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (6 תאי שירותי נשים ו- 5 תאי שירותי גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     },
                     {
                         "campsite_id": 4,
@@ -3533,7 +3099,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "לינת שטח באוהלים פרטיים",
                         "accommodation_type_id": 18,
-                        "distance": -0.62779700756073
+                        "distance": -0.6251458525657654
                     },
                     {
                         "campsite_id": 4,
@@ -3544,7 +3110,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "השכרת אוהל קמפינג משפחתי",
                         "accommodation_type_id": 19,
-                        "distance": -0.62779700756073
+                        "distance": -0.6251458525657654
                     }
                 ],
                 "fridge": [
@@ -3706,7 +3272,7 @@
                     "relevant_claims": [],
                     "satisfies": false,
                     "satisfy_by": null,
-                    "reason": "no pool or child water feature"
+                    "reason": "no pool or water feature"
                 },
                 {
                     "query": "fridge",
@@ -3759,24 +3325,16 @@
             "price_explanation": "family tent base [292.0] (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "Campfires are allowed.",
-                    "date": "2025-10-20",
-                    "days_ago": 337,
-                    "distance": -0.6206249594688416,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
                 },
                 {
                     "reason": "claim_not_verified",
-                    "detail": "no pool or child water feature"
+                    "detail": "no pool or water feature"
                 }
             ],
-            "score": 2.0835048777500975,
+            "score": 2.028888424039055,
             "review_claims": [
                 {
                     "query": "fridge",
@@ -3797,7 +3355,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (10 במתחם ראשי 10 מתחם משני ו- 6 במתחם הדס)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 4,
@@ -3808,7 +3366,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (10 במתחם ראשי ו- 7 במתחם משני)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 4,
@@ -3819,7 +3377,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (6 תאי שירותי נשים ו- 5 תאי שירותי גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     },
                     {
                         "campsite_id": 4,
@@ -3830,7 +3388,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "לינת שטח באוהלים פרטיים",
                         "accommodation_type_id": 18,
-                        "distance": -0.62779700756073
+                        "distance": -0.6251458525657654
                     },
                     {
                         "campsite_id": 4,
@@ -3841,7 +3399,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "השכרת אוהל קמפינג משפחתי",
                         "accommodation_type_id": 19,
-                        "distance": -0.62779700756073
+                        "distance": -0.6251458525657654
                     }
                 ],
                 "fridge": [
@@ -4003,7 +3561,7 @@
                     "relevant_claims": [],
                     "satisfies": false,
                     "satisfy_by": null,
-                    "reason": "no pool or child water feature"
+                    "reason": "no pool or water feature"
                 },
                 {
                     "query": "fridge",
@@ -4040,14 +3598,6 @@
             "price_explanation": "2 adults [64.0]; 2 toddler [free] (age 0, age 0); רגיל",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "The site has bathroom stalls and toilets.",
-                    "date": "2023-09-23",
-                    "days_ago": 1095,
-                    "distance": -0.6191202402114868,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
@@ -4078,7 +3628,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מרכזי מדורה (10)",
                         "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
+                        "distance": -0.6409116983413696
                     },
                     {
                         "campsite_id": 11,
@@ -4089,7 +3639,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים (10 תאי מקלחות)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 11,
@@ -4100,7 +3650,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (25)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 11,
@@ -4111,7 +3661,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (4 תאי שירותי נשים ו- 3 תאי שירותי גברים ו- 2 משתנות)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     },
                     {
                         "campsite_id": 11,
@@ -4122,7 +3672,7 @@
                         "qualifier_unit": 0,
                         "evidence_span": "לינת שטח באוהלים פרטיים",
                         "accommodation_type_id": 35,
-                        "distance": -0.62779700756073
+                        "distance": -0.6251458525657654
                     }
                 ],
                 "fridge": [
@@ -4197,7 +3747,10 @@
                             "claim": "The site has barbecues.",
                             "is_positive": true
                         },
-                        { "claim": "The site has shade.", "is_positive": true }
+                        {
+                            "claim": "The shower stalls are private.",
+                            "is_positive": true
+                        }
                     ],
                     "rules": [
                         {
@@ -4330,21 +3883,13 @@
             "price_explanation": "2 מבוגרים [64.0] + 2 ילדים [47.0] + (רגיל)",
             "why": [
                 {
-                    "query": "pools for children",
-                    "claim": "There are water taps with drinking water.",
-                    "date": "2021-08-14",
-                    "days_ago": 1865,
-                    "distance": -0.6613030433654785,
-                    "is_positive": true
-                },
-                {
                     "query": "fridge",
                     "site_amenity": "refrigerator",
                     "distance": -0.9840019941329956
                 },
                 {
                     "reason": "claim_not_verified",
-                    "detail": "no pools or children"
+                    "detail": "no pool or water feature"
                 }
             ],
             "score": 0.6448206316772466,
@@ -4368,7 +3913,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מוקדי מדורה (2)",
                         "accommodation_type_id": null,
-                        "distance": -0.6436553597450256
+                        "distance": -0.6409116983413696
                     },
                     {
                         "campsite_id": 10,
@@ -4379,7 +3924,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ברזיות מים לשתייה (4)",
                         "accommodation_type_id": null,
-                        "distance": -0.6406571865081787
+                        "distance": -0.637195348739624
                     },
                     {
                         "campsite_id": 10,
@@ -4390,7 +3935,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "מקלחות מים חמים לסירוגין (2 תאי מקלחות נשים ו- 2 תאי מקלחות גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6387801766395569
+                        "distance": -0.6362232565879822
                     },
                     {
                         "campsite_id": 10,
@@ -4401,7 +3946,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "ספסלים ושולחנות פיקניק (28)",
                         "accommodation_type_id": null,
-                        "distance": -0.6313620209693909
+                        "distance": -0.6268897652626038
                     },
                     {
                         "campsite_id": 10,
@@ -4412,7 +3957,7 @@
                         "qualifier_unit": 1,
                         "evidence_span": "שירותים (6 תאי שירותי נשים ו- 4 תאי שירותי גברים)",
                         "accommodation_type_id": null,
-                        "distance": -0.6278908252716064
+                        "distance": -0.6252787709236145
                     }
                 ],
                 "fridge": [
@@ -4576,7 +4121,7 @@
                     "relevant_claims": [],
                     "satisfies": false,
                     "satisfy_by": null,
-                    "reason": "no pools or children"
+                    "reason": "no pool or water feature"
                 },
                 {
                     "query": "fridge",
@@ -4585,7 +4130,341 @@
                     ],
                     "satisfies": true,
                     "satisfy_by": "both",
-                    "reason": "fridge claimed and ruled"
+                    "reason": "fridge claimed and provided"
+                }
+            ]
+        },
+        {
+            "campsite_id": 8,
+            "campsite": "חניון לילה גן לאומי מעיין חרוד",
+            "accommodation_type_id": 28,
+            "accommodation_type": "לינת שטח באוהלים פרטיים",
+            "start": "2026-09-24",
+            "end": "2026-09-25",
+            "dates": [
+                {
+                    "start": "2026-09-24",
+                    "end": "2026-09-25",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-25",
+                    "end": "2026-09-26",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-25&out=2026-09-26&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-26",
+                    "end": "2026-09-27",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-26&out=2026-09-27&rooms=1&ad1=2&ch1=2&inf1=0"
+                },
+                {
+                    "start": "2026-09-27",
+                    "end": "2026-09-28",
+                    "room_count": 4,
+                    "price_per_night": 268.0,
+                    "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+                    "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-27&out=2026-09-28&rooms=1&ad1=2&ch1=2&inf1=0"
+                }
+            ],
+            "room_count": 4,
+            "max_occupancy": null,
+            "occupancy_unknown": true,
+            "price_per_night": 268.0,
+            "price_explanation": "2 adults [76.0] + 2 children [58.0] + (רגיל)",
+            "why": [
+                {
+                    "query": "fridge",
+                    "site_amenity": "refrigerator",
+                    "distance": -0.9840019941329956
+                },
+                {
+                    "reason": "claim_not_verified",
+                    "detail": "no granting claim or rule"
+                }
+            ],
+            "score": -0.8792383103853308,
+            "review_claims": [
+                {
+                    "query": "pools for children",
+                    "claim": "The pool is shallow and designated for children.",
+                    "date": "2026-08-06",
+                    "days_ago": 47,
+                    "is_positive": false
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "The pools are very shallow and suitable only for young children and toddlers.",
+                    "date": "2026-08-18",
+                    "days_ago": 35,
+                    "is_positive": false
+                },
+                {
+                    "query": "pools for children",
+                    "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
+                    "date": "2026-08-18",
+                    "days_ago": 35,
+                    "is_positive": false
+                }
+            ],
+            "campsite_rules": {
+                "pools for children": [
+                    {
+                        "campsite_id": 8,
+                        "subject": "bonfire_stations",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "מוקדי מדורה (בתיאום עם צוות הגן)",
+                        "accommodation_type_id": null,
+                        "distance": -0.6409116983413696
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "drinking_water_fountain",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 18.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "ברזיות מים לשתייה (18)",
+                        "accommodation_type_id": null,
+                        "distance": -0.637195348739624
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "shower",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 24.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקלחות מים חמים (12 תאי מקלחות נשים ו- 12 תאי מקלחות גברים)",
+                        "accommodation_type_id": null,
+                        "distance": -0.6362232565879822
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "picnic_benches_and_tables",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 100.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "ספסלים ושולחנות פיקניק (100)",
+                        "accommodation_type_id": null,
+                        "distance": -0.6268897652626038
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "toilets",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 31.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "שירותים (17 תאי שירותי נשים ו- 14 תאי שירותי גברים)",
+                        "accommodation_type_id": null,
+                        "distance": -0.6252787709236145
+                    }
+                ],
+                "fridge": [
+                    {
+                        "campsite_id": 8,
+                        "subject": "refrigerator",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 10.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקררים (10)",
+                        "accommodation_type_id": null,
+                        "distance": -0.9840019941329956
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "freezers",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 2.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מקפיא (2)",
+                        "accommodation_type_id": null,
+                        "distance": -0.853297770023346
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "field_kitchen",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 2.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מטבח שדה (2)",
+                        "accommodation_type_id": null,
+                        "distance": -0.7938756942749023
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "coolers",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": 1.0,
+                        "qualifier_unit": 1,
+                        "evidence_span": "מֵקַרים (קולרים) (1)",
+                        "accommodation_type_id": null,
+                        "distance": -0.7661970853805542
+                    },
+                    {
+                        "campsite_id": 8,
+                        "subject": "mattress",
+                        "category": 1,
+                        "polarity": true,
+                        "qualifier": null,
+                        "qualifier_unit": 0,
+                        "evidence_span": "לינה במתחם pitch האוהל כולל מזרנים, שולחן פרטי צמוד לאוהל וחיבור חשמל.",
+                        "accommodation_type_id": 29,
+                        "distance": -0.6651463508605957
+                    }
+                ]
+            },
+            "booking_url": "https://secure-hotels.net/INPA/BE_Results.aspx?lang=heb&hotel=15_1&in=2026-09-24&out=2026-09-25&rooms=1&ad1=2&ch1=2&inf1=0",
+            "booking_hotel_id": "15_1",
+            "retrieved": [
+                {
+                    "query": "pools for children",
+                    "claims": [
+                        {
+                            "claim": "The pool is shallow and designated for children.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are very shallow and suitable only for young children and toddlers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The site is suitable for very young children.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The water is pleasant at the site.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "bonfire_stations",
+                            "polarity": true,
+                            "evidence_span": "מוקדי מדורה (בתיאום עם צוות הגן)"
+                        },
+                        {
+                            "subject": "drinking_water_fountain",
+                            "polarity": true,
+                            "evidence_span": "ברזיות מים לשתייה (18)",
+                            "qualifier": 18.0
+                        },
+                        {
+                            "subject": "shower",
+                            "polarity": true,
+                            "evidence_span": "מקלחות מים חמים (12 תאי מקלחות נשים ו- 12 תאי מקלחות גברים)",
+                            "qualifier": 24.0
+                        },
+                        {
+                            "subject": "picnic_benches_and_tables",
+                            "polarity": true,
+                            "evidence_span": "ספסלים ושולחנות פיקניק (100)",
+                            "qualifier": 100.0
+                        },
+                        {
+                            "subject": "toilets",
+                            "polarity": true,
+                            "evidence_span": "שירותים (17 תאי שירותי נשים ו- 14 תאי שירותי גברים)",
+                            "qualifier": 31.0
+                        }
+                    ]
+                },
+                {
+                    "query": "fridge",
+                    "claims": [
+                        {
+                            "claim": "The pool is shallow and designated for children.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are very shallow and suitable only for young children and toddlers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The pools are not suitable for children aged 8 and up or teenagers.",
+                            "is_positive": false
+                        },
+                        {
+                            "claim": "The site is suitable for very young children.",
+                            "is_positive": true
+                        },
+                        {
+                            "claim": "The water is pleasant at the site.",
+                            "is_positive": true
+                        }
+                    ],
+                    "rules": [
+                        {
+                            "subject": "refrigerator",
+                            "polarity": true,
+                            "evidence_span": "מקררים (10)",
+                            "qualifier": 10.0
+                        },
+                        {
+                            "subject": "freezers",
+                            "polarity": true,
+                            "evidence_span": "מקפיא (2)",
+                            "qualifier": 2.0
+                        },
+                        {
+                            "subject": "field_kitchen",
+                            "polarity": true,
+                            "evidence_span": "מטבח שדה (2)",
+                            "qualifier": 2.0
+                        },
+                        {
+                            "subject": "coolers",
+                            "polarity": true,
+                            "evidence_span": "מֵקַרים (קולרים) (1)",
+                            "qualifier": 1.0
+                        },
+                        {
+                            "subject": "mattress",
+                            "polarity": true,
+                            "evidence_span": "לינה במתחם pitch האוהל כולל מזרנים, שולחן פרטי צמוד לאוהל וחיבור חשמל."
+                        }
+                    ]
+                }
+            ],
+            "claim_judge": [
+                {
+                    "query": "pools for children",
+                    "relevant_claims": [
+                        "The pool is shallow and designated for children.",
+                        "The pools are very shallow and suitable only for young children and toddlers.",
+                        "The pools are not suitable for children aged 8 and up or teenagers."
+                    ],
+                    "satisfies": false,
+                    "satisfy_by": null,
+                    "reason": "no granting claim or rule"
+                },
+                {
+                    "query": "fridge",
+                    "relevant_claims": [],
+                    "satisfies": true,
+                    "satisfy_by": "rule",
+                    "reason": "fridge provided officially"
                 }
             ]
         },
@@ -5458,7 +5337,7 @@
             ]
         }
     ],
-    "rejected_count": 34,
+    "rejected_count": 35,
     "constraints": {
         "numeric_constraints": [
             { "field": "party_size", "operator": ">=", "value": 4 },
@@ -6654,14 +6533,14 @@
                 }
             ],
             "cached": 0,
-            "latency_ms": 412.21859998768196
+            "latency_ms": 876.6935000312515
         },
         "quoted_count": 56
     },
     "why_not": [
         {
             "stage": "missing",
-            "count": 9,
+            "count": 10,
             "query": "pools for children",
             "sites": [
                 "חניון לילה שמורת טבע חי-בר יוטבתה",
@@ -6672,7 +6551,8 @@
                 "חניון לילה גן לאומי ממשית – החאן הנבטי",
                 "חניון לילה גן לאומי תל אשקלון",
                 "חניון לילה חוות משמר הכרמל",
-                "חניון לילה גן לאומי מקורות הירקון"
+                "חניון לילה גן לאומי מקורות הירקון",
+                "חניון לילה גן לאומי מעיין חרוד"
             ]
         },
         {

@@ -1254,7 +1254,8 @@ list. Extractor, light, and judge stay 235B.
 
 The node does not dump raw LangGraph messages. It packs the original
 query, the extractor JSON (`constraints`), and compact `fits`: stay
-identity, `why`, `review_claims` (the judge’s relevant set, including
+identity, `why` (a claim row stays only when the judge named it in
+`relevant_claims`), `review_claims` (the judge’s relevant set, including
 nos), retrieved official rules as they are, and `claim_judge`. `score`
 and `rejected` stay out of the model input. The prompt tells it to
 cite a listing row only when that row is about the ask — retrieved

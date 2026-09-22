@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, why keeps only judge-relevant claims)
+
+**A claim in `why` stays only if the judge named it in `relevant_claims`.**
+The embedding hit that sent the site to the judge is not left on the
+fit when the judge left that sentence out. Supersedes treating that
+pre-judge claim as a pass.
+
 ### Done (2026-09-22, judge width 5 and a session warmup)
 
 **Live claim judges run 5 at a time again.** Ten-wide made real turns
