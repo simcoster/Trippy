@@ -6,6 +6,13 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, why is stated amenities; rules follow the judge)
+
+**`why` is only stated amenities on the unit.** Campsite rules stay
+only when the judge names them in `relevant_rules`. Why-not names
+campsites when there are one or two, and only a count from three up.
+Supersedes leaving retrieved rules and embedding claims on `why`.
+
 ### Done (2026-09-22, why keeps only judge-relevant claims)
 
 **A claim in `why` stays only if the judge named it in `relevant_claims`.**

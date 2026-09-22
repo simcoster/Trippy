@@ -39,7 +39,10 @@ def test_tent_listing_dropped_when_judge_says_not_desert():
     )
     assert out["fits"] == []
     assert out["rejected_count"] == 1
-    assert out["rejected"][0]["why"][-1]["reason"] == "claim_not_verified"
+    assert out["rejected"][0]["why"] == [
+        {"query": "desert", "stated_amenity": "tent"}
+    ]
+    assert out["rejected"][0]["claim_judge"][0]["satisfies"] is False
 
 
 def test_outlet_listing_kept_when_judge_says_electricity():

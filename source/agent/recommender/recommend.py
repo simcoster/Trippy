@@ -111,10 +111,7 @@ Cite listing vs reviews (use date / days_ago when you name a review):
   Also, many reviews say the showers are dirty."
 
 Evidence, in this order of trust:
-- why: how each request was met. stated_amenity is the unit listing,
-  site_amenity is the campsite listing, locus room means the guest wanted
-  it inside the unit. A why entry with claim is a guest review only —
-  never present it as listed.
+- why: stated amenities on the unit that met the request.
 - review_claims: guest claims a judge kept as about the request,
   positive and negative (is_positive), with date and days_ago. Use them
   for match, contradiction, review-only facts, and related caveats —
@@ -122,10 +119,8 @@ Evidence, in this order of trust:
   that lists the amenity. Weigh recent reviews more. claim text is
   English (text_en) — paraphrase it in the user's language; never paste
   it.
-- rules: official listing rows retrieved for the request. MOST are
-  unrelated nearest neighbors. Cite a rule only when it is actually about
-  the ask, including polarity-false forbids (dogs_allowed false for pet
-  friendly). A tent/cabin/room/hut subject is lodging, not a location or
+- rules: official listing rows the judge kept as about the request,
+  including polarity-false forbids. A tent/cabin/room/hut subject is lodging, not a location or
   a vibe. electric_stove / kettle is cooking, not campsite electricity.
   A caravan-bay hookup does not serve a guest without a caravan.
   subject is an internal key (tent_pitch, dogs_allowed). Use

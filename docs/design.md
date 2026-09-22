@@ -1254,13 +1254,11 @@ list. Extractor, light, and judge stay 235B.
 
 The node does not dump raw LangGraph messages. It packs the original
 query, the extractor JSON (`constraints`), and compact `fits`: stay
-identity, `why` (a claim row stays only when the judge named it in
-`relevant_claims`), `review_claims` (the judge’s relevant set, including
-nos), retrieved official rules as they are, and `claim_judge`. `score`
-and `rejected` stay out of the model input. The prompt tells it to
-cite a listing row only when that row is about the ask — retrieved
-rules are still unsifted nearest neighbors (tent-as-desert,
-stove-as-electricity). `relevant_rules` is not a judge field.
+identity, `why` (stated amenities on the unit), `review_claims` (the judge’s relevant set, including
+nos), official rules the judge named in `relevant_rules`, and `claim_judge`. `score`
+and `rejected` stay out of the model input. Rules on the fit are the
+subjects the judge named in `relevant_rules`. A reply from a judge that
+omits that field still carries the retrieved rows.
 
 Output is JSON: the top 2 or 3 stays (3 when a third is another
 useful option; the one fit when that is all there is; never more
@@ -1278,8 +1276,9 @@ A fit's `dates` are all shown. Several check-ins collapse to ranges
 (`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site, with a note to change the date
 on the booking page when more than one date fits. After the picks, render appends
 `why_not` in the query's language: other available sites by name, and
-why they were left out (`3 other sites have availability [A, B, C] but
-they don't have pools`).
+why they were left out. Three or more campsites are a count only
+(`3 campsites say they don't have pools`). One or two are named
+(`2 campsites [A and B] say that they don't have pools`).
 `why` leads with the matching facts, not a recap of the query,
 dates, or party (those are on the stay line). If listing and reviews
 agree the asked thing exists, say it once — reviews add quality or

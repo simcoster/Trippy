@@ -72,7 +72,11 @@ about a beach or ים התיכון does.
      (shared word, different place).
    - Quote claim text exactly as given. Empty list if none are about it.
 
-2. satisfies: true iff a relevant claim says yes OR a campsite rule
+2. relevant_rules: every campsite rule that is actually about the request.
+   Quote subject exactly. A drinking fountain, shower, or bonfire is not
+   a pool. Empty list if none are about it.
+
+3. satisfies: true iff a relevant claim says yes OR a campsite rule
    grants the request. A no never decides this. Complaints,
    is_positive=false, polarity-false rules, and "not provided" do not veto
    a yes; leave satisfies true and keep those nos in relevant_claims.
@@ -147,7 +151,7 @@ the way to the water." is_positive=true.
    "reason": "beach access is the sea coast"}
 
 Output JSON only:
-{"relevant_claims": [str], "satisfies": bool,
+{"relevant_claims": [str], "relevant_rules": [str], "satisfies": bool,
  "satisfy_by": "claim" | "rule" | "both" | null, "reason": str}
 """.strip()
 
@@ -177,8 +181,11 @@ Request "near the sea". Claim i=0 "region:dead-sea". Claim i=1
 → {"relevant": [], "satisfies": false, "satisfy_by": null,
    "reason": "Dead Sea not coast"}
 
+Rules in the user JSON have i. relevant_rules is those i values (ints),
+never the subject text.
+
 Output JSON only:
-{"relevant": [int], "satisfies": bool,
+{"relevant": [int], "relevant_rules": [int], "satisfies": bool,
  "satisfy_by": "claim" | "rule" | "both" | null, "reason": str}
 """.strip()
 
@@ -189,7 +196,7 @@ job's rules or claims decide another.
 
 Return JSON only:
 {"judgements": [
-  {"i": 0, "relevant": [int], "satisfies": bool,
+  {"i": 0, "relevant": [int], "relevant_rules": [int], "satisfies": bool,
    "satisfy_by": "claim" | "rule" | "both" | null, "reason": str},
   ...
 ]}
@@ -210,24 +217,13 @@ def _why_query(entry: dict[str, Any]) -> str | None:
     return None
 
 
-def _why_after_judge(
-    why: list[dict[str, Any]],
-    relevant_by_query: dict[str, set[str]],
-) -> list[dict[str, Any]]:
-    """Claim rows stay only when the judge named them in relevant_claims."""
-    kept: list[dict[str, Any]] = []
-    for entry in why:
-        if not isinstance(entry, dict):
-            continue
-        claim = entry.get("claim")
-        if not isinstance(claim, str) or not claim.strip():
-            kept.append(entry)
-            continue
-        query = _why_query(entry)
-        allowed = relevant_by_query.get(query, set()) if query else set()
-        if _norm(claim) in allowed:
-            kept.append(entry)
-    return kept
+def _why_after_judge(why: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """why is the unit's stated amenities. Claims and site listings live elsewhere."""
+    return [
+        entry
+        for entry in why
+        if isinstance(entry, dict) and entry.get("stated_amenity")
+    ]
 
 
 def _compact_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -394,8 +390,9 @@ def _verdict_from_parsed(
     claim_rows: list[dict[str, Any]],
     *,
     compact: bool,
+    rule_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    return {
+    verdict = {
         "relevant_claims": _relevant_claim_texts(
             parsed, claim_rows, compact=compact
         ),
@@ -403,6 +400,12 @@ def _verdict_from_parsed(
         "satisfy_by": parsed.get("satisfy_by"),
         "reason": str(parsed.get("reason") or ""),
     }
+    subjects = _relevant_rule_subjects(
+        parsed, rule_rows or [], compact=compact
+    )
+    if subjects is not None:
+        verdict["relevant_rules"] = subjects
+    return verdict
 
 
 def _as_claim_index(value: Any) -> int | None:
@@ -450,6 +453,53 @@ def _relevant_claim_texts(
                 seen.add(key)
                 texts.append(item)
     return texts
+
+
+def _relevant_rule_subjects(
+    parsed: dict[str, Any],
+    rule_rows: list[dict[str, Any]],
+    *,
+    compact: bool,
+) -> list[str] | None:
+    """Subjects the judge named. None when the field was not in the reply."""
+    if "relevant_rules" not in parsed:
+        return None
+    raw = parsed.get("relevant_rules")
+    if not isinstance(raw, list):
+        return []
+    subjects: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if compact:
+            idx = _as_claim_index(item)
+            if idx is not None and 0 <= idx < len(rule_rows):
+                item = rule_rows[idx].get("subject")
+        text = str(item or "").strip()
+        key = _norm(text)
+        if text and key not in seen:
+            seen.add(key)
+            subjects.append(text)
+    return subjects
+
+
+def _judge_rule_rows(
+    rules: list[dict[str, Any]], *, compact: bool
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for rule in rules:
+        if rule.get("error"):
+            continue
+        row = {
+            "subject": rule.get("subject"),
+            "category": rule.get("category"),
+            "polarity": rule.get("polarity"),
+            "qualifier": rule.get("qualifier"),
+            "evidence_span": rule.get("evidence_span"),
+        }
+        if compact:
+            row = {"i": len(rows), **row}
+        rows.append(row)
+    return rows
 
 
 def _compact_rules_for_tool(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -543,17 +593,7 @@ def judge_site_request(
             "campsite": campsite,
             "note": note,
             "claims": payload_claims,
-            "campsite_rules": [
-                {
-                    "subject": r.get("subject"),
-                    "category": r.get("category"),
-                    "polarity": r.get("polarity"),
-                    "qualifier": r.get("qualifier"),
-                    "evidence_span": r.get("evidence_span"),
-                }
-                for r in rules
-                if not r.get("error")
-            ],
+            "campsite_rules": _judge_rule_rows(rules, compact=compact),
         },
         ensure_ascii=False,
     )
@@ -585,7 +625,9 @@ def judge_site_request(
         logger.warning("claim_judge unparseable for %s %r: %s", campsite, query, raw[:200])
         verdict = _unparseable_verdict(raw)
     else:
-        verdict = _verdict_from_parsed(parsed, claim_rows, compact=compact)
+        verdict = _verdict_from_parsed(
+            parsed, claim_rows, compact=compact, rule_rows=rules
+        )
     return verdict
 
 
@@ -654,6 +696,41 @@ def _queries_for_fit(fit: dict[str, Any]) -> list[str]:
             if isinstance(q, str) and q
         )
     )
+
+
+def _keep_named_rules(rules: list, subjects: list[str]) -> list:
+    allowed = {_norm(subject) for subject in subjects}
+    return [
+        rule
+        for rule in rules
+        if isinstance(rule, dict)
+        and _norm(str(rule.get("subject") or "")) in allowed
+    ]
+
+
+def _apply_relevant_rules(
+    fit: dict[str, Any],
+    retrieved: list[dict[str, Any]],
+    verdicts: list[dict[str, Any]],
+) -> None:
+    for verdict in verdicts:
+        if "relevant_rules" not in verdict:
+            continue
+        query = verdict.get("query")
+        subjects = [
+            str(subject)
+            for subject in verdict.get("relevant_rules") or []
+            if str(subject).strip()
+        ]
+        for rec in retrieved:
+            if rec.get("query") == query:
+                rec["rules"] = _keep_named_rules(list(rec.get("rules") or []), subjects)
+        raw = fit.get("campsite_rules")
+        if isinstance(raw, dict) and query in raw:
+            kept_rules = dict(raw)
+            kept_rules[query] = _keep_named_rules(list(raw.get(query) or []), subjects)
+            fit["campsite_rules"] = kept_rules
+            raw = kept_rules
 
 
 def _rules_from_fit(fit: dict[str, Any], query: str) -> list[dict[str, Any]]:
@@ -725,6 +802,7 @@ def _run_judge_jobs_batch(
     cache: dict[tuple[int, str], dict[str, Any]] = {}
     live_keys: list[tuple[int, str]] = []
     claim_rows_by_i: list[list[dict[str, Any]]] = []
+    rule_rows_by_i: list[list[dict[str, Any]]] = []
     jobs_payload: list[dict[str, Any]] = []
     note = (
         "Most claims and rules are probably not about the request. "
@@ -738,8 +816,10 @@ def _run_judge_jobs_batch(
             cache[key] = _empty_verdict()
             continue
         rows = _claim_rows_for_job(claims, compact=compact)
+        rule_rows = _judge_rule_rows(rules, compact=compact)
         live_keys.append(key)
         claim_rows_by_i.append(rows)
+        rule_rows_by_i.append(rule_rows)
         payload_claims = (
             [{"i": j, **row} for j, row in enumerate(rows)] if compact else rows
         )
@@ -749,16 +829,7 @@ def _run_judge_jobs_batch(
                 "request": job["query"],
                 "campsite": job["campsite"],
                 "claims": payload_claims,
-                "campsite_rules": [
-                    {
-                        "subject": r.get("subject"),
-                        "category": r.get("category"),
-                        "polarity": r.get("polarity"),
-                        "qualifier": r.get("qualifier"),
-                        "evidence_span": r.get("evidence_span"),
-                    }
-                    for r in rules
-                ],
+                "campsite_rules": rule_rows,
             }
         )
     if not live_keys:
@@ -790,7 +861,9 @@ def _run_judge_jobs_batch(
         if row is None:
             cache[key] = _unparseable_verdict(raw)
             continue
-        cache[key] = _verdict_from_parsed(row, claim_rows_by_i[i], compact=compact)
+        cache[key] = _verdict_from_parsed(
+            row, claim_rows_by_i[i], compact=compact, rule_rows=rule_rows_by_i[i]
+        )
     return cache
 
 
@@ -929,9 +1002,7 @@ def apply_claim_rule_judgements(
         verdicts: list[dict[str, Any]] = []
         retrieved: list[dict[str, Any]] = []
         relevant_norm: set[str] = set()
-        relevant_by_query: dict[str, set[str]] = {}
         drop = False
-        drop_reason = ""
         for query in queries:
             key = (cid, query)
             q_claims = [c for c in claims if c.get("query") == query] or claims
@@ -950,9 +1021,8 @@ def apply_claim_rule_judgements(
                 for text in verdict.get("relevant_claims") or []
                 if isinstance(text, str)
             }
-            relevant_by_query[query] = named
             relevant_norm.update(named)
-        passed_why = _why_after_judge(why, relevant_by_query)
+        passed_why = _why_after_judge(why)
         for entry in why:
             query = _why_query(entry)
             if query is None:
@@ -960,11 +1030,11 @@ def apply_claim_rule_judgements(
             verdict = cache.get((cid, query))
             if verdict is not None and not verdict.get("satisfies"):
                 drop = True
-                drop_reason = str(verdict.get("reason") or "claim_not_verified")
                 break
         evidence = [c for c in claims if _norm(str(c.get("claim") or "")) in relevant_norm]
         fit = dict(fit)
         fit["why"] = passed_why
+        _apply_relevant_rules(fit, retrieved, verdicts)
         if evidence:
             fit["review_claims"] = evidence
         elif "review_claims" in fit:
@@ -974,10 +1044,7 @@ def apply_claim_rule_judgements(
         if verdicts:
             fit["claim_judge"] = verdicts
         if drop:
-            why_out = list(passed_why) + [
-                {"reason": "claim_not_verified", "detail": drop_reason}
-            ]
-            extra_rejected.append({**fit, "why": why_out})
+            extra_rejected.append({**fit, "why": list(passed_why)})
             continue
         kept.append(fit)
 

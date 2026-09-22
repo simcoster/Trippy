@@ -80,9 +80,42 @@ def test_why_keeps_only_claims_the_judge_named():
     )
     assert out["fits"] == []
     why = out["rejected"][0]["why"]
-    assert not any(entry.get("claim") == "The tents are spacious." for entry in why)
-    assert why[0]["site_amenity"] == "refrigerator"
-    assert why[-1]["reason"] == "claim_not_verified"
+    assert why == []
+    assert out["rejected"][0]["claim_judge"][0]["satisfies"] is False
+
+
+def test_rules_stay_only_when_the_judge_names_them():
+    fit = {
+        "campsite_id": 5,
+        "campsite": "Yehudiya",
+        "why": [{"query": "pools for children", "stated_amenity": "pool"}],
+        "campsite_rules": {
+            "pools for children": [
+                {"subject": "drinking_water_fountain", "polarity": True},
+                {"subject": "pool", "polarity": True},
+            ]
+        },
+    }
+
+    def _fn(**kwargs):
+        return {
+            "relevant_claims": [],
+            "relevant_rules": ["pool"],
+            "satisfies": True,
+            "satisfy_by": "rule",
+            "reason": "pool listed",
+        }
+
+    out = apply_claim_rule_judgements(
+        {"fits": [fit], "rejected": [], "rejected_count": 0},
+        judge=_fn,
+        search_rules=lambda *a, **k: [],
+    )
+    rules = out["fits"][0]["campsite_rules"]["pools for children"]
+    assert [rule["subject"] for rule in rules] == ["pool"]
+    assert out["fits"][0]["why"] == [
+        {"query": "pools for children", "stated_amenity": "pool"}
+    ]
 
 
 def test_forbidding_rule_is_its_own_why_not_line():
