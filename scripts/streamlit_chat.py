@@ -90,16 +90,17 @@ except Exception:
     def ping(**_kwargs: Any) -> None:
         raise DatabaseUnavailable("db.connect failed to load")
 
-import source.agent.recommender as _recommender_mod
+import source.agent.recommender.timing as _recommender_timing
 
-if not hasattr(_recommender_mod, "last_recommend_timing"):
-    importlib.reload(_recommender_mod)
+if not hasattr(_recommender_timing, "last_recommend_timing"):
+    importlib.reload(_recommender_timing)
 
 import source.agent.graph as agent_graph
 import source.agent.search as agent_search
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
 from source.agent.keepalive import ping_new_session, start_model_keepalive
-from source.agent.recommender import last_recommend_timing, listen_recommend_text
+from source.agent.recommender.recommend import listen_recommend_text
+from source.agent.recommender.timing import last_recommend_timing
 from source.agent.timing import collect_stages, format_stages
 from source.agent.tracing import (
     agent_run_config,

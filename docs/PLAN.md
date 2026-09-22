@@ -6,6 +6,65 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, recommender warmup removed)
+
+**`warmup_recommender` is gone.** Keepalive and the Kimi→Super
+first-token fallback cover a cold replica. Removed the package latch
+and `test_recommender_warmup.py`. Supersedes
+“`warmup_recommender` remains for its unit test” (2026-09-19).
+design.md “Recommender”.
+
+### Done (2026-09-22, recommender package)
+
+**Recommender code lives in `source/agent/recommender/`.**
+`recommend.py` packs, streams, and renders. Model ids and thinking-off
+flags are `models.py`. Clocks, usage, and the timing log are
+`timing.py`. Stream deadline is `stream.py`; Kimi→Super is
+`fallback.py`. Supersedes the flat `recommend_*.py` modules below.
+`test_recommender_kimi_fallback.py`. design.md “Recommender”.
+
+### Done (2026-09-22, recommend_from_payload keeps the loop)
+
+**`recommend_from_payload` is pack + original stream/finish again.**
+Model-keyed client, first-token deadline, and a wrap through
+`recommend_with_fallback`. Dropped `_stream_one` / `_finish_recommend`.
+Supersedes the extra helpers in the fallback-module split below.
+`test_recommender_kimi_fallback.py`. design.md “Recommender”.
+
+### Done (2026-09-22, recommend fallback module)
+
+**Kimi→Super lives in `source/agent/recommend_fallback.py`.** Timer,
+primary call, Super arming, and the timeout retry. `recommender.py`
+packs, streams one model, and finishes. `recommend_stream.py` is the
+chunk iterator and deadline. Supersedes “recommender.py still …
+falls back” below. `test_recommender_kimi_fallback.py`. design.md
+“Recommender”.
+
+### Done (2026-09-22, recommend stream types in recommend_stream.py)
+
+**`RecommendCall`, `RecommendStream`, and `FirstTokenTimeout` live in
+`source/agent/recommend_stream.py`.** Chunk iteration and the first-token
+deadline sit with them. `recommender.py` still packs, paints, and
+falls back. design.md “Recommender”.
+
+### Done (2026-09-22, Kimi fallback is not recommend_from_payload)
+
+**Fallback is `_recommend_with_fallback`, not the pack/render
+entry.** `recommend_from_payload` packs fits, picks the primary
+call, and finishes the stream. One-model stream is `_stream_one`;
+Kimi→Super lives in `_kimi_super_fallback` + the timeout wrapper.
+Supersedes the “stuffed into recommend_from_payload” shape of the
+entry below. `test_recommender_kimi_fallback.py`. design.md
+“Recommender”.
+
+### Done (2026-09-22, Kimi recommend falls back to Super)
+
+**Kimi first-token 10 s, then Nemotron Super.** Token Factory can
+queue Kimi for minutes while Super answers a `hi` in ~1 s. The
+recommender waits `TRIPPY_KIMI_TTFT_SEC` (default 10) for a stream
+token, then replays the pack on Super. Injected `chat` does not fall
+back. `test_recommender_kimi_fallback.py`. design.md “Recommender”.
+
 ### Done (2026-09-22, always forward planned_entry_time)
 
 **Planner always passes `planned_entry_time`.** Omitting it when unset

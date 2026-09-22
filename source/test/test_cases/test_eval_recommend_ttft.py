@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from source.agent.recommender import Recommendation, RecommendResult
+from source.agent.recommender.recommend import Recommendation, RecommendResult
 from source.eval.run import (
     format_recommend_ttft,
     planner_pack,

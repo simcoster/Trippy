@@ -1,6 +1,6 @@
 """Recommender defaults to Kimi-K3; Super and 235B stay opt-in."""
 
-from source.agent.recommender import recommender_model
+from source.agent.recommender.models import recommender_model
 from source.scraper.amenity_enrichment.llm import (
     KIMI_K3_MODEL,
     NEMOTRON_SUPER_MODEL,
