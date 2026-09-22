@@ -417,6 +417,7 @@ def quote_open_slots(
         if isinstance(row, dict) and row.get("request_id") is not None
     }
     quoted: list[dict] = []
+    price_rejected: list[dict] = []
     for slot in working:
         slot.pop(_PARENT_ID, None)
         slot_rate = _slot_rate_period(slot, rate_period)
@@ -450,11 +451,17 @@ def quote_open_slots(
             if price is not None:
                 traced["price"] = price
         if not _price_matches(price, price_constraint):
+            if price_constraint is not None:
+                missed = dict(slot)
+                missed["price_per_night"] = price
+                price_rejected.append(missed)
             continue
         slot["price_per_night"] = price
         quoted.append(slot)
     if isinstance(record, dict):
         record["quoted_count"] = len(quoted)
+        if price_constraint is not None:
+            record["price_rejected"] = price_rejected
     return quoted
 
 

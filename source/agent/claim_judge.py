@@ -250,11 +250,11 @@ _JUDGE_TIME_STAGE: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 
 def judge_concurrency() -> int:
-    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "5").strip()
+    raw = (os.environ.get("TRIPPY_JUDGE_CONCURRENCY") or "10").strip()
     try:
         n = int(raw)
     except ValueError:
-        return 5
+        return 10
     return max(1, n)
 
 

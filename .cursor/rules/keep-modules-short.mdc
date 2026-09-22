@@ -1,11 +1,11 @@
 ---
-description: Keep modules short; past 700 lines, consider a split and ask before a major refactor
+description: Keep modules short; past 800 lines, consider a split and ask before a major refactor
 alwaysApply: true
 ---
 
 # Keep modules short
 
-Prefer a module that does one job and stays easy to read. When a file you are editing is over **700 lines**, or your change would push it over, consider splitting it along the responsibilities it already has.
+Prefer a module that does one job and stays easy to read. When a file you are editing is over **800 lines**, or your change would push it over, consider splitting it along the responsibilities it already has.
 
 A major refactor — moving most of the file, renaming the public surface, or breaking one module into several — needs a yes first. Say what you would split and where, then wait. Do not start that move in the same turn.
 
@@ -15,7 +15,7 @@ A small extraction can land with the change that made the file too long: one hel
 # BAD — recommender.py is 900 lines and you silently split it into
 # five modules and rewrite the imports
 
-# GOOD — "recommend.py is over 700 lines. Split stream/finish into
+# GOOD — "recommend.py is over 800 lines. Split stream/finish into
 # stream.py and leave packing here?"
 # Wait. On a yes, do that split.
 ```

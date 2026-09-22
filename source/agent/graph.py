@@ -262,7 +262,7 @@ def planner_node(state: ChatState) -> ChatState:
 
 
 def recommender_node(state: ChatState) -> ChatState:
-    """Pick 1–2 planner fits and write a cited Hebrew reply."""
+    """Pick 2–3 planner fits and write a cited Hebrew reply."""
     result = recommend_from_messages(state["messages"])
     return {"messages": [AIMessage(content=result.text)]}
 

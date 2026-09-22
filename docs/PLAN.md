@@ -6,6 +6,23 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, recommender lists every date, top 3, and why not)
+
+**The reply shows 2–3 stays, every fitting night, and a filter funnel.**
+Consecutive one-night windows render as one check-in span. Price misses
+stay on `rejected` (`reason: price`). `why_not` counts campsites with a
+vacancy, inside the price range when the user set one, and missing each
+requested amenity. The model still does not see `rejected`. Supersedes
+“pick 1 or 2” in the recommender section of design.md.
+
+### Done (2026-09-22, claim-judge concurrency 10)
+
+**Live claim judges run 10 at a time.** Ten copies of one fridge job
+were 9.9s and 11.7s at that width, against 13.1s and 21.3s at 5;
+all 41 calls agreed and none errored. Each call slowed, and the
+second wave disappeared. Supersedes the concurrency-5 default in
+the 2026-09-10 compact-judge entry below.
+
 ### Open (2026-09-22, graph container)
 
 **TODO: run the graph in its own container; Streamlit talks to it over HTTP.** Today `scripts/streamlit_chat.py` imports the graph, calls `build_graph`, and patches nodes and search functions in-process. The chat client should post a turn and read the reply, not host the agent.

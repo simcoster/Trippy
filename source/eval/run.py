@@ -1053,7 +1053,7 @@ def main(argv: list[str] | None = None) -> int:
         "--judge-concurrency",
         type=int,
         default=0,
-        help="Parallel claim-judge calls (default 5)",
+        help="Parallel claim-judge calls (default 10)",
     )
     parser.add_argument(
         "--judge-compact",

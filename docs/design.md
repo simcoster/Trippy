@@ -960,7 +960,11 @@ calls was not needed):
   the compact suffix (experiments.md 2026-09-10 §6). Full eval
   `2026-09-10_131406` was compact ×5 (23/26). Quoted output is
   `TRIPPY_JUDGE_COMPACT=0` / `--no-judge-compact`. Live judge calls
-run **5 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 5).
+run **10 at a time** (`TRIPPY_JUDGE_CONCURRENCY`, default 10).
+Ten copies of one fridge job finished in 9.9s and 11.7s at that
+width, against 13.1s and 21.3s at 5; every call agreed and none
+errored. Each call slowed, and the second wave disappeared
+(experiments.md 2026-09-22 §1).
 A single batched `judgements[]` call still drops E03 tent vs
 `tent_pitch` on this 235B (16/20). With thinking off and
 `max_tokens=2000`, Qwen3.5-397B and GLM-5.2 both hit 78/80 and
@@ -1234,7 +1238,13 @@ is Friday or Saturday only; Sunday is a weekday.
 Fits carry `price_explanation` so the recommender cites the breakdown
 instead of summing. A unit that is vacant on several windows is one
 fit with `dates`, not one fit per night, so retrieve, judge, and
-the recommender pack run once for that site+type.
+the recommender pack run once for that site+type. A price limit
+removes those nights from `fits` and keeps them on `rejected` with
+`reason: price` (every such unit, not only the five-row semantic
+sample). `why_not` on the payload counts campsites: how many had a
+vacancy, how many of those stay inside the price range when the user
+set one, then how many of the remainder miss each requested amenity.
+The model does not see `why_not` or `rejected`; render prints the funnel.
 
 ## Recommender
 
@@ -1253,13 +1263,21 @@ cite a listing row only when that row is about the ask — retrieved
 rules are still unsifted nearest neighbors (tent-as-desert,
 stove-as-electricity). `relevant_rules` is not a judge field.
 
-Output is JSON: 1 stay, or 2 when they are distinct useful options
-(prefer two campsites over two types at the same site), each with a
-`why` in one language — Hebrew only if the query is mostly Hebrew,
-English only if it is mostly English. Two picks also set `intro`:
-note that there is more than one option, name them, and compare them
-somewhat. Phrasing is free; render puts that above the numbered list.
-`intro` is null for a single stay.
+Output is JSON: the top 2 or 3 stays (3 when a third is another
+useful option; the one fit when that is all there is; never more
+than 3). Prefer different campsites over two types at the same site.
+If the model names only one stay and more fits exist, the reply still
+lists the next best fits up to three; those extras have no model `why`.
+Each `why` is one language — Hebrew only if the query is mostly
+Hebrew, English only if it is mostly English. More than one pick
+also sets `intro`: note that there is more than one option, name
+them, and compare them somewhat. Phrasing is free; render puts that
+above the numbered list. `intro` is null for a single stay.
+A fit's `dates` are all shown. Consecutive one-night windows collapse
+to the check-in span (`24.5–29.5, one night each` / `כל לילה בנפרד`),
+with a booking link per night. After the picks, render appends
+`why_not` as a short funnel when a price or amenity filter dropped
+campsites.
 `why` leads with the matching facts, not a recap of the query,
 dates, or party (those are on the stay line). If listing and reviews
 agree the asked thing exists, say it once — reviews add quality or
