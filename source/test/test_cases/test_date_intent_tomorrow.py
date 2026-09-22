@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -57,7 +56,6 @@ def test_resolve_tomorrow_two_nights():
 
 def test_extractor_resolves_on_tomorrow(monkeypatch):
     from source.agent import graph as agent_graph
-    from source.agent.dates import resolve_dates as resolve
 
     monkeypatch.setattr(agent_graph, "today_il", lambda today=None: MONDAY)
     llm_json = {
@@ -74,11 +72,6 @@ def test_extractor_resolves_on_tomorrow(monkeypatch):
     fake_model = MagicMock()
     fake_model.invoke.return_value = AIMessage(content=json.dumps(llm_json))
     monkeypatch.setattr(agent_graph, "extractor_model", fake_model)
-    monkeypatch.setattr(
-        agent_graph,
-        "resolve_dates_tool",
-        SimpleNamespace(invoke=lambda args: resolve(**args, today=MONDAY)),
-    )
 
     result = agent_graph.extractor_node(
         {"messages": [HumanMessage(content=PROMPT_LIVE)]}

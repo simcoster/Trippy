@@ -109,7 +109,7 @@ EXTRACTOR_SYSTEM_PROMPT = dedent(
     Rules:
     1. Output ONLY JSON.
     2. Dates: emit date_intent only. Do NOT compute ISO calendars and do NOT
-       emit date.start / date.end for relative phrases. A resolve_dates tool
+       emit date.start / date.end for relative phrases. resolve_dates
        turns intent into stay windows after you reply.
        - "next" / "הבא" → when="next" (next calendar week, not this week's
          upcoming weekday). "הקרוב" is not "הבא".

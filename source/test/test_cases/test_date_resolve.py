@@ -1,4 +1,4 @@
-"""Date intent parsing, resolve_dates tool, planner window loop."""
+"""Date intent parsing, resolve_dates, planner window loop."""
 
 from __future__ import annotations
 
@@ -203,7 +203,6 @@ def test_planner_caps_windows_at_four(db_searches: SimpleNamespace):
 
 def test_extractor_calls_resolve_dates_tool(monkeypatch: pytest.MonkeyPatch):
     from source.agent import graph as agent_graph
-    from source.agent.dates import resolve_dates
 
     monkeypatch.setattr(agent_graph, "today_il", lambda today=None: MONDAY)
 
@@ -223,15 +222,6 @@ def test_extractor_calls_resolve_dates_tool(monkeypatch: pytest.MonkeyPatch):
     fake_model = MagicMock()
     fake_model.invoke.return_value = AIMessage(content=json.dumps(llm_json))
     monkeypatch.setattr(agent_graph, "extractor_model", fake_model)
-    invoke_calls: list[dict] = []
-
-    def _tracking_invoke(args):
-        invoke_calls.append(args)
-        return resolve_dates(**args, today=MONDAY)
-
-    monkeypatch.setattr(
-        agent_graph, "resolve_dates_tool", SimpleNamespace(invoke=_tracking_invoke)
-    )
 
     result = extractor_node(
         {
@@ -242,9 +232,6 @@ def test_extractor_calls_resolve_dates_tool(monkeypatch: pytest.MonkeyPatch):
             ]
         }
     )
-    assert invoke_calls, "extractor should call resolve_dates"
-    assert invoke_calls[0]["weekday"] == "thursday"
-    assert invoke_calls[0]["when"] == "next"
     payload = json.loads(result["messages"][0].content)
     assert payload["date"] == {"start": "2026-09-10", "end": "2026-09-12"}
     assert payload["date_windows"] == [payload["date"]]
@@ -253,7 +240,6 @@ def test_extractor_calls_resolve_dates_tool(monkeypatch: pytest.MonkeyPatch):
 
 def test_extractor_truncation_notice_from_tool(monkeypatch: pytest.MonkeyPatch):
     from source.agent import graph as agent_graph
-    from source.agent.dates import resolve_dates
 
     monkeypatch.setattr(agent_graph, "today_il", lambda today=None: MONDAY)
     llm_json = {
@@ -265,13 +251,6 @@ def test_extractor_truncation_notice_from_tool(monkeypatch: pytest.MonkeyPatch):
     fake_model = MagicMock()
     fake_model.invoke.return_value = AIMessage(content=json.dumps(llm_json))
     monkeypatch.setattr(agent_graph, "extractor_model", fake_model)
-    monkeypatch.setattr(
-        agent_graph,
-        "resolve_dates_tool",
-        SimpleNamespace(
-            invoke=lambda args: resolve_dates(**args, today=MONDAY)
-        ),
-    )
     result = extractor_node(
         {"messages": [HumanMessage(content="סופ״ש בחודש הקרוב")]}
     )

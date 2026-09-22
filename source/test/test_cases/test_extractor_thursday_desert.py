@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from types import SimpleNamespace
 
 import pytest
 from dotenv import load_dotenv
@@ -86,14 +85,8 @@ def _party_size_at_least_3(numeric: list) -> bool:
 
 def _freeze_monday(monkeypatch: pytest.MonkeyPatch) -> None:
     from source.agent import graph as agent_graph
-    from source.agent.dates import resolve_dates as resolve
 
     monkeypatch.setattr(agent_graph, "today_il", lambda today=None: MONDAY)
-    monkeypatch.setattr(
-        agent_graph,
-        "resolve_dates_tool",
-        SimpleNamespace(invoke=lambda args: resolve(**args, today=MONDAY)),
-    )
 
 
 def _extract(prompt: str) -> dict:

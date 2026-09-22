@@ -846,9 +846,10 @@ Response: {"content": "<html>"}
 ## Query extractor: date_intent
 
 The query extractor (`extractor_node`) emits a `date_intent` only;
-`resolve_dates` turns it into ISO stay windows. It does not invent
-calendars. That node is the **235B** (`extractor_model`, temperature 0).
-`planner_node` is vacancies + amenity SQL, not a chat model.
+`normalize_constraints` calls `resolve_dates` in process and attaches ISO
+stay windows. The extractor is not given a date tool. That node is the
+**235B** (`extractor_model`, temperature 0). `planner_node` is vacancies
++ amenity SQL, not a chat model.
 
 Hebrew clocks that used to be mislabelled, and the intents they must emit:
 

@@ -6,6 +6,15 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, resolve_dates is not a tool)
+
+**Extractor does not wrap `resolve_dates` as a LangChain tool.** It was
+never `bind_tools`'d (empty Qwen content); `extractor_node` invoked it
+after JSON, and still swallowed leftover `tool_calls`. `normalize_constraints`
+calls `resolve_dates` directly. Dropped `resolve_dates_tool`,
+`constraints_from_tool_calls`, and the prompt's "resolve_dates tool".
+design.md “Query extractor: date_intent”.
+
 ### Done (2026-09-21, tomorrow is on=tomorrow)
 
 **“for tomorrow” / מחר is `on=tomorrow`, not today.** Schema `on`

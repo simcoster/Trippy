@@ -9,13 +9,10 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from types import SimpleNamespace
 
 import pytest
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
-
-from source.agent.dates import resolve_dates
 
 load_dotenv()
 
@@ -36,13 +33,6 @@ def _freeze_today(monkeypatch: pytest.MonkeyPatch, pinned: date) -> None:
 
     monkeypatch.setattr(
         agent_graph, "today_il", lambda today=None, day=pinned: day
-    )
-    monkeypatch.setattr(
-        agent_graph,
-        "resolve_dates_tool",
-        SimpleNamespace(
-            invoke=lambda args, day=pinned: resolve_dates(**args, today=day)
-        ),
     )
 
 

@@ -368,24 +368,6 @@ def parse_constraints_json(raw: str) -> dict[str, Any]:
     return normalize_constraints(parsed)
 
 
-def constraints_from_tool_calls(tool_calls) -> dict[str, Any]:
-    semantic: list[dict] = []
-    for tc in tool_calls or []:
-        name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", None)
-        args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", None)
-        if name == "search_claims" and isinstance(args, dict):
-            query = args.get("query")
-            if query:
-                semantic.append({"query": query})
-    return normalize_constraints(
-        {
-            "semantic_constraints": semantic,
-            "numeric_constraints": [],
-            "date": None,
-        }
-    )
-
-
 def latest_constraints_json(messages: list) -> dict[str, Any]:
     """Read the most recent constraints AIMessage (from extractor_node)."""
     from langchain_core.messages import AIMessage

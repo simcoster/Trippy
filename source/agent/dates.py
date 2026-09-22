@@ -8,8 +8,6 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from langchain_core.tools import StructuredTool
-
 TZ_IL = ZoneInfo("Asia/Jerusalem")
 logger = logging.getLogger(__name__)
 
@@ -30,16 +28,6 @@ _WEEKDAY_INDEX = {
     "saturday": 5,
     "sunday": 6,
 }
-
-_WEEKDAY_EN = (
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-)
 
 # Closed `on` tokens from the extractor schema. Offsets are days from today.
 _ON_OFFSET_DAYS = {
@@ -401,77 +389,6 @@ def resolve_dates(
         weeks_n,
         out,
     )
-    return out
-
-
-def _resolve_dates_tool(
-    nights: int | None = None,
-    kind: str | None = None,
-    weekday: str | None = None,
-    when: str | None = None,
-    weeks_from_now: int | None = None,
-    horizon_days: int | None = None,
-    on: str | None = None,
-    start: str | None = None,
-    end: str | None = None,
-) -> dict[str, Any]:
-    """Map a date intent to ISO stay windows (max 4). Do not invent amenities."""
-    return resolve_dates(
-        nights=nights,
-        kind=kind,
-        weekday=weekday,
-        when=when,
-        weeks_from_now=weeks_from_now,
-        horizon_days=horizon_days,
-        on=on,
-        start=start,
-        end=end,
-    )
-
-
-resolve_dates_tool = StructuredTool.from_function(
-    func=_resolve_dates_tool,
-    name="resolve_dates",
-    description=(
-        "Resolve a date intent into ISO check-in/check-out windows. "
-        "kind=weekday|weekend|on|week; when=this|next (omit when for the "
-        "upcoming weekday). weekend is Friday night only (nights=1, "
-        "checkout Saturday) unless nights is set. week is Mon–Sun of "
-        "this or next ISO week, one stay per night (capped at 4, keeps "
-        "Friday and Saturday). 'next week' / לשבוע הבא is kind=week, "
-        "when=next — not on=today. weeks_from_now for 'in N weeks'; "
-        "horizon_days enumerates kind's weekday (weekend=Friday) or, "
-        "with kind=on, consecutive nights from `on`, capped at 4. "
-        "on=today|tonight is this night; on=tomorrow is the next. Do "
-        "not set kind=weekend unless the user said weekend. next "
-        "weekday is next ISO week, not this week's upcoming day."
-    ),
-)
-
-
-_RESOLVE_DATES_KEYS = (
-    "nights",
-    "kind",
-    "weekday",
-    "when",
-    "weeks_from_now",
-    "horizon_days",
-    "on",
-    "start",
-    "end",
-)
-
-
-def intent_tool_args(intent: dict[str, Any]) -> dict[str, Any]:
-    """Subset of a date intent that resolve_dates_tool accepts."""
-    out: dict[str, Any] = {}
-    for key in _RESOLVE_DATES_KEYS:
-        value = intent.get(key)
-        if value is None or value == "":
-            continue
-        if key == "weekday" and isinstance(value, int) and 0 <= value <= 6:
-            value = _WEEKDAY_EN[value]
-        out[key] = value
     return out
 
 
