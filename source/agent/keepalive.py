@@ -8,8 +8,10 @@ import os
 import threading
 import time
 from collections.abc import Mapping, MutableMapping
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from datetime import time as wall_time
 from typing import Any, NamedTuple
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import HumanMessage
 
@@ -22,6 +24,9 @@ from source.agent.tracing import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_SEC = 600.0
+_KEEPALIVE_TZ = ZoneInfo("Asia/Jerusalem")
+_KEEPALIVE_START = wall_time(7, 0)
+_KEEPALIVE_END = wall_time(23, 0)
 _PING = "hi"
 _MAX_TOKENS = 5
 _ROLES = ("recommender", "light", "extractor", "embed")
@@ -38,6 +43,17 @@ class KeepaliveTarget(NamedTuple):
     model: str
     chat: Any
     kind: str = "chat"
+
+
+def keepalive_hours_open(moment: datetime | None = None) -> bool:
+    """True from 07:00 until 23:00 in Asia/Jerusalem."""
+    now = moment or datetime.now(_KEEPALIVE_TZ)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=_KEEPALIVE_TZ)
+    else:
+        now = now.astimezone(_KEEPALIVE_TZ)
+    current = now.time()
+    return _KEEPALIVE_START <= current < _KEEPALIVE_END
 
 
 def keepalive_interval_sec() -> float:
@@ -198,13 +214,26 @@ def _invoke_ping(target: KeepaliveTarget) -> None:
     logger.info(done)
 
 
+def _start_daemon(name: str, fn: Any, *args: Any) -> threading.Thread:
+    """Daemon so a ping that never returns does not block process exit.
+
+    A thread-pool worker is non-daemon. Kimi can sit for minutes with no
+    token, and Ctrl+C then prints Stopping... until that call ends.
+    """
+    thread = threading.Thread(target=fn, args=args, name=name, daemon=True)
+    thread.start()
+    return thread
+
+
 def _ping_round(targets: tuple[KeepaliveTarget, ...]) -> None:
     if not targets:
         return
     ping = bind_to_current_trace(_invoke_ping)
-    workers = min(len(targets), 4) or 1
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="keepalive") as pool:
-        list(pool.map(ping, targets))
+    threads = [
+        _start_daemon(f"keepalive-{target.role}", ping, target) for target in targets
+    ]
+    for thread in threads:
+        thread.join()
 
 
 def ping_models(
@@ -233,18 +262,28 @@ def ping_models(
             print(scheduled, flush=True)
             logger.info(scheduled)
             ping = bind_to_current_trace(warmup_claim_judge)
-            with ThreadPoolExecutor(
-                max_workers=2, thread_name_prefix="keepalive"
-            ) as pool:
-                # Each worker needs its own copy. One Context cannot be
-                # entered on two threads, and without a copy the model
-                # calls land as root runs instead of children.
-                chats_done = pool.submit(
-                    contextvars.copy_context().run, _ping_round, targets
-                )
-                judge_done = pool.submit(contextvars.copy_context().run, ping)
-            chats_done.result()
-            reply = judge_done.result()
+            judge_box: list[Any] = []
+
+            def _judge() -> None:
+                judge_box.append(ping())
+
+            # Each worker needs its own copy. One Context cannot be
+            # entered on two threads, and without a copy the model
+            # calls land as root runs instead of children.
+            chats_thread = _start_daemon(
+                "keepalive-chats",
+                contextvars.copy_context().run,
+                _ping_round,
+                targets,
+            )
+            judge_thread = _start_daemon(
+                "keepalive-judge",
+                contextvars.copy_context().run,
+                _judge,
+            )
+            chats_thread.join()
+            judge_thread.join()
+            reply = judge_box[0] if judge_box else None
             return reply if isinstance(reply, str) else None
         _ping_round(targets)
         return None
@@ -307,7 +346,11 @@ def start_model_keepalive(
     interval_sec: float | None = None,
     blocking: bool = False,
 ) -> None:
-    """Start the interval loop once per process. First ping waits for the interval."""
+    """Start the interval loop once per process. First ping waits for the interval.
+
+    Rounds outside 07:00–23:00 Asia/Jerusalem are skipped. The loop keeps
+    sleeping so the next morning's window still fires.
+    """
     global _started
     with _lock:
         if _started or _keepalive_loop_running():
@@ -329,11 +372,16 @@ def start_model_keepalive(
         while True:
             if interval > 0:
                 time.sleep(interval)
-            try:
-                ping_models(chats=chats, reason="interval")
-            except Exception:
-                print("keepalive round failed", flush=True)
-                logger.warning("keepalive round failed", exc_info=True)
+            if not keepalive_hours_open():
+                skipped = "keepalive skip outside 07:00-23:00 Asia/Jerusalem"
+                print(skipped, flush=True)
+                logger.info(skipped)
+            else:
+                try:
+                    ping_models(chats=chats, reason="interval")
+                except Exception:
+                    print("keepalive round failed", flush=True)
+                    logger.warning("keepalive round failed", exc_info=True)
             if interval <= 0:
                 return
 

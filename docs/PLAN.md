@@ -6,6 +6,14 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-22, keepalive pings do not block shutdown)
+
+**A model ping runs on a daemon thread.** A Kimi `hi` with no token was keeping Streamlit on `Stopping...` after Ctrl+C, because the pool worker is not a daemon.
+
+### Done (2026-09-22, keepalive 10 min from 7am to 11pm)
+
+**Streamlit starts the 10-minute model ping again, only from 07:00 until 23:00 Asia/Jerusalem.** A new browser session still pings once at any hour. Supersedes `no periodic keepalive` below.
+
 ### Done (2026-09-22, public page has no sidebar)
 
 **The public UI no longer shows a sidebar.** The question count and the small README button stay in the header. The local harness still uses the sidebar for traces and the heavy path.
