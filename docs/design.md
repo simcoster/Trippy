@@ -1246,11 +1246,10 @@ the query's language.
 
 ## Recommender
 
-`recommender_node` (`source/agent/recommender/`) is a Kimi-K3
-JSON picker, temperature 0, thinking off (`moonshotai/Kimi-K3`,
-`TRIPPY_RECOMMENDER_MODEL`; extra_body `reasoning_effort=none`).
-It does not search. The planner payload is already the candidate
-list. Extractor, light, and judge stay 235B.
+`recommender_node` (`source/agent/recommender/`) is a gpt-oss-120b
+JSON picker, temperature 0, thinking off (`openai/gpt-oss-120b`,
+`TRIPPY_RECOMMENDER_MODEL`). It does not search. The planner payload
+is already the candidate list. Extractor, light, and judge stay 235B.
 
 The node does not dump raw LangGraph messages. It packs the original
 query, the extractor JSON (`constraints`), and compact `fits`: stay
@@ -1310,9 +1309,12 @@ five longest recs vs 235B `pitch`/`outlets`; experiments.md
 from-planner bake ranked **Kimi-K3 then GLM-5.2** above 397B and
 235B on spoken `why` (experiments.md 2026-09-12 §1–§2): 235B and
 397B coin or garble Hebrew; GLM is close (`משוערפים`, `מקררון`);
-Kimi is the default. If Kimi sends no stream token in 10 s
+Kimi was the default through 2026-09-22. The picker is now
+`openai/gpt-oss-120b` (same `KIMI_K3_MODEL` constant / `kimi` alias).
+If a model whose id contains `"kimi"` sends no stream token in 10 s
 (`TRIPPY_KIMI_TTFT_SEC`; 0 disables), the same pack is retried on
 Nemotron Super 120B-A12B (`source/agent/recommender/fallback.py`).
+gpt-oss does not match that check, so it does not fall back.
 The first-token deadline lives in `recommender/stream.py`. That wait
 runs the stream on another thread and copies the caller context, so
 LangSmith still logs the model call (the packed prompt) under the
@@ -1320,9 +1322,9 @@ recommender node. Model
 thinking-off flags live in `recommender/models.py`; TTFT logging
 lives in `recommender/timing.py`. A caller-injected `chat` does not fall back
 (tests). `TRIPPY_RECOMMENDER_MODEL=super` or `235B`
-opts back. Thinking stays off on Kimi (`reasoning_effort=none`);
-Super still uses `/no_think` plus
-`chat_template_kwargs.enable_thinking=false`.
+opts back. Thinking stays off on gpt-oss (`enable_thinking=false`);
+a `"kimi"` id still sets `reasoning_effort=none`. Super still uses
+`/no_think` plus `chat_template_kwargs.enable_thinking=false`.
 Picks whose
 `(campsite_id, accommodation_type, start, end)` is not in `fits` are
 dropped. Empty `fits` become an honest follow-up.
@@ -1348,7 +1350,8 @@ stay identity or `empty` — not the raw JSON. While that runs, the
 assistant bubble shows Searching, then `Found N candidates, filtering`
 once availability returns (N is distinct site + unit type), then
 Ranking when recommend is called. Recommend usage is
-`role="recommend"`. `client.toolbarMode` is `viewer` so Ctrl+C in the page copies
+`role="recommend"`. `client.toolbarMode` is `minimal` so the header
+menu is gone and Ctrl+C in the page copies
 instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
 After a reply the chat input is replaced by a primary Reset button, and an
 example-prompt dropdown fills the input without sending. Reset still does
@@ -1395,8 +1398,18 @@ Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. The public UI allows 5 questions total
 per visitor address (`TRIPPY_DEMO_QUERY_CAP`) and shows how many are
-left under the title. A small README link sits at the top right.
-The public page has no sidebar. `demo_query_quota` stores a SHA-256 of `TRIPPY_DEMO_QUOTA_PEPPER`
+left under the title. A large GitHub mark sits at the top with an
+EN/HE language control (UK and Israel flags). The title stays
+**Trippy camping** in English on the left. Hebrew flips quota, chat,
+and the ask bar RTL. Example prompts are gone; a blue dice *inside* the
+chat bar, next to send, types one of five bilingual premade asks
+(and one of those starts on load after a 1 s pause, at 7 ms/char).
+The face is `assets/dice.png`
+(white pad stripped, shrunk), doubled and centered on a square blue
+button that sits clear of send. The "searches left" words are larger
+than the count; in Hebrew that line is on the right. `assets/background.png` is the page
+background at 50% opacity. The public page has no sidebar, toolbar, or
+header menu. `demo_query_quota` stores a SHA-256 of `TRIPPY_DEMO_QUOTA_PEPPER`
 plus Cloudflare's `CF-Connecting-IP`, not the address. The count does
 not reset. Local Streamlit is not capped. `TRIPPY_DEMO_VISITOR_IP`
 stands in for the header when it is absent, so a laptop can try the

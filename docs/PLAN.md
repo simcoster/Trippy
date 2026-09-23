@@ -6,6 +6,64 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-23, white Readme; larger ask text)
+
+**The GitHub "Readme" caption is white.** Ask text is 1.5× larger
+(1.8rem).
+
+### Done (2026-09-23, smaller dice; typewriter pauses then races)
+
+**The dice face is 0.75× the last size.** Ask text is black. Typing
+waits 1 s, then 7 ms per character.
+
+### Done (2026-09-23, square dice; Hebrew quota on the right)
+
+**The dice face is twice as large and centered on a square blue
+button that no longer overlaps send.** In Hebrew the remaining-search
+line sits on the right.
+
+### Done (2026-09-23, dice sits inside the ask bar)
+
+**The random-search control is inside the chat pill, flush with
+send.** Its face is the cropped `assets/dice.png`. The "searches
+left" label is larger; the number is unchanged.
+
+### Done (2026-09-23, dice next to send; English title stays put)
+
+**Fill-random is a blue dice the same size as send, sitting next to
+it.** The title stays "Trippy camping" in English on the left in both
+languages. The header ⋮ and sidebar burger are gone
+(`toolbarMode=minimal` plus CSS).
+
+### Done (2026-09-23, ask bar autotypes and sits on the forest)
+
+**The chat box has no placeholder and starts typing a premade search
+on load.** Send is twice as wide/tall. The bottom strip is transparent
+so `assets/background.png` shows behind fill-random and the input.
+
+### Done (2026-09-23, chrome stays put; typewriter does not crash)
+
+**Language and GitHub stay on the top right in both languages.** Hebrew
+only flips title, quota, and the ask bar. Fill-random no longer calls
+`st.rerun(scope="fragment")` on a full run (that raised in English).
+Typewriter delay is 14 ms. The GitHub mark has a "readme here" caption.
+
+### Done (2026-09-23, public chrome is bilingual)
+
+**Public Streamlit has a language control, a large GitHub mark, a
+camping background, and a typed random search.** EN/HE (UK / Israel
+flags) switch copy and page direction. Example prompts are gone; five
+pre-translated asks type into a taller chat input. Background is
+`assets/background.png` at half alpha. Copy and searches live in
+`source/demo_chrome.py`.
+
+### Done (2026-09-23, recommender is gpt-oss-120b)
+
+**Recommender default is `openai/gpt-oss-120b`.** Same `KIMI_K3_MODEL`
+constant and `kimi` / `kimi-k3` / `k3` aliases. Super first-token
+fallback still requires `"kimi"` in the model id, so it does not arm
+on gpt-oss. Supersedes “Recommender default is Kimi-K3” (2026-09-12).
+
 ### Done (2026-09-22, keepalive pings do not block shutdown)
 
 **A model ping runs on a daemon thread.** A Kimi `hi` with no token was keeping Streamlit on `Stopping...` after Ctrl+C, because the pool worker is not a daemon.
@@ -39,12 +97,12 @@ stays in the sidebar. A small README button sits at the top right.
 
 **The chat Reset button uses blue instead of the theme red.**
 
-### Done (2026-09-22, questions left is an English number)
+### Done (2026-09-22, searches left is an English number)
 
 **The sidebar count is English only.** The number is larger and red. The
-line reads `4 questions left`.
+line reads `4 searches left`.
 
-### Done (2026-09-22, questions left sits in the sidebar)
+### Done (2026-09-22, searches left sits in the sidebar)
 
 **The remaining-question line is in the sidebar under Session.** The main
 column keeps the ask prompt.

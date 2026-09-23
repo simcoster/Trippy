@@ -30,7 +30,7 @@ class PreparedModel(NamedTuple):
 
 
 def recommender_model() -> str:
-    """Kimi-K3 unless `TRIPPY_RECOMMENDER_MODEL` is super / 235B / a full id."""
+    """gpt-oss-120b unless `TRIPPY_RECOMMENDER_MODEL` is super / 235B / a full id."""
     raw = (os.environ.get("TRIPPY_RECOMMENDER_MODEL") or "").strip()
     key = raw.casefold()
     if not raw or key in {"kimi", "kimi-k3", "k3"}:

@@ -42,6 +42,8 @@ from source.price_sandbox.client import require_healthy_sandbox
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarning)
 
 import streamlit as st
+import streamlit.components.v1 as components
+from streamlit.errors import StreamlitAPIException
 from dotenv import dotenv_values, load_dotenv
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import (
@@ -99,6 +101,7 @@ if not hasattr(_recommender_timing, "last_recommend_timing"):
     importlib.reload(_recommender_timing)
 
 import source.agent.graph as agent_graph
+import source.demo_chrome as _demo_chrome
 import source.demo_quota as _demo_quota
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
 from source.agent.keepalive import ping_new_session, start_model_keepalive
@@ -112,7 +115,7 @@ from source.agent.tracing import (
     project_name,
     tracing_configured,
 )
-from source.agent.turn_status import SEARCHING, set_turn_status
+from source.agent.turn_status import set_turn_status
 from source.scraper.amenity_enrichment.llm import (
     EmbeddingLLMClient,
     LlmUsage,
@@ -120,12 +123,15 @@ from source.scraper.amenity_enrichment.llm import (
     collect_llm_usage,
 )
 
+importlib.reload(_demo_chrome)
 importlib.reload(_demo_quota)
-QUOTA_USED = _demo_quota.QUOTA_USED
 claim_query = _demo_quota.claim_query
 public_visitor_hash = _demo_quota.public_visitor_hash
 quota_remaining = _demo_quota.quota_remaining
-remaining_caption = _demo_quota.remaining_caption
+Lang = _demo_chrome.Lang
+copy = _demo_chrome.copy
+GITHUB_URL = _demo_chrome.GITHUB_URL
+GITHUB_MARK_SVG = _demo_chrome.GITHUB_MARK_SVG
 
 HEAVY_PATH_LABELS: dict[HeavyThrough, str] = {
     "extractor": "Extractor only",
@@ -139,137 +145,23 @@ st.set_page_config(
     layout="wide",
 )
 # Streamlit binds "c" to Clear cache; Ctrl+C in the browser opens that dialog.
-st.set_option("client.toolbarMode", "viewer")
-# A Hebrew paragraph starts on the right; an English one stays on the left.
-# plaintext takes the direction from the first strong letter in that block.
-st.markdown(
-    """
-<style>
-[data-testid="stChatMessageContent"] p,
-[data-testid="stChatMessageContent"] li {
-    unicode-bidi: plaintext;
-    text-align: start;
-}
-.trippy-questions-left {
-    font-size: 1.15rem;
-    line-height: 1.3;
-    margin: 0 0 0.75rem 0;
-}
-.trippy-questions-left span {
-    font-size: 1.45rem;
-    font-weight: 700;
-    color: #ff4b4b;
-}
-.st-key-reset_chat button {
-    background-color: #21c354 !important;
-    border-color: #21c354 !important;
-}
-.st-key-reset_chat button:hover,
-.st-key-reset_chat button:focus {
-    background-color: #1a9e43 !important;
-    border-color: #1a9e43 !important;
-    color: #fff !important;
-}
-[data-testid="stSidebarContent"] {
-    display: flex;
-    flex-direction: column;
-}
-[data-testid="stSidebarUserContent"] {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    padding-bottom: 1rem !important;
-}
-[data-testid="stSidebarUserContent"] > div {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-}
-[data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {
-    flex: 1 1 auto;
-}
-.st-key-github_readme {
-    margin-top: auto;
-}
-.st-key-github_readme a {
-    min-height: 4.5rem;
-    padding-top: 1.15rem;
-    padding-bottom: 1.15rem;
-    font-size: 1.2rem;
-    font-weight: 650;
-}
-[data-testid="stMainBlockContainer"] {
-    position: relative;
-}
-[data-testid="stMainBlockContainer"] h1 {
-    padding-right: 7rem;
-}
-.st-key-github_readme_top {
-    position: absolute;
-    top: 8rem;
-    right: 1rem;
-    width: auto !important;
-    z-index: 2;
-}
-@media (min-width: calc(736px + 8rem)) {
-    .st-key-github_readme_top {
-        right: 5rem;
-    }
-}
-.st-key-github_readme_top a {
-    white-space: nowrap;
-    width: auto;
-    min-height: 3.625rem;
-    padding: 0 0.9rem;
-    font-size: 1rem;
-    line-height: 1.2;
-}
-@keyframes trippy-ask-flash {
-    0%, 45% {
-        background-color: #fff;
-        box-shadow: 0 0 0 2px rgba(255, 75, 75, 0.45);
-    }
-    22%, 100% {
-        background-color: rgb(240, 242, 246);
-        box-shadow: none;
-    }
-}
-@keyframes trippy-ask-bold {
-    0%, 45% {
-        font-weight: 700;
-        color: rgb(49, 51, 63);
-    }
-    100% {
-        font-weight: 400;
-    }
-}
-.st-key-example_prompt .react-aria-ComboBox > div,
-[data-testid="stChatInput"] > div {
-    animation: trippy-ask-flash 1.8s ease;
-}
-.st-key-example_prompt input::placeholder,
-[data-testid="stChatInputTextArea"]::placeholder {
-    animation: trippy-ask-bold 1.8s ease;
-}
-@media (prefers-reduced-motion: reduce) {
-    .st-key-example_prompt .react-aria-ComboBox > div,
-    [data-testid="stChatInput"] > div,
-    .st-key-example_prompt input::placeholder,
-    [data-testid="stChatInputTextArea"]::placeholder {
-        animation: none;
-    }
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+st.set_option("client.toolbarMode", "minimal")
+# Page chrome (background, GH mark, fat input) comes from demo_chrome.
 if _PUBLIC_UI:
     st.markdown(
         """
 <style>
 [data-testid="stSidebar"],
 [data-testid="stSidebarCollapseButton"],
-[data-testid="stExpandSidebarButton"] {
+[data-testid="stExpandSidebarButton"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"],
+[data-testid="stToolbar"],
+[data-testid="stToolbarActions"],
+[data-testid="stMainMenu"],
+[data-testid="stAppDeployButton"],
+[data-testid="stDecoration"],
+#MainMenu {
     display: none !important;
 }
 </style>
@@ -279,8 +171,18 @@ if _PUBLIC_UI:
 if configure_agent_tracing():
     print(f"langsmith tracing project={project_name()}", flush=True)
 
-_USER_ERROR = "Something went wrong."
 logger = logging.getLogger("trippy.streamlit")
+
+
+def _ui_lang() -> Lang:
+    raw = st.session_state.get("ui_lang")
+    if raw in ("en", "he"):
+        return raw
+    return "he" if _PUBLIC_UI else "en"
+
+
+def _user_error() -> str:
+    return copy(_ui_lang(), "something_wrong")
 
 
 def _report_error(exc: BaseException) -> str:
@@ -288,7 +190,12 @@ def _report_error(exc: BaseException) -> str:
     logger.exception("%s", exc)
     traceback.print_exc()
     print(f"error: {type(exc).__name__}: {exc}", flush=True)
-    return _USER_ERROR
+    return _user_error()
+
+
+@st.cache_data(show_spinner=False)
+def _background_uri() -> str:
+    return _demo_chrome.background_data_uri()
 
 
 @st.cache_data(ttl=8, show_spinner=False)
@@ -298,7 +205,7 @@ def _cached_postgres_error() -> str:
         return ""
     except Exception as exc:
         _report_error(exc)
-        return _USER_ERROR
+        return _user_error()
 
 
 _db_error = _cached_postgres_error()
@@ -797,30 +704,91 @@ def _init_session() -> None:
         st.session_state.heavy_path = "extractor"
     if "langsmith_thread_id" not in st.session_state:
         st.session_state.langsmith_thread_id = str(uuid4())
+    if "ui_lang" not in st.session_state:
+        st.session_state.ui_lang = "he" if _PUBLIC_UI else "en"
     ping_new_session(st.session_state)
     start_model_keepalive()
 
 
 _CHAT_INPUT_KEY = "chat_prompt"
-_EXAMPLE_PROMPT_KEY = "example_prompt"
-_EXAMPLE_PROMPTS = (
-    "אנחנו מחפשים מקום לשני מבוגרים בשבוע הבא בין שלישי לחמישי ללילה אחד, עם לפחות 2 שירותי נכים.",
-    "we're looking for a place for 2 adults and 2 kids for one next week somewhere on Tuesday-Thursday , with pools for the kids and a fridge for up to 300 nis",
-)
+_TYPE_TARGET = "_type_target"
+_TYPE_N = "_type_n"
+_TYPE_I = "_type_i"
+_TYPE_READY_AT = "_type_ready_at"
+_AUTOLOAD = "_autoload_search"
+_TYPE_DELAY_S = 0.007
+_TYPE_LEAD_S = 1.0
 
 
 def _reset_conversation() -> None:
     st.session_state.graph_messages = []
     st.session_state.display = []
     st.session_state.langsmith_thread_id = str(uuid4())
-    st.session_state.pop(_EXAMPLE_PROMPT_KEY, None)
     st.session_state.pop(_CHAT_INPUT_KEY, None)
+    st.session_state.pop(_TYPE_TARGET, None)
+    st.session_state.pop(_TYPE_N, None)
+    st.session_state.pop(_TYPE_I, None)
+    st.session_state.pop(_TYPE_READY_AT, None)
+    st.session_state.pop(_AUTOLOAD, None)
 
 
-def _apply_example_prompt() -> None:
-    picked = st.session_state.get(_EXAMPLE_PROMPT_KEY)
-    if isinstance(picked, str) and picked:
-        st.session_state[_CHAT_INPUT_KEY] = picked
+def _tick_typewriter() -> bool:
+    target = st.session_state.get(_TYPE_TARGET)
+    if not isinstance(target, str) or not target:
+        return False
+    n = int(st.session_state.get(_TYPE_N) or 0)
+    if n >= len(target):
+        st.session_state.pop(_TYPE_TARGET, None)
+        st.session_state.pop(_TYPE_READY_AT, None)
+        return False
+    ready_at = st.session_state.get(_TYPE_READY_AT)
+    if isinstance(ready_at, float) and time.monotonic() < ready_at:
+        return True
+    n += 1
+    st.session_state[_TYPE_N] = n
+    st.session_state[_CHAT_INPUT_KEY] = target[:n]
+    return n < len(target)
+
+
+def _maybe_autoload_search(lang: Lang) -> None:
+    if st.session_state.get(_AUTOLOAD):
+        return
+    st.session_state[_AUTOLOAD] = True
+    _start_random_search(lang)
+
+
+def _start_random_search(lang: Lang) -> None:
+    last = st.session_state.get(_TYPE_I)
+    last_i = last if isinstance(last, int) else None
+    index, text = _demo_chrome.pick_premade(lang, last_i)
+    st.session_state[_TYPE_I] = index
+    st.session_state[_TYPE_TARGET] = text
+    st.session_state[_TYPE_N] = 0
+    st.session_state[_TYPE_READY_AT] = time.monotonic() + _TYPE_LEAD_S
+    st.session_state[_CHAT_INPUT_KEY] = ""
+
+
+def _retarget_typewriter(lang: Lang) -> None:
+    idx = st.session_state.get(_TYPE_I)
+    if not isinstance(idx, int) or not st.session_state.get(_TYPE_TARGET):
+        return
+    text = _demo_chrome.search_in_lang(idx, lang)
+    n = min(int(st.session_state.get(_TYPE_N) or 0), len(text))
+    st.session_state[_TYPE_TARGET] = text
+    st.session_state[_TYPE_N] = n
+    st.session_state[_CHAT_INPUT_KEY] = text[:n]
+
+
+def _on_lang_change() -> None:
+    _retarget_typewriter(_ui_lang())
+
+
+def _rerun_ask() -> None:
+    """Fragment scope is only legal on a fragment rerun, not a full script run."""
+    try:
+        st.rerun(scope="fragment")
+    except StreamlitAPIException:
+        st.rerun()
 
 
 def _message_preview(msg: BaseMessage, max_len: int = 400) -> str:
@@ -1343,17 +1311,58 @@ def invoke_agent(
 
 _init_session()
 
-_answered = any(turn.get("role") == "assistant" for turn in st.session_state.display)
-_ASK_PLACEHOLDER = (
-    "Ask me about a camping stay | שאל אותי על שהייה באתרי קמפינג"
+_lang = _ui_lang()
+st.markdown(
+    _demo_chrome.page_css(_background_uri(), _lang),
+    unsafe_allow_html=True,
 )
+components.html(_demo_chrome.apply_dir_script(_lang), height=0)
 
-def _show_questions_left(remaining: int) -> None:
-    count, _, rest = remaining_caption(remaining).partition(" ")
+_answered = any(turn.get("role") == "assistant" for turn in st.session_state.display)
+
+
+def _show_questions_left(remaining: int, lang: Lang) -> None:
+    label = _demo_chrome.searches_left_label(remaining, lang)
     st.markdown(
-        f"<p class='trippy-questions-left'><span>{count}</span> {rest}</p>",
+        f"<p class='trippy-questions-left'><span class='trippy-questions-left-n'>"
+        f"{remaining}</span> <span class='trippy-questions-left-label'>{label}</span></p>",
         unsafe_allow_html=True,
     )
+
+
+@st.fragment
+def _ask_bar(can_ask: bool, answered: bool, lang: Lang) -> str | None:
+    if answered:
+        if st.button(
+            copy(lang, "try_another"),
+            type="primary",
+            width="stretch",
+            key="reset_chat",
+        ):
+            _reset_conversation()
+            st.rerun()
+        return None
+    if not can_ask:
+        return None
+    if st.button(
+        "\u00a0",
+        key="fill_random",
+        help=copy(lang, "fill_random"),
+    ):
+        _start_random_search(lang)
+    else:
+        _maybe_autoload_search(lang)
+    still = _tick_typewriter()
+    submitted = st.chat_input("", key=_CHAT_INPUT_KEY)
+    if still:
+        ready_at = st.session_state.get(_TYPE_READY_AT)
+        now = time.monotonic()
+        if isinstance(ready_at, float) and now < ready_at:
+            time.sleep(ready_at - now)
+        else:
+            time.sleep(_TYPE_DELAY_S)
+        _rerun_ask()
+    return submitted
 
 
 _quota_open = True
@@ -1373,19 +1382,34 @@ if _PUBLIC_UI and not _db_error:
         else:
             _quota_open = _quota_left > 0
 
-st.link_button(
-    "README",
-    "https://github.com/simcoster/Trippy",
-    icon=":material/menu_book:",
-    key="github_readme_top",
-)
-st.title("Trippy camping ⛺" if _PUBLIC_UI else "Trippy camping ⛺ (local)")
+st.title(copy("en", "title_public" if _PUBLIC_UI else "title_local"))
+with st.container(key="lang_box"):
+    st.segmented_control(
+        copy(_lang, "language"),
+        options=["en", "he"],
+        format_func=lambda key: copy(_lang, "lang_en" if key == "en" else "lang_he"),
+        key="ui_lang",
+        on_change=_on_lang_change,
+        label_visibility="collapsed",
+    )
+with st.container(key="github_mark"):
+    st.markdown(
+        f'<a class="trippy-gh" href="{GITHUB_URL}" '
+        f'target="_blank" rel="noopener noreferrer" aria-label="{copy(_lang, "github")}">'
+        f"{GITHUB_MARK_SVG}</a>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<p class="trippy-gh-caption"><a href="{GITHUB_URL}" '
+        f'target="_blank" rel="noopener noreferrer">{copy(_lang, "readme_here")}</a></p>',
+        unsafe_allow_html=True,
+    )
 if _db_error:
     st.error(_db_error)
 elif _PUBLIC_UI and _visitor_hash is None:
-    st.error(_USER_ERROR)
+    st.error(_user_error())
 if _quota_left is not None:
-    _show_questions_left(_quota_left)
+    _show_questions_left(_quota_left, _lang)
 elif not _PUBLIC_UI:
     st.caption(
         f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
@@ -1399,7 +1423,7 @@ if not _PUBLIC_UI:
     with st.sidebar:
         st.header("Session")
         if _quota_left is not None:
-            _show_questions_left(_quota_left)
+            _show_questions_left(_quota_left, _lang)
         stop_after = (
             st.radio(
                 "Heavy path",
@@ -1433,7 +1457,7 @@ if not _PUBLIC_UI:
             mcp_text = st.text_area(
                 "Prompt",
                 key="agent_prompt",
-                placeholder=_ASK_PLACEHOLDER,
+                placeholder=copy(_lang, "ask_placeholder"),
                 height=80,
                 disabled=_answered,
             )
@@ -1491,9 +1515,8 @@ if not _PUBLIC_UI:
             st.info("Send a message to start a conversation.")
 
         st.link_button(
-            "GitHub README",
-            "https://github.com/simcoster/Trippy",
-            icon=":material/menu_book:",
+            copy(_lang, "github"),
+            GITHUB_URL,
             width="stretch",
             key="github_readme",
         )
@@ -1511,24 +1534,7 @@ for turn in st.session_state.display:
 
 _can_ask = not _answered and _quota_open
 with st.bottom:
-    if _answered:
-        if st.button("Try another question!", type="primary", width="stretch", key="reset_chat"):
-            _reset_conversation()
-            st.rerun()
-    elif _can_ask:
-        st.selectbox(
-            "Example prompts",
-            _EXAMPLE_PROMPTS,
-            index=None,
-            placeholder="Example prompts",
-            label_visibility="collapsed",
-            key=_EXAMPLE_PROMPT_KEY,
-            on_change=_apply_example_prompt,
-        )
-
-submitted = (
-    st.chat_input(_ASK_PLACEHOLDER, key=_CHAT_INPUT_KEY) if _can_ask else None
-)
+    submitted = _ask_bar(_can_ask, _answered, _lang)
 prompt = submitted or mcp_prompt
 if prompt:
     st.session_state.display.append({"role": "user", "content": prompt})
@@ -1538,9 +1544,9 @@ if prompt:
     _blocked: str | None = None
     if _PUBLIC_UI and not _db_error:
         if _visitor_hash is None:
-            _blocked = _USER_ERROR
+            _blocked = _user_error()
         elif (_quota_left or 0) <= 0:
-            _blocked = QUOTA_USED
+            _blocked = copy(_lang, "quota_used")
         else:
             try:
                 _decision = claim_query(_visitor_hash)
@@ -1548,7 +1554,7 @@ if prompt:
                 _blocked = _report_error(exc)
             else:
                 if not _decision.allowed:
-                    _blocked = QUOTA_USED
+                    _blocked = copy(_lang, "quota_used")
     if _blocked is not None:
         with st.chat_message("assistant"):
             st.markdown(_blocked)
@@ -1559,7 +1565,7 @@ if prompt:
 
     with st.chat_message("assistant"):
         phase = (
-            st.status(SEARCHING, expanded=False, state="running")
+            st.status(copy(_lang, "searching"), expanded=False, state="running")
             if stop_after != "extractor"
             else None
         )
@@ -1569,14 +1575,17 @@ if prompt:
 
         def _show_phase(text: str) -> None:
             if phase is not None:
-                phase.update(label=text, state="running")
+                phase.update(
+                    label=_demo_chrome.localize_status(text, _lang),
+                    state="running",
+                )
 
         set_turn_status(_show_phase if phase is not None else None)
         failed = False
         try:
             try:
                 if _db_error:
-                    reply, trace = _USER_ERROR, []
+                    reply, trace = _user_error(), []
                 else:
                     with listen_recommend_text(reply_box.markdown):
                         reply, trace = invoke_agent(

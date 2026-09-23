@@ -113,7 +113,7 @@ def remaining_caption(remaining: int) -> str:
     if remaining == 1:
         return "1 question left"
     count = max(0, remaining)
-    return f"{count} questions left"
+    return f"{count} searches left"
 
 
 def quota_remaining(
