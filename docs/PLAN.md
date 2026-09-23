@@ -6,6 +6,11 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-23, typewriter two chars per tick)
+
+**Typing is twice as fast again:** each fragment tick adds two
+characters. A 7 ms sleep no longer shows because the rerun dominates.
+
 ### Done (2026-09-23, white Readme; larger ask text)
 
 **The GitHub "Readme" caption is white.** Ask text is 1.5× larger

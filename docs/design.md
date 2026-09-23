@@ -1403,7 +1403,8 @@ EN/HE language control (UK and Israel flags). The title stays
 **Trippy camping** in English on the left. Hebrew flips quota, chat,
 and the ask bar RTL. Example prompts are gone; a blue dice *inside* the
 chat bar, next to send, types one of five bilingual premade asks
-(and one of those starts on load after a 1 s pause, at 7 ms/char).
+(and one of those starts on load after a 1 s pause, two
+characters per tick).
 The face is `assets/dice.png`
 (white pad stripped, shrunk), doubled and centered on a square blue
 button that sits clear of send. The "searches left" words are larger

@@ -717,6 +717,7 @@ _TYPE_I = "_type_i"
 _TYPE_READY_AT = "_type_ready_at"
 _AUTOLOAD = "_autoload_search"
 _TYPE_DELAY_S = 0.007
+_TYPE_STEP = 2
 _TYPE_LEAD_S = 1.0
 
 
@@ -744,7 +745,7 @@ def _tick_typewriter() -> bool:
     ready_at = st.session_state.get(_TYPE_READY_AT)
     if isinstance(ready_at, float) and time.monotonic() < ready_at:
         return True
-    n += 1
+    n = min(n + _TYPE_STEP, len(target))
     st.session_state[_TYPE_N] = n
     st.session_state[_CHAT_INPUT_KEY] = target[:n]
     return n < len(target)
