@@ -86,19 +86,23 @@ def _price_sentence(sites: list[str], *, hebrew: bool, bound: str) -> str:
 
 def _missing_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
     count = len(sites)
-    if count > 2:
-        if hebrew:
-            return f"{count} אתרים בלי אינדיקציה על {query} ."
-        return f"{count} campsites don't have an indication of {query} ."
-    listed = _names(sites, hebrew=hebrew)
     if hebrew:
         note = f"בלי אינדיקציה על {query}"
+    else:
+        note = (
+            f"don't have an indication of {query} ")
+    if count > 2:
+        if hebrew:
+            return f"{count} אתרים {note}."
+        return f"{count} campsites {note}."
+    listed = _names(sites, hebrew=hebrew)
+    if hebrew:
         if count == 1:
             return f"אתר אחד {listed} {note}."
         return f"{count} אתרים {listed} {note}."
     if count == 1:
         return f"1 campsite {listed} doesn't have an indication of {query}."
-    return f"{count} campsites {listed} don't have an indication of {query}."
+    return f"{count} campsites {listed} {note}."
 
 
 def _rule_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
