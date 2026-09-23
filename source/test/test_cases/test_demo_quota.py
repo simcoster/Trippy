@@ -58,9 +58,9 @@ def test_public_visitor_hash_needs_pepper_and_address(monkeypatch, capsys):
 
 
 def test_remaining_caption_for_five_one_and_zero():
-    assert remaining_caption(5) == "5 questions left"
+    assert remaining_caption(5) == "5 searches left"
     assert remaining_caption(1) == "1 question left"
-    assert remaining_caption(0) == "0 questions left"
+    assert remaining_caption(0) == "0 searches left"
 
 
 @pytest.fixture

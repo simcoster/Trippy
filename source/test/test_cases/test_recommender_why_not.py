@@ -110,7 +110,6 @@ def test_why_not_names_the_other_sites():
     text = render_recommendations([_rec()], query="a pool", why_not=steps)
     sentence = (
         "3 campsites don't have an indication of pools "
-        "(by review or the stated info)."
     )
     assert sentence in text
     assert "Why not" not in text
@@ -129,7 +128,6 @@ def test_hebrew_why_not():
     text = render_recommendations([], empty="אין מקום", query="בריכה", why_not=steps)
     sentence = (
         "3 אתרים בלי אינדיקציה על בריכות לילדים "
-        "(לא בביקורות ולא במידע המוצהר)."
     )
     assert "אין מקום" in text
     assert sentence in text
@@ -200,8 +198,7 @@ def test_why_not_is_rendered_and_kept_out_of_the_model_pack():
     )
     assert result.text.startswith("24–25.5")
     assert (
-        "2 campsites [דרום and צפון] don't have an indication of pool "
-        "(by review or the stated info)."
+        "2 campsites [דרום and צפון] don't have an indication of pool."
         in result.text
     )
     assert len(result.recommendations) == 1
