@@ -6,6 +6,41 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-23, booking links are labeled)
+
+**Reply URLs keep their href and show as "booking link" in dark
+blue.** Render emits that markdown; Streamlit relabels any leftover
+bare URL in the assistant bubble.
+
+### Done (2026-09-23, chat text is black)
+
+**Human and assistant message text is black.**
+
+### Done (2026-09-23, reply bubbles; thread under Readme)
+
+**Assistant replies use the same frosted bubble as the human
+message.** The thread starts below Readme. Ask text is 0.75×
+(1.35rem).
+
+### Done (2026-09-23, Readme hugs the right edge)
+
+**The Readme caption is right-aligned with the GH mark and the
+עב control.**
+
+### Done (2026-09-23, send works; chrome lines up; no autotype)
+
+**Send inside the fragment now full-reruns with a pending prompt,
+so it reaches the graph.** Dice wrapper no longer covers the arrow.
+Readme sits under the GH mark at the same width. Language control
+shares the ask bar's right edge. Autotype is gone; placeholder is
+"type a camping search here".
+
+### Done (2026-09-23, GH under language; quota above the ask bar)
+
+**GitHub + Readme sit under the EN/HE control.** Remaining searches
+are just above the ask bar, right-aligned with it, count and label
+the same size (~0.8 of the last label).
+
 ### Done (2026-09-23, typewriter two chars per tick)
 
 **Typing is twice as fast again:** each fragment tick adds two

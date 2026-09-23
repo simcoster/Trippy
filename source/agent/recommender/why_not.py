@@ -87,12 +87,10 @@ def _price_sentence(sites: list[str], *, hebrew: bool, bound: str) -> str:
 def _missing_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
     count = len(sites)
     if hebrew:
-        note = f"בלי אינדיקציה על {query} (לא בביקורות ולא במידע המוצהר)"
+        note = f"בלי אינדיקציה על {query}"
     else:
         note = (
-            f"don't have an indication of {query} "
-            "(by review or the stated info)"
-        )
+            f"don't have an indication of {query} ")
     if count > 2:
         if hebrew:
             return f"{count} אתרים {note}."
@@ -103,7 +101,7 @@ def _missing_sentence(sites: list[str], query: str, *, hebrew: bool) -> str:
             return f"אתר אחד {listed} {note}."
         return f"{count} אתרים {listed} {note}."
     if count == 1:
-        return f"1 campsite {listed} doesn't have an indication of {query} (by review or the stated info)."
+        return f"1 campsite {listed} doesn't have an indication of {query}."
     return f"{count} campsites {listed} {note}."
 
 

@@ -1274,7 +1274,7 @@ note (or the single why, when there is one stay) says once that some
 lodging is priced differently depending on age. Phrasing is free; render puts that
 above the numbered list. `intro` is null for a single stay.
 A fit's `dates` are all shown. Several check-ins collapse to ranges
-(`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site. After the picks, render appends
+(`21–28.9`, then `11.10–15.10` for a later cluster). One booking link per site, shown as "booking link". After the picks, render appends
 `why_not` in the query's language: other available sites by name, and
 why they were left out. Three or more campsites are a count only
 (`3 campsites don't have an indication of pools (by review or the stated info)`).
@@ -1398,17 +1398,19 @@ Postgres (not managed),
 Streamlit as the public UI (`TRIPPY_PUBLIC_UI=1` hides traces),
 Cloudflare Tunnel for HTTPS. The public UI allows 5 questions total
 per visitor address (`TRIPPY_DEMO_QUERY_CAP`) and shows how many are
-left under the title. A large GitHub mark sits at the top with an
-EN/HE language control (UK and Israel flags). The title stays
+left. EN/HE (UK and Israel flags) sit at the top right; the GitHub
+mark and Readme caption sit under that control. The title stays
 **Trippy camping** in English on the left. Hebrew flips quota, chat,
 and the ask bar RTL. Example prompts are gone; a blue dice *inside* the
 chat bar, next to send, types one of five bilingual premade asks
-(and one of those starts on load after a 1 s pause, two
-characters per tick).
+(two characters per tick after a 1 s pause). The box starts empty
+with "type a camping search here". Send is handled on a full rerun
+because the ask bar is a fragment.
 The face is `assets/dice.png`
 (white pad stripped, shrunk), doubled and centered on a square blue
-button that sits clear of send. The "searches left" words are larger
-than the count; in Hebrew that line is on the right. `assets/background.png` is the page
+button that sits clear of send. Remaining searches sit just above the
+ask bar, right-aligned with it; the count and "searches left" share
+one size. `assets/background.png` is the page
 background at 50% opacity. The public page has no sidebar, toolbar, or
 header menu. `demo_query_quota` stores a SHA-256 of `TRIPPY_DEMO_QUOTA_PEPPER`
 plus Cloudflare's `CF-Connecting-IP`, not the address. The count does

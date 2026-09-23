@@ -7,6 +7,9 @@ from datetime import date, timedelta
 from typing import Any, NamedTuple
 
 
+BOOKING_LINK_TEXT = "booking link"
+
+
 class StayWindow(NamedTuple):
     start: str
     end: str
@@ -107,7 +110,7 @@ def booking_lines(
         url = next((window.booking_url for window in windows if window.booking_url), "")
     if not url:
         return []
-    return [f"   {url}"]
+    return [f"   [{BOOKING_LINK_TEXT}]({url})"]
 
 
 def stay_date_label(windows: Sequence[StayWindow]) -> str:

@@ -715,7 +715,7 @@ _TYPE_TARGET = "_type_target"
 _TYPE_N = "_type_n"
 _TYPE_I = "_type_i"
 _TYPE_READY_AT = "_type_ready_at"
-_AUTOLOAD = "_autoload_search"
+_PENDING_PROMPT = "_pending_prompt"
 _TYPE_DELAY_S = 0.007
 _TYPE_STEP = 2
 _TYPE_LEAD_S = 1.0
@@ -730,7 +730,7 @@ def _reset_conversation() -> None:
     st.session_state.pop(_TYPE_N, None)
     st.session_state.pop(_TYPE_I, None)
     st.session_state.pop(_TYPE_READY_AT, None)
-    st.session_state.pop(_AUTOLOAD, None)
+    st.session_state.pop(_PENDING_PROMPT, None)
 
 
 def _tick_typewriter() -> bool:
@@ -749,13 +749,6 @@ def _tick_typewriter() -> bool:
     st.session_state[_TYPE_N] = n
     st.session_state[_CHAT_INPUT_KEY] = target[:n]
     return n < len(target)
-
-
-def _maybe_autoload_search(lang: Lang) -> None:
-    if st.session_state.get(_AUTOLOAD):
-        return
-    st.session_state[_AUTOLOAD] = True
-    _start_random_search(lang)
 
 
 def _start_random_search(lang: Lang) -> None:
@@ -1332,7 +1325,11 @@ def _show_questions_left(remaining: int, lang: Lang) -> None:
 
 
 @st.fragment
-def _ask_bar(can_ask: bool, answered: bool, lang: Lang) -> str | None:
+def _ask_bar(
+    can_ask: bool, answered: bool, lang: Lang, remaining: int | None
+) -> str | None:
+    if remaining is not None:
+        _show_questions_left(remaining, lang)
     if answered:
         if st.button(
             copy(lang, "try_another"),
@@ -1351,10 +1348,8 @@ def _ask_bar(can_ask: bool, answered: bool, lang: Lang) -> str | None:
         help=copy(lang, "fill_random"),
     ):
         _start_random_search(lang)
-    else:
-        _maybe_autoload_search(lang)
     still = _tick_typewriter()
-    submitted = st.chat_input("", key=_CHAT_INPUT_KEY)
+    submitted = st.chat_input(copy(lang, "ask_placeholder"), key=_CHAT_INPUT_KEY)
     if still:
         ready_at = st.session_state.get(_TYPE_READY_AT)
         now = time.monotonic()
@@ -1363,6 +1358,10 @@ def _ask_bar(can_ask: bool, answered: bool, lang: Lang) -> str | None:
         else:
             time.sleep(_TYPE_DELAY_S)
         _rerun_ask()
+        return None
+    if submitted:
+        st.session_state[_PENDING_PROMPT] = submitted
+        st.rerun()
     return submitted
 
 
@@ -1384,34 +1383,33 @@ if _PUBLIC_UI and not _db_error:
             _quota_open = _quota_left > 0
 
 st.title(copy("en", "title_public" if _PUBLIC_UI else "title_local"))
-with st.container(key="lang_box"):
-    st.segmented_control(
-        copy(_lang, "language"),
-        options=["en", "he"],
-        format_func=lambda key: copy(_lang, "lang_en" if key == "en" else "lang_he"),
-        key="ui_lang",
-        on_change=_on_lang_change,
-        label_visibility="collapsed",
-    )
-with st.container(key="github_mark"):
-    st.markdown(
-        f'<a class="trippy-gh" href="{GITHUB_URL}" '
-        f'target="_blank" rel="noopener noreferrer" aria-label="{copy(_lang, "github")}">'
-        f"{GITHUB_MARK_SVG}</a>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<p class="trippy-gh-caption"><a href="{GITHUB_URL}" '
-        f'target="_blank" rel="noopener noreferrer">{copy(_lang, "readme_here")}</a></p>',
-        unsafe_allow_html=True,
-    )
+with st.container(key="chrome_right"):
+    with st.container(key="lang_box"):
+        st.segmented_control(
+            copy(_lang, "language"),
+            options=["en", "he"],
+            format_func=lambda key: copy(_lang, "lang_en" if key == "en" else "lang_he"),
+            key="ui_lang",
+            on_change=_on_lang_change,
+            label_visibility="collapsed",
+        )
+    with st.container(key="github_mark"):
+        st.markdown(
+            f'<div class="trippy-gh-wrap">'
+            f'<a class="trippy-gh" href="{GITHUB_URL}" '
+            f'target="_blank" rel="noopener noreferrer" aria-label="{copy(_lang, "github")}">'
+            f"{GITHUB_MARK_SVG}</a>"
+            f'<p class="trippy-gh-caption"><a href="{GITHUB_URL}" '
+            f'target="_blank" rel="noopener noreferrer">{copy(_lang, "readme_here")}</a></p>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+st.markdown("<div class='trippy-thread-gap'></div>", unsafe_allow_html=True)
 if _db_error:
     st.error(_db_error)
 elif _PUBLIC_UI and _visitor_hash is None:
     st.error(_user_error())
-if _quota_left is not None:
-    _show_questions_left(_quota_left, _lang)
-elif not _PUBLIC_UI:
+if not _PUBLIC_UI:
     st.caption(
         f"Local Streamlit client · `{AGENT_CHAT_MODEL}` via Nebius · "
         f"`{(os.environ.get('TRIPPY_SCHEMA') or 'public')}`."
@@ -1524,7 +1522,10 @@ if not _PUBLIC_UI:
 
 for turn in st.session_state.display:
     with st.chat_message(turn["role"]):
-        st.markdown(turn["content"])
+        body = turn["content"]
+        if turn.get("role") == "assistant":
+            body = _demo_chrome.relabel_booking_links(body)
+        st.markdown(body)
         if (
             not _PUBLIC_UI
             and turn.get("role") == "assistant"
@@ -1535,8 +1536,12 @@ for turn in st.session_state.display:
 
 _can_ask = not _answered and _quota_open
 with st.bottom:
-    submitted = _ask_bar(_can_ask, _answered, _lang)
-prompt = submitted or mcp_prompt
+    submitted = _ask_bar(_can_ask, _answered, _lang, _quota_left)
+prompt = (
+    submitted
+    or st.session_state.pop(_PENDING_PROMPT, None)
+    or mcp_prompt
+)
 if prompt:
     st.session_state.display.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -1603,7 +1608,7 @@ if prompt:
             _progress_ui = None
             if phase is not None and not failed:
                 phase.update(state="complete")
-        reply_box.markdown(reply)
+        reply_box.markdown(_demo_chrome.relabel_booking_links(reply))
         if trace and not _PUBLIC_UI:
             with st.expander("LangGraph trace", expanded=True):
                 _render_trace(trace)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import random
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -68,7 +69,7 @@ _COPY: dict[Lang, dict[str, str]] = {
     "en": {
         "title_public": "Trippy camping ⛺",
         "title_local": "Trippy camping ⛺ (local)",
-        "ask_placeholder": "",
+        "ask_placeholder": "type a camping search here",
         "try_another": "Try another question!",
         "fill_random": "Fill random search",
         "something_wrong": "Something went wrong.",
@@ -88,7 +89,7 @@ _COPY: dict[Lang, dict[str, str]] = {
     "he": {
         "title_public": "Trippy camping ⛺",
         "title_local": "Trippy camping ⛺ (local)",
-        "ask_placeholder": "",
+        "ask_placeholder": "הקלידו חיפוש כאן",
         "try_another": "נסו שאלה אחרת!",
         "fill_random": "מילוי חיפוש אקראי",
         "something_wrong": "משהו השתבש.",
@@ -110,6 +111,21 @@ _COPY: dict[Lang, dict[str, str]] = {
 
 def copy(lang: Lang, key: str) -> str:
     return _COPY[lang][key]
+
+
+_BOOKING_LINK_TEXT = "booking link"
+_MD_LINK = re.compile(r"\[([^\]]*)\]\((https?://[^)\s]+)\)")
+_BARE_URL = re.compile(r"(?<!\()(https?://[^\s)<>]+)")
+
+
+def relabel_booking_links(text: str) -> str:
+    """Keep hrefs; show every http(s) link as 'booking link'."""
+    labeled = _MD_LINK.sub(
+        lambda match: f"[{_BOOKING_LINK_TEXT}]({match.group(2)})", text
+    )
+    return _BARE_URL.sub(
+        lambda match: f"[{_BOOKING_LINK_TEXT}]({match.group(1)})", labeled
+    )
 
 
 def searches_left_label(remaining: int, lang: Lang) -> str:
@@ -179,26 +195,41 @@ html, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
 #MainMenu {{
     display: none !important;
 }}
+[data-testid="stChatMessageContent"],
 [data-testid="stChatMessageContent"] p,
-[data-testid="stChatMessageContent"] li {{
+[data-testid="stChatMessageContent"] li,
+[data-testid="stChatMessageContent"] span {{
     unicode-bidi: plaintext;
     text-align: start;
+    color: #111 !important;
+}}
+[data-testid="stChatMessage"] {{
+    background: rgba(255, 255, 255, 0.62) !important;
+    border-radius: 1.1rem;
+    padding: 0.65rem 0.85rem;
+    color: #111 !important;
+}}
+[data-testid="stChatMessageContent"] a {{
+    color: #003399 !important;
+}}
+.trippy-thread-gap {{
+    height: 7.5rem;
 }}
 .trippy-questions-left {{
-    font-size: 1.15rem;
+    font-size: 1.16rem;
     line-height: 1.3;
-    margin: 0 0 0.75rem 0;
-    text-align: {"right" if lang == "he" else "left"};
-    padding-right: {"14.5rem" if lang == "he" else "0"};
+    margin: 0 0 0.4rem 0;
+    text-align: right;
+    padding: 0;
+}}
+.trippy-questions-left-n,
+.trippy-questions-left-label {{
+    font-size: 1.16rem;
+    font-weight: 650;
 }}
 .trippy-questions-left-n {{
-    font-size: 1.45rem;
     font-weight: 700;
     color: #ff4b4b;
-}}
-.trippy-questions-left-label {{
-    font-size: 1.85rem;
-    font-weight: 650;
 }}
 .st-key-reset_chat button {{
     background-color: #21c354 !important;
@@ -277,33 +308,39 @@ html, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
 }}
 [data-testid="stMainBlockContainer"] h1 {{
     direction: ltr;
-    padding-right: 14.5rem;
+    padding-right: 10.5rem;
     text-align: left;
 }}
-.st-key-lang_box {{
-    position: absolute;
-    top: 3.35rem;
-    right: 8.6rem;
-    width: auto !important;
-    direction: ltr;
-    z-index: 5;
-}}
-.st-key-github_mark {{
+.st-key-chrome_right {{
     position: absolute;
     top: 2.35rem;
-    right: 0.4rem;
+    right: 1rem;
     width: auto !important;
-    min-height: 7.2rem;
     direction: ltr;
-    overflow: visible !important;
     z-index: 5;
 }}
-.st-key-github_mark [data-testid="stVerticalBlock"] {{
+.st-key-chrome_right > [data-testid="stVerticalBlock"] {{
     display: flex !important;
     flex-direction: column !important;
-    align-items: center;
-    gap: 0.2rem;
+    align-items: flex-end;
+    gap: 0.45rem;
+}}
+.st-key-lang_box,
+.st-key-github_mark {{
+    position: static;
+    width: auto !important;
+    direction: ltr;
     overflow: visible !important;
+}}
+.st-key-github_mark {{
+    width: 100% !important;
+    align-self: stretch;
+}}
+.trippy-gh-wrap {{
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    width: 100%;
 }}
 .trippy-gh {{
     display: inline-flex;
@@ -327,12 +364,13 @@ html, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
 }}
 .trippy-gh-caption {{
     display: block;
+    width: auto;
     font-size: 0.8rem;
     font-weight: 650;
     line-height: 1.15;
     white-space: nowrap;
-    text-align: center;
-    margin: 0;
+    text-align: right;
+    margin: 0.2rem 0 0 0;
 }}
 .trippy-gh-caption,
 .trippy-gh-caption a {{
@@ -373,7 +411,7 @@ html, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
 [data-testid="stChatInputTextArea"],
 [data-testid="stChatInput"] textarea {{
     min-height: 5.4rem !important;
-    font-size: 1.8rem !important;
+    font-size: 1.35rem !important;
     line-height: 1.45 !important;
     padding-top: 0.85rem !important;
     padding-bottom: 0.85rem !important;
@@ -402,16 +440,21 @@ html, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
 .st-key-fill_random {{
     position: absolute;
     inset-inline-end: 6.55rem;
-    top: 50%;
-    transform: translateY(-50%);
+    bottom: 0.85rem;
+    transform: none;
     z-index: 6;
-    width: auto !important;
+    width: 5.2rem !important;
+    max-width: 5.2rem !important;
+    height: 5.2rem !important;
     margin: 0 !important;
+    overflow: hidden;
+    pointer-events: none;
 }}
 .st-key-fill_random [data-testid="stButton"] {{
     width: auto !important;
 }}
 .st-key-fill_random button {{
+    pointer-events: auto;
     width: 5.2rem !important;
     height: 5.2rem !important;
     min-width: 5.2rem !important;
@@ -480,8 +523,22 @@ html, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {{
 def apply_dir_script(lang: Lang) -> str:
     return f"""
 <script>
-const root = window.parent.document.documentElement;
-root.setAttribute("dir", "ltr");
-root.setAttribute("lang", "{lang}");
+const doc = window.parent.document;
+doc.documentElement.setAttribute("dir", "ltr");
+doc.documentElement.setAttribute("lang", "{lang}");
+function alignChrome() {{
+  const chrome = doc.querySelector(".st-key-chrome_right");
+  const bar = doc.querySelector("[data-testid='stChatInput']")
+    || doc.querySelector("[data-testid='stBottomBlockContainer']");
+  if (!chrome || !bar || !chrome.offsetParent) return false;
+  const inset = chrome.offsetParent.getBoundingClientRect().right
+    - bar.getBoundingClientRect().right;
+  chrome.style.right = Math.max(0, inset) + "px";
+  return true;
+}}
+let n = 0;
+const id = setInterval(() => {{
+  if (alignChrome() || ++n > 40) clearInterval(id);
+}}, 150);
 </script>
 """
