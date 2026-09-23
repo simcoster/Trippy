@@ -86,6 +86,7 @@ LangGraph coordinates four stages: a lightweight relevance gate, structured cons
 ## Stack
 
 **Python · LangGraph · PostgreSQL · Alembic · FastAPI · Docker · Nebius Token Factory ·  Nebius Cloud**
+**CI + Scraping jobs on Github Actions**
 
 The demo's UI is on Streamlit; model availability and response times can vary. This is an evolving portfolio project, not a booking provider or a guarantee of live inventory.
 
