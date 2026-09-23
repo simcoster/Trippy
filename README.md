@@ -1,6 +1,6 @@
 # Trippy ⛺ — a camping assistant that knows what's actually available
 
-**[Try the demo](https://trippycamping.app/)** · **[Source code](https://github.com/simcoster/Trippy)**
+**[Try the demoS](https://trippycamping.app/)**
 
 Finding a campsite is easy. Finding one that's available **on your dates**, fits a group's requirements, and has the facilities people actually need is harder. Trippy combines regularly refreshed availability with structured campsite information and review evidence to recommend stays you can book, not just places that sound nice.
 
