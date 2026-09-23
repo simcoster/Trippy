@@ -43,7 +43,6 @@ warnings.filterwarnings("ignore", message=".*Pydantic V1.*", category=UserWarnin
 
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit.errors import StreamlitAPIException
 from dotenv import dotenv_values, load_dotenv
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import (
@@ -53,6 +52,7 @@ from langchain_core.messages import (
     HumanMessage,
 )
 from langchain_core.outputs import LLMResult
+from streamlit.errors import StreamlitAPIException
 
 load_dotenv(_ROOT / ".env")
 
