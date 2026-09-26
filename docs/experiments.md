@@ -7,6 +7,101 @@ the fact — a re-run is a new entry. Each one says what question it answered,
 how production was kept untouched, what came out, what it cost, and what was
 decided.
 
+## 2026-09-26
+
+### 4. Ship the one-call query embed?
+
+**Question.** §3 showed one `embeddings.create` for desert / electricity
+/ fridge matches the separate vectors and, after the first request,
+is faster. Put that on the planner?
+
+**Setup.** No new model calls. The user asked to switch after §3.
+
+**Decision.** The planner embeds every distinct phrase in one request.
+design.md "Planner claim/rule judge". Interval keepalive stays off
+the Streamlit startup path; a new session still pings chat models
+with `hi` and the embedder with `Hello`.
+
+### 3. Does one embeddings call for every retrieve phrase work, and is it faster?
+
+**Question.** The planner embeds each semantic phrase in its own
+`embeddings.create` (`embed([query])`), up to 5 at a time. On the
+desert / electricity / fridge phrases, does one call with all three
+strings return a vector each, do those vectors match the separate
+calls, and what is the wall?
+
+**Setup.** `Qwen/Qwen3-Embedding-8B`, 1536 dims, project
+`NEBIUS_API_KEY`. Phrases `desert`, `electricity`, `fridge`. One
+warmup call, then three rounds. Each round: three single-text calls
+in parallel (the live cap is 5, so all three overlap), then one call
+with `input` set to all three. Cosine and max absolute difference
+per phrase. No DB writes. 13 calls, 57 tokens. **<$0.01.**
+
+**Result.** The batch returns three 1536-d vectors. Cosine against
+the separate calls is 0.999966–1.0 (max abs difference 0.002).
+Token count is 9 either way.
+
+| round | 3 parallel | 1 batch |
+|---|---|---|
+| warmup | 8.1s (one text) | — |
+| 1 | 6.5s | 16.8s |
+| 2 | 11.7s | 3.5s |
+| 3 | 5.3s | 2.6s |
+
+**Decision.** Leave the planner on one phrase per request. A single
+call is valid and, after the first one, faster. Not switched: the
+first batch was the slowest call in the run, and three phrases are
+not the planner's long pole (judge wall on this turn was 11.8s).
+
+### 2. Is the docs-site 200 a live rerank?
+
+**Question.** The Token Factory rerank page shows HTTP 200 for
+`Qwen/Qwen3-Reranker-8B`. §1 got 404 with the project key. Is the
+page executing the request?
+
+**Setup.** Same endpoint and model id. Two live POSTs, no DB writes:
+the project `NEBIUS_API_KEY`, and the bearer token printed in the
+docs snippet. Compared the page's 200 body to the OpenAPI example.
+
+**Result.** The page's 200 is the spec example, not a live call.
+Request documents are Brazil / Paris / Amsterdam / Belgrade; the 200
+body is Belgrade / Shrek's swamp / Amsterdam, id
+`rerank-bbbxyuxyu643b6af`, the strings in the OpenAPI example.
+Project key: **404** model does not exist. Docs-snippet token:
+**401** couldn't authenticate. Still no inference latency. **$0.**
+
+**Decision.** Unchanged from §1. The reranker is not callable.
+
+### 1. Can Qwen3-Reranker-8B replace a claim-judge call, and how slow is it?
+
+**Question.** Nebius documents `POST /v1/rerank` with
+`Qwen/Qwen3-Reranker-8B`. On the 36 `claim_judge` calls from the
+23 Sep desert / electricity / fridge turn, can that reranker score
+the same claims and rules, and what is its latency next to the 235B
+judge?
+
+**Setup.** Trace `01a0cfd5-ec34-7d52-914d-18732c88d0d1` (EU project
+`trippy`, thread `cad830e9-53c6-4e64-81df-0b5ef0727c2e`). User text:
+משפחה של ארבעה בחודש הבא במדבר, צריכים חשמל ומקרר. 36 judge tools
+(12 sites × desert / electricity / fridge). No DB writes. One rerank
+probe with the project `NEBIUS_API_KEY`, the documented model id,
+and the docs' capital-of-France documents. LangSmith MCP was not
+connected; the trace came from the LangSmith client at
+`https://eu.api.smith.langchain.com`.
+
+**Result.** Rerank did not run. `POST /v1/rerank` returned **404**
+`The model Qwen/Qwen3-Reranker-8B does not exist` (2.7 s, that is
+the error, not inference). `GET /v1/models` lists 25 models and no
+reranker. The public catalog
+(`tokenfactory.nebius.com/api/public/models_info`) has no rerank
+model either. The OpenAPI page still shows the model as the example.
+Judge baseline on that trace, for when the model exists: per call
+min 0.85 s, median 1.35 s, max 3.65 s; the 36 overlapped into an
+11.8 s wall. **$0.**
+
+**Decision.** Do not route claim judging through the reranker. The
+model is documented and not served. Judge stays on the 235B.
+
 ## 2026-09-22
 
 ### 1. Does claim-judge concurrency 10 beat 5 on one repeated job?

@@ -104,7 +104,7 @@ import source.agent.graph as agent_graph
 import source.demo_chrome as _demo_chrome
 import source.demo_quota as _demo_quota
 from source.agent.graph import AGENT_CHAT_MODEL, ChatState, HeavyThrough, build_graph
-from source.agent.keepalive import ping_new_session, start_model_keepalive
+from source.agent.keepalive import ping_new_session
 from source.agent.recommender.recommend import listen_recommend_text
 from source.agent.recommender.timing import last_recommend_timing
 from source.agent.search import amenities, availability, campsites, claims, embed, rules
@@ -645,7 +645,7 @@ def _install_tool_hooks() -> None:
                 _current_trace.append(
                     {
                         "kind": "embed",
-                        "name": "embed_query",
+                        "name": "embed_queries" if len(texts) > 1 else "embed_query",
                         "node": "planner",
                         "prompt_tokens": tokens,
                         "latency_ms": (time.perf_counter() - started) * 1000,
@@ -707,7 +707,6 @@ def _init_session() -> None:
     if "ui_lang" not in st.session_state:
         st.session_state.ui_lang = "he" if _PUBLIC_UI else "en"
     ping_new_session(st.session_state)
-    start_model_keepalive()
 
 
 _CHAT_INPUT_KEY = "chat_prompt"

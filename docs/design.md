@@ -939,8 +939,10 @@ The planner then runs the sandbox quote and retrieve together.
 The judge still waits until both have finished. `start` / `end` stay the first night
 so the recommender stay key is unchanged.
 
-The planner retrieve embeds each distinct semantic query statement
-(up to 5 at a time, `QUERY_EMBED_CONCURRENCY` in `source/agent/search/embed.py`)
+The planner retrieve embeds every distinct semantic query statement
+in one `embeddings.create` (`source/agent/search/embed.py`; one call
+matched the separate vectors, cosine ≥ 0.999966, and after the first
+request was faster — experiments.md 2026-09-26 §3)
 and loads the top-5 claims
 **and** the nearest official `campsite_rules` (all categories,
 including polarity false) onto each fit. The 235B judge in
@@ -1356,18 +1358,18 @@ instead of opening Streamlit’s Clear cache dialog (`c` shortcut).
 After a reply the chat input is replaced by a primary Reset button, and an
 example-prompt dropdown fills the input without sending. Reset still does
 not re-ping models.
-Streamlit starts the 10-minute keepalive again
-(`start_model_keepalive`, `TRIPPY_KEEPALIVE_INTERVAL_SEC`, default
-600 s; not a measured Nebius idle timeout). The first round waits
-one interval. Rounds run only from 07:00 until 23:00 Asia/Jerusalem;
-outside that the loop sleeps and does not ping. That window is there
-because Kimi-K3 on Token Factory went cold within about 80 minutes
-once the interval was off (2026-09-22: a 6.8 s Kimi recommend, then
-the next two asks got no token in 10 s and fell back to Super).
+Streamlit does not start the interval keepalive.
+`start_model_keepalive` remains for an explicit call
+(`TRIPPY_KEEPALIVE_INTERVAL_SEC`, default 600 s). That loop, when
+started, still skips 23:00–07:00 Asia/Jerusalem. Kimi-K3 on Token
+Factory went cold within about 80 minutes once the interval was off
+(2026-09-22: a 6.8 s Kimi recommend, then the next two asks got no
+token in 10 s and fell back to Super).
 Each new browser
-session still sends a 5-token `hi` once per **model endpoint**
+session still sends a 5-token `hi` once per **chat** model endpoint
 (`ping_new_session`; Reset does not), including outside those hours:
-Kimi, the 235B (light and extractor share it), and `Qwen3-Embedding-8B`.
+Kimi and the 235B (light and extractor share it). The embedder gets
+`Hello` in that same round (`Qwen3-Embedding-8B`).
 The same round also
 sends the claim-judge system prompt alone, so that prefix is hot.
 A retrieve embed
@@ -1490,13 +1492,12 @@ then runs `price_sandbox_quote` alongside retrieve (each campsite’s
 params, price, and explanation,
 or why it skipped / fell back; POSTs are chunked at the sandbox
 `MAX_BATCH` of 30 and memoized by site + lodging + party +
-weekday/weekend for that user request only). Query embeddings (`embed_query`
-StructuredTool, one per phrase, nested under `embed_queries`), and
-retrieve (`retrieve`, plus `search_review_claims` /
-`search_campsite_rules` / amenity SQL) are `@traceable` **tools** under
+weekday/weekend for that user request only). Query embeddings are one `embed_queries` call for every distinct
+phrase. Retrieve (`retrieve`, plus `search_review_claims` /
+`search_campsite_rules` / amenity SQL) stays `@traceable` **tools** under
 the planner. Local Streamlit also expands **Price sandbox** in the
-turn trace. Embed worker threads `copy_context()` like the judge.
-`embed_query` Inputs are the phrase; the vector is the output.
+turn trace. `embed_queries` inputs are the phrases; the vectors are
+the output. A single-phrase embed still shows as `embed_query`.
 about the longest call, not the sum, and sits inside the planner bar.
 Scrape containers force `LANGSMITH_TRACING=false` in
 `job.sh` so ingest does not share the project. CI has no key, so tests

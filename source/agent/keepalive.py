@@ -28,6 +28,7 @@ _KEEPALIVE_TZ = ZoneInfo("Asia/Jerusalem")
 _KEEPALIVE_START = wall_time(7, 0)
 _KEEPALIVE_END = wall_time(23, 0)
 _PING = "hi"
+_EMBED_PING = "Hello"
 _MAX_TOKENS = 5
 _ROLES = ("recommender", "light", "extractor", "embed")
 
@@ -174,7 +175,7 @@ def _invoke_ping(target: KeepaliveTarget) -> None:
     started = time.perf_counter()
     try:
         if target.kind == "embed":
-            vectors = target.chat.embed([_PING])
+            vectors = target.chat.embed([_EMBED_PING])
             reply = f"embed dim={len(vectors[0]) if vectors else 0}"
         else:
             client = target.chat
@@ -244,8 +245,9 @@ def ping_models(
     """One `hi` round per model endpoint. Traced as `model-keepalive`."""
     targets = _targets(chats)
     for target in targets:
+        ping = _EMBED_PING if target.kind == "embed" else _PING
         scheduled = (
-            f"keepalive ping={_PING} role={target.role} "
+            f"keepalive ping={ping} role={target.role} "
             f"model={target.model} kind={target.kind} reason={reason}"
         )
         print(scheduled, flush=True)
