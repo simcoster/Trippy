@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from datetime import date, timedelta
 from typing import Any, NamedTuple
 
-
 BOOKING_LINK_TEXT = "booking link"
 
 
