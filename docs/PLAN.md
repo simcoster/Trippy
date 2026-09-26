@@ -6,6 +6,37 @@ Campsite recommendation agent for Israel (parks.org.il + Google reviews), with R
 
 ## Progress log
 
+### Done (2026-09-26, planner embeds every phrase at once)
+
+**The planner sends every distinct retrieve phrase in one
+`embeddings.create`.** Streamlit no longer starts the 10-minute
+keepalive. A new session still pings chat models with `hi` and the
+embedder with `Hello`. Supersedes one-phrase-per-call in design.md
+and the interval start. experiments.md 2026-09-26 §3, §4.
+
+### Done (2026-09-26, batched query embed works)
+
+**One `embeddings.create` for desert / electricity / fridge returns
+three vectors that match the separate calls (cosine ≥ 0.999966).**
+After a cold 16.8s batch, the next two were 3.5s and 2.6s against
+5.3–11.7s for three parallel single-text calls. Planner stays one
+phrase per request. experiments.md 2026-09-26 §3.
+
+### Done (2026-09-26, docs rerank 200 is the sample)
+
+**The Token Factory 200 for Qwen3-Reranker-8B is the OpenAPI example.**
+Its documents (Belgrade, Shrek's swamp) are not the request's. A live
+POST with the project key is still 404; the bearer in the docs snippet
+is 401. experiments.md 2026-09-26 §2.
+
+### Done (2026-09-26, Nebius reranker is not served)
+
+**Qwen3-Reranker-8B 404s, so it cannot replace the claim judge.**
+Documented at `POST /v1/rerank` as `Qwen/Qwen3-Reranker-8B`, absent
+from `/v1/models` and the public catalog. The 36 judges on the
+desert / electricity / fridge trace stay the baseline (median 1.35 s,
+11.8 s wall). experiments.md 2026-09-26 §1.
+
 ### Done (2026-09-23, booking links are labeled)
 
 **Reply URLs keep their href and show as "booking link" in dark

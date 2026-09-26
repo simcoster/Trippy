@@ -1,17 +1,8 @@
-"""Planner query embeddings run concurrently, capped at five."""
+"""Planner query embeddings are one request for every distinct phrase."""
 
 from __future__ import annotations
 
-import threading
-import time
-
-import pytest
-
 from source.agent.search import embed
-
-
-def _fake_vec(_texts: list[str], **_kwargs):
-    return [[0.1, 0.2, 0.3]]
 
 
 def test_query_vec_literals_uses_query_vec_literal(monkeypatch):
@@ -22,61 +13,17 @@ def test_query_vec_literals_uses_query_vec_literal(monkeypatch):
     assert out == {"quiet": "[quiet]", "shade": "[shade]"}
 
 
-def test_multiple_query_statements_embed_in_parallel(monkeypatch):
-    in_flight = 0
-    peak = 0
-    lock = threading.Lock()
-    gate = threading.Barrier(5)
+def test_distinct_phrases_are_one_embed_call(monkeypatch):
+    seen: list[list[str]] = []
 
     def fake_embed(texts, **_kwargs):
-        nonlocal in_flight, peak
-        with lock:
-            in_flight += 1
-            peak = max(peak, in_flight)
-        try:
-            gate.wait(timeout=2)
-        except threading.BrokenBarrierError:
-            pytest.fail("query embeddings did not overlap")
-        with lock:
-            in_flight -= 1
-        return _fake_vec(texts)
+        seen.append(list(texts))
+        return [[float(i)] for i in range(len(texts))]
 
     monkeypatch.setattr(embed._claims_embedder, "embed", fake_embed)
-    queries = [f"q{i}" for i in range(5)]
+    queries = ["quiet", "shade", "quiet", "fridge"]
     out = embed._query_vec_literals(queries)
-    assert peak == 5
-    assert list(out) == queries
-
-
-def test_query_embed_concurrency_caps_at_five(monkeypatch):
-    in_flight = 0
-    peak = 0
-    lock = threading.Lock()
-    release = threading.Event()
-    entered = threading.Semaphore(0)
-
-    def fake_embed(texts, **_kwargs):
-        nonlocal in_flight, peak
-        with lock:
-            in_flight += 1
-            peak = max(peak, in_flight)
-        entered.release()
-        assert release.wait(timeout=2)
-        with lock:
-            in_flight -= 1
-        return _fake_vec(texts)
-
-    monkeypatch.setattr(embed._claims_embedder, "embed", fake_embed)
-    queries = [f"q{i}" for i in range(8)]
-    thread = threading.Thread(target=lambda: embed._query_vec_literals(queries))
-    thread.start()
-    for _ in range(5):
-        assert entered.acquire(timeout=2)
-    time.sleep(0.05)
-    with lock:
-        assert peak == 5
-        assert in_flight == 5
-    release.set()
-    thread.join(timeout=2)
-    assert not thread.is_alive()
-    assert peak == 5
+    assert seen == [["quiet", "shade", "fridge"]]
+    assert list(out) == ["quiet", "shade", "fridge"]
+    assert out["quiet"] == "[0.00000000]"
+    assert out["fridge"] == "[2.00000000]"

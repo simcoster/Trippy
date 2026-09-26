@@ -46,7 +46,7 @@ def test_same_instruct_model_is_pinged_once():
     assert [row["kind"] for row in seen] == ["chat", "chat"]
 
 
-def test_embedder_is_pinged_with_hi():
+def test_embedder_is_pinged_with_hello():
     seen: list[dict] = []
     binds: list[tuple] = []
     ping_models(
@@ -58,7 +58,7 @@ def test_embedder_is_pinged_with_hi():
     kinds = {row["kind"] for row in seen}
     assert kinds == {"chat", "embed"}
     embed = next(row for row in seen if row["kind"] == "embed")
-    assert embed["texts"] == ["hi"]
+    assert embed["texts"] == ["Hello"]
     assert embed["model"] == "Qwen/Qwen3-Embedding-8B"
 
 
